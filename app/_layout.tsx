@@ -4,7 +4,6 @@ import React from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { DebugOverlay } from "../components/DebugOverlay";
 import { AuthProvider } from "../contexts/AuthContext";
 import { ProjectProvider } from "../contexts/ProjectContext";
 import { ThemeProvider } from "../contexts/ThemeContext";
@@ -16,7 +15,6 @@ export default function RootLayout() {
         <ThemeProvider>
           <AuthProvider>
             <ProjectProvider>
-              <DebugOverlay />
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" />
                 <Stack.Screen name="(tabs)" />

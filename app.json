@@ -61,6 +61,7 @@
       "expo-notifications",
       "expo-font",
       "@react-native-firebase/app",
+      "@react-native-firebase/auth",
       "expo-mlkit-ocr",
       "expo-image",
       [
@@ -71,12 +72,12 @@
             "forceStaticLinking": [
               "RNFBApp",
               "RNFBAuth",
+              "RNFBFirestore",
               "RNFBStorage"
             ]
           }
         }
-      ],
-      "@react-native-firebase/auth"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

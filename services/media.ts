@@ -1,6 +1,8 @@
 import { File, Paths } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
-import storage, { getDownloadURL, putFile, ref } from "@react-native-firebase/storage";
+import { getDownloadURL, putFile, ref } from "@react-native-firebase/storage";
+
+import { storage } from "./firebase";
 
 export async function pickImage(): Promise<ImagePicker.ImagePickerAsset | null> {
   const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -80,7 +82,7 @@ export async function uploadImage(
   console.log("[media] Uploading via RNFB Storage:", path);
   const localUri = await ensureLocalFilePath(asset);
   const localPath = localUri.replace(/^file:\/\//, "");
-  const storageRef = ref(storage(), path);
+  const storageRef = ref(storage, path);
   await putFile(storageRef, localPath, { contentType: "image/jpeg" });
 
   const downloadUrl = await getDownloadURL(storageRef);
