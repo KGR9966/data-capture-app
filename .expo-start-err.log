@@ -1,0 +1,20 @@
+2026-07-14T12:24:32.818Z expo:telemetry Switching strategy from detached to instant
+2026-07-14T12:24:32.819Z expo:telemetry Recording 1 event(s)
+2026-07-14T12:24:32.825Z expo:env Loaded environment variables from: C:\Users\kimgr\data-capture-app\.env
+2026-07-14T12:24:32.827Z expo:env C:\Users\kimgr\data-capture-app\.env.development does not exist, skipping this env file
+2026-07-14T12:24:32.827Z expo:env C:\Users\kimgr\data-capture-app\.env.local does not exist, skipping this env file
+2026-07-14T12:24:32.827Z expo:env C:\Users\kimgr\data-capture-app\.env.development.local does not exist, skipping this env file
+2026-07-14T12:24:32.989Z expo:utils:scheme ios application Info.plist path: null
+2026-07-14T12:24:32.992Z expo:utils:scheme expected error collecting android application schemes for the main activity: Error: Android project folder is missing in project: C:\Users\kimgr\data-capture-app
+    at getProjectPathOrThrowAsync (C:\Users\kimgr\data-capture-app\node_modules\@expo\config-plugins\build\android\Paths.js:135:9)
+    at async Object.getAndroidManifestAsync (C:\Users\kimgr\data-capture-app\node_modules\@expo\config-plugins\build\android\Paths.js:138:23)
+    at async getSchemesForAndroidAsync (C:\Users\kimgr\data-capture-app\node_modules\@expo\cli\build\src\utils\scheme.js:154:28)
+    at async Promise.all (index 1)
+    at async getOptionalDevClientSchemeAsync (C:\Users\kimgr\data-capture-app\node_modules\@expo\cli\build\src\utils\scheme.js:182:28)
+    at async resolveSchemeAsync (C:\Users\kimgr\data-capture-app\node_modules\@expo\cli\build\src\start\resolveOptions.js:99:32)
+    at async resolveOptionsAsync (C:\Users\kimgr\data-capture-app\node_modules\@expo\cli\build\src\start\resolveOptions.js:70:20)
+    at async expoStart (C:\Users\kimgr\data-capture-app\node_modules\@expo\cli\build\src\start\index.js:142:21)
+2026-07-14T12:24:33.348Z expo:doctor:dependencies:bundledNativeModules Fetching bundled native modules from the server...
+Input is required, but 'npx expo' is in non-interactive mode.
+Required input:
+> Use port 8088 instead?

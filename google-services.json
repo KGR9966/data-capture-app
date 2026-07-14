@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "222519275256",
+    "project_id": "data-capture-506bd",
+    "storage_bucket": "data-capture-506bd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:222519275256:android:2073416f59f51072d3950d",
+        "android_client_info": {
+          "package_name": "com.kgradm.datacapture"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAvVjcnKxtDE32Zu66xbPZqFJ9_-VzCxSI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -7,36 +7,40 @@
     "icon": "./assets/icon.png",
     "scheme": "datacapture",
     "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kgradm.datacapture",
-      "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSMicrophoneUsageDescription": "Data Capture bruger mikrofonen til at konvertere din stemme til tekst.",
         "NSSpeechRecognitionUsageDescription": "Data Capture bruger talegenkendelse til at omforme dine observationer og noter til tekst.",
         "NSCameraUsageDescription": "Data Capture bruger kameraet til at tage billeder til sager.",
         "NSPhotoLibraryUsageDescription": "Data Capture bruger fotoalbummet til at vedhæfte billeder til sager.",
-        "UIBackgroundModes": [
-          "fetch",
-          "remote-notification"
-        ]
+        "NSLocationWhenInUseUsageDescription": "Data Capture bruger din position til at påminde dig om sager nær bestemte steder.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Data Capture skal bruge adgang til position i baggrunden for at kunne give geofence-påmindelser.",
+        "NSLocationAlwaysUsageDescription": "Data Capture bruger din position i baggrunden til geofence-påmindelser.",
+        "UIBackgroundModes": ["location", "fetch", "remote-notification"]
       }
     },
     "android": {
       "package": "com.kgradm.datacapture",
-      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#0f172a",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.POST_NOTIFICATIONS"
       ]
     },
@@ -62,21 +66,7 @@
       "expo-font",
       "@react-native-firebase/app",
       "expo-mlkit-ocr",
-      "expo-image",
-      [
-        "expo-build-properties",
-        {
-          "ios": {
-            "useFrameworks": "static",
-            "forceStaticLinking": [
-              "RNFBApp",
-              "RNFBAuth",
-              "RNFBStorage"
-            ]
-          }
-        }
-      ],
-      "@react-native-firebase/auth"
+      "react-native-background-geolocation"
     ],
     "experiments": {
       "typedRoutes": true,
