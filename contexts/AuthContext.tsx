@@ -33,7 +33,7 @@ interface AuthUser {
   tenantId: string | null;
   metadata: FirebaseAuthTypes.UserMetadata;
   providerData: FirebaseAuthTypes.UserInfo[];
-  refreshToken: string;
+  refreshToken?: string;
 }
 
 interface AuthContextType {
@@ -144,7 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             tenantId: currentUser.tenantId,
             metadata: currentUser.metadata,
             providerData: currentUser.providerData,
-            refreshToken: currentUser.refreshToken,
+            refreshToken: undefined,
           });
         } else {
           setUser(null);
@@ -204,7 +204,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           tenantId: credential.user.tenantId,
           metadata: credential.user.metadata,
           providerData: credential.user.providerData,
-          refreshToken: credential.user.refreshToken,
+          refreshToken: undefined,
         };
       },
       updateProfile: async (profile: { name: string; email?: string }) => {
