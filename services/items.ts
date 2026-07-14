@@ -67,13 +67,24 @@ export function subscribeToItems(
     orderBy("updatedAt", "desc")
   );
 
-  return onSnapshot(q, (snapshot) => {
-    const items = snapshot.docs.map((d) => ({
-      id: d.id,
-      ...(d.data() as Omit<CaptureItem, "id">),
-    }));
-    callback(items);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      if (!snapshot || !snapshot.docs) {
+        callback([]);
+        return;
+      }
+      const items = snapshot.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<CaptureItem, "id">),
+      }));
+      callback(items);
+    },
+    (error) => {
+      console.error("[subscribeToItems] onSnapshot error:", error);
+      callback([]);
+    }
+  );
 }
 
 export async function getItemsForProject(projectId: string): Promise<CaptureItem[]> {

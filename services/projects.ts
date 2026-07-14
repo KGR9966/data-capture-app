@@ -90,25 +90,38 @@ export function subscribeToProjects(
   let results: Project[] = [];
 
   const unsubscribes = queries.map((q, index) =>
-    onSnapshot(q, (snapshot) => {
-      const projects: Project[] = snapshot.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<Project, "id">),
-      }));
-      snapshots[index] = projects;
-      results = snapshots.flat().filter(Boolean);
+    onSnapshot(
+      q,
+      (snapshot) => {
+        if (!snapshot || !snapshot.docs) {
+          snapshots[index] = [];
+          callback([]);
+          return;
+        }
+        const projects: Project[] = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<Project, "id">),
+        }));
+        snapshots[index] = projects;
+        results = snapshots.flat().filter(Boolean);
 
-      const unique = new Map<string, Project>();
-      results.forEach((p) => unique.set(p.id, p));
+        const unique = new Map<string, Project>();
+        results.forEach((p) => unique.set(p.id, p));
 
-      callback(
-        Array.from(unique.values()).sort((a, b) => {
-          const aTime = a.updatedAt?.toMillis?.() || 0;
-          const bTime = b.updatedAt?.toMillis?.() || 0;
-          return bTime - aTime;
-        })
-      );
-    })
+        callback(
+          Array.from(unique.values()).sort((a, b) => {
+            const aTime = a.updatedAt?.toMillis?.() || 0;
+            const bTime = b.updatedAt?.toMillis?.() || 0;
+            return bTime - aTime;
+          })
+        );
+      },
+      (error) => {
+        console.error(`[subscribeToProjects] query ${index} onSnapshot error:`, error);
+        snapshots[index] = [];
+        callback([]);
+      }
+    )
   );
 
   return () => {
