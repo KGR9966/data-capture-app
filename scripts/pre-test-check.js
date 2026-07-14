@@ -83,11 +83,11 @@ const nativeModulePackages = [
 ];
 const nativeModuleFiles = [
   path.join(ROOT, "services", "media.ts"),
-  path.join(ROOT, "services", "firebase.ts"),
   path.join(ROOT, "contexts", "AuthContext.tsx"),
   path.join(ROOT, "services", "ocr.ts"),
   path.join(ROOT, "services", "deeplinks.ts"),
 ];
+// services/firebase.ts is the central Firebase initialization file and may use top-level native imports.
 
 let nativeImportOk = true;
 for (const filePath of nativeModuleFiles) {

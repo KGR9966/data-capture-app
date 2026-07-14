@@ -1,6 +1,19 @@
-import firestore, {
-  FirebaseFirestoreTypes,
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+  where,
 } from "@react-native-firebase/firestore";
+
+import { db } from "./firebase";
 
 export type ItemType = "idea" | "observation" | "bug" | "comment" | "photo" | "voice" | "other";
 export type ItemStatus = "new" | "in_progress" | "done" | "archived";
@@ -24,8 +37,7 @@ export interface CaptureItem {
   updatedAt?: any;
 }
 
-const db = firestore();
-const itemsCollection = db.collection("items");
+const itemsCollection = collection(db, "items");
 
 function stripUndefined(obj: Record<string, any>): Record<string, any> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
@@ -38,10 +50,10 @@ export async function createItem(
     ...item,
     status: item.status || "new",
     mediaUrl: item.mediaUrl ?? null,
-    createdAt: firestore.FieldValue.serverTimestamp(),
-    updatedAt: firestore.FieldValue.serverTimestamp(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
-  const docRef = await itemsCollection.add(payload);
+  const docRef = await addDoc(itemsCollection, payload);
   return { id: docRef.id, ...item };
 }
 
@@ -49,11 +61,13 @@ export function subscribeToItems(
   projectId: string,
   callback: (items: CaptureItem[]) => void
 ) {
-  const q = itemsCollection
-    .where("projectId", "==", projectId)
-    .orderBy("updatedAt", "desc");
+  const q = query(
+    itemsCollection,
+    where("projectId", "==", projectId),
+    orderBy("updatedAt", "desc")
+  );
 
-  return q.onSnapshot((snapshot) => {
+  return onSnapshot(q, (snapshot) => {
     const items = snapshot.docs.map((d) => ({
       id: d.id,
       ...(d.data() as Omit<CaptureItem, "id">),
@@ -63,10 +77,12 @@ export function subscribeToItems(
 }
 
 export async function getItemsForProject(projectId: string): Promise<CaptureItem[]> {
-  const snapshot = await itemsCollection
-    .where("projectId", "==", projectId)
-    .orderBy("updatedAt", "desc")
-    .get();
+  const q = query(
+    itemsCollection,
+    where("projectId", "==", projectId),
+    orderBy("updatedAt", "desc")
+  );
+  const snapshot = await getDocs(q);
   return snapshot.docs.map((d) => ({
     id: d.id,
     ...(d.data() as Omit<CaptureItem, "id">),
@@ -77,19 +93,19 @@ export async function updateItem(
   itemId: string,
   updates: Partial<Omit<CaptureItem, "id" | "createdAt" | "updatedAt">>
 ) {
-  const itemRef = itemsCollection.doc(itemId);
-  await itemRef.update({
+  const itemRef = doc(db, "items", itemId);
+  await updateDoc(itemRef, {
     ...updates,
-    updatedAt: firestore.FieldValue.serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
 }
 
 export async function deleteItem(itemId: string) {
-  await itemsCollection.doc(itemId).delete();
+  await deleteDoc(doc(db, "items", itemId));
 }
 
 export async function getItemById(itemId: string): Promise<CaptureItem | null> {
-  const snap = await itemsCollection.doc(itemId).get();
+  const snap = await getDoc(doc(db, "items", itemId));
   if (!snap.exists) return null;
   return { id: snap.id, ...(snap.data() as Omit<CaptureItem, "id">) };
 }
