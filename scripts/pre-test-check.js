@@ -74,21 +74,37 @@ try {
 
 // 4. Check for native module imports that crash in Expo Go / old dev builds
 console.log("\n🔍 4. Native module import robusthed");
-const mediaPath = path.join(ROOT, "services", "media.ts");
-const mediaContent = fs.readFileSync(mediaPath, "utf-8");
-if (
-  mediaContent.includes("@react-native-firebase/storage") &&
-  !mediaContent.includes("require(") &&
-  !mediaContent.includes("try {")
-) {
-  failures++;
-  log(
-    "Native module import",
-    "FAIL",
-    "services/media.ts importerer @react-native-firebase/storage øverst uden lazy load / try-catch. Det vil crashe i ældre builds."
+const nativeModulePackages = [
+  "@react-native-firebase/storage",
+  "@react-native-firebase/auth",
+  "@react-native-firebase/firestore",
+  "expo-mlkit-ocr",
+  "expo-clipboard",
+];
+const nativeModuleFiles = [
+  path.join(ROOT, "services", "media.ts"),
+  path.join(ROOT, "services", "firebase.ts"),
+  path.join(ROOT, "contexts", "AuthContext.tsx"),
+  path.join(ROOT, "services", "ocr.ts"),
+  path.join(ROOT, "services", "deeplinks.ts"),
+];
+
+let nativeImportOk = true;
+for (const filePath of nativeModuleFiles) {
+  if (!fs.existsSync(filePath)) continue;
+  const content = fs.readFileSync(filePath, "utf-8");
+  const hasTopLevelNativeImport = nativeModulePackages.some((pkg) =>
+    new RegExp(`^import\\s+.*\\s+from\\s+["']${pkg.replace("/", "\\/")}["']`, "m").test(content)
   );
-} else {
-  log("Native module import", "OK", "Lazy load eller try-catch fundet");
+  const hasLazyLoad = content.includes("require(") || /try\s*\{/.test(content);
+  if (hasTopLevelNativeImport && !hasLazyLoad) {
+    failures++;
+    log(path.relative(ROOT, filePath), "FAIL", "Top-level native import uden lazy load");
+    nativeImportOk = false;
+  }
+}
+if (nativeImportOk) {
+  log("Native module imports", "OK", "Lazy load / try-catch anvendt");
 }
 
 // 5. Check that deep link helpers exist

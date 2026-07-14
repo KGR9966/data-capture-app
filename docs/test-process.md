@@ -1,7 +1,7 @@
 # Data Capture – Testproces
 
 > Hvordan vi tester før vi bruger builds, og hvordan vi undgår "start app → crash → ret fejl → genstart".
-> Sidst opdateret: 2026-07-08
+> Sidst opdateret: 2026-07-14
 
 ---
 
@@ -14,6 +14,15 @@ Vi tester i tre niveauer, fra billigst til dyrest:
 | **1. Statisk validering** | TypeScript, lint, default exports, native imports | `scripts/pre-test-check.js` | Nej | ~30 sek |
 | **2. Lokal test** | Appen kører i simulator/telefon via Metro | `npx expo start --clear` | Nej (hvis dev build installeret) | ~2-5 min |
 | **3. Native felttest** | Appen installeret med seneste native ændringer | EAS build + install | Ja | ~10-20 min |
+
+## 0. Læringspunkter fra foto-upload-forløbet
+
+- `npx tsc --noEmit` og lint er **nødvendige, men ikke tilstrækkelige**. De siger intet om auth/project state eller native module linking.
+- `expo start --clear` rydder **ikke** alt. Enhedens app-data og EAS build-cache skal også ryddes.
+- **Firestore JS SDK + native auth SDK = uautoriserede kald.** Brug én SDK-familie (her: native `@react-native-firebase/*`).
+- **Project state skal persisteres**, ellers forsvinder det ved app-restart.
+- **Debug overlay giver øjeblikkelig feedback** om auth/project state uden at gætte.
+- **Test-trappe forhindrer, at man tester upload mens Board er blankt.**
 
 ---
 
@@ -63,10 +72,94 @@ node scripts/pre-test-check.js
 
 ---
 
-## Trin 2: Lokal test i Metro
+## Trin 2: Clean start-procedure (skal køres før hver testrunde)
 
-### Hvad gør vi?
-Kør appen mod Metro-serveren. Det kræver at du har en dev build installeret på telefonen (eller bruger simulator).
+1. **Luk alle Expo/Metro-processer.**
+   - Kør `npm run start:safe` (dræber porte og starter frisk) — eller genstart PC hvis der er tvivl.
+2. **Slet appen på test-enheden.**
+   - iPhone: tryk og hold app-ikon → "Fjern app" → "Slet app".
+   - Dette fjerner stale native bundles og caches.
+3. **Ryd EAS build-cache (kun ved native ændringer).**
+   - Hvis du har ændret `app.json`, `package.json`, native plugins eller Firebase-konfiguration:
+     ```bash
+     eas build --platform ios --profile development --clear-cache
+     ```
+4. **Verificer `.env`.**
+   - Sørg for at alle `EXPO_PUBLIC_FIREBASE_*` værdier matcher det aktive Firebase-projekt.
+5. **Byg og installer.**
+   - EAS intern distribution: følg installationslink på enheden.
+   - Eller lokal udvikling: `npm run start:safe` + scan QR med dev build.
+
+## Trin 3: Test-trappe (bestås i rækkefølge)
+
+> **Regel:** Gå ikke videre til næste trin før det aktuelle trin er bestået. Hvis et trin fejler, noteres fejlbesked præcist, og arbejdet går tilbage til analyse.
+
+### Trin 3.1: Appen starter uden crash
+- Forventet: Appen åbner til navneindtastningsskærmen.
+- Fejl at notere: hvid skærm, rød fejlbjælke, crash.
+
+### Trin 3.2: Auth gate
+- Indtast navn og tryk "Fortsæt".
+- Forventet:
+  - `DebugOverlay` viser en `uid` og et navn.
+  - Brugeren lander på Projekter-fanen.
+- Fejl at notere: spinner uendeligt, "Der skete en fejl", debug overlay viser `Auth: none`.
+
+### Trin 3.3: Project gate
+- Opret et nyt projekt.
+- Vælg projektet.
+- Forventet:
+  - Board viser projektnavnet.
+  - `DebugOverlay` viser `Project: <navn> (<id>)`.
+- Fejl at notere: Board siger "Vælg et projekt først", projektlisten er tom, spinner.
+
+### Trin 3.4: Project persistence gate
+- Luk appen helt (swipe away).
+- Genåbn appen.
+- Forventet:
+  - Board viser stadig det sidst valgte projekt.
+- Fejl at notere: man skal vælge projekt igen.
+
+### Trin 3.5: Permissions gate
+- Tryk "+ Tilføj" på Board.
+- Tryk "Album" eller "Kamera".
+- Forventet:
+  - iOS viser permission-dialog.
+  - Efter tilladelse åbner billedvælger/kamera.
+- Fejl at notere: dialog dukker ikke op, app fryser.
+
+### Trin 3.6: Media picker gate
+- Vælg eller tag et billede.
+- Forventet:
+  - Preview vises i modal.
+  - Debug overlay viser stadig aktivt projekt.
+- Fejl at notere: preview er blank, app crasher, returnerer til Board.
+
+### Trin 3.7: Firebase Storage gate
+- Tryk "Gem" efter at have vedhæftet et billede.
+- Forventet:
+  - Item oprettes.
+  - Der står "📎 Foto vedhæftet" i Board.
+  - Billedet vises i item-detaljen.
+  - Firebase Storage-konsollen viser filen under `projects/<projectId>/items/`.
+- Fejl at notere: "Kunne ikke oprette notatet", billede vises ikke, Storage er tomt.
+
+### Trin 3.8: OCR gate
+- Opret et nyt item med et billede der indeholder tekst.
+- Tryk "🔍 Læs tekst".
+- Forventet:
+  - Tekst indsættes i beskrivelsesfeltet.
+- Fejl at notere: "Kunne ikke læse tekst", ingen tekst indsættes.
+
+### Trin 3.9: Voice gate (hvis aktiveret)
+- Tryk "🎤 Optag" på Board.
+- Tal en kort observation.
+- Forventet:
+  - Tekst konverteres.
+  - Item gemmes.
+- Fejl at noteres: optagelse starter ikke, ingen tekst, gem fejler.
+
+## Trin 4: Lokal test i Metro
 
 ### Anbefalet kommando (sikker start)
 ```powershell

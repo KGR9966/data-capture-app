@@ -88,7 +88,7 @@ function formatStatus(status: string) {
 
 export default function BoardScreen() {
   const { user } = useAuth();
-  const { activeProject } = useProject();
+  const { activeProject, loading: projectLoading } = useProject();
   const { theme } = useTheme();
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -256,6 +256,15 @@ export default function BoardScreen() {
       Alert.alert("Fejl", "Kunne ikke gemme optagelsen.");
     }
   };
+
+  if (projectLoading) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.header}>Board</Text>
+        <ActivityIndicator size="large" color={isDark ? "#38bdf8" : "#0284c7"} style={{ marginTop: 40 }} />
+      </View>
+    );
+  }
 
   if (!activeProject) {
     return (

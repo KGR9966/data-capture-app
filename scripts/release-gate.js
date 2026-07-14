@@ -67,8 +67,17 @@ try {
 
 // 4. Check at der ikke er native imports der crasher ved opstart
 console.log("\n🔍 4. Runtime-sikkerhed: native imports");
+const nativeModulePackages = [
+  "@react-native-firebase/storage",
+  "@react-native-firebase/auth",
+  "@react-native-firebase/firestore",
+  "expo-mlkit-ocr",
+  "expo-clipboard",
+];
 const filesToCheck = [
   path.join(ROOT, "services", "media.ts"),
+  path.join(ROOT, "services", "firebase.ts"),
+  path.join(ROOT, "contexts", "AuthContext.tsx"),
   path.join(ROOT, "services", "ocr.ts"),
   path.join(ROOT, "services", "deeplinks.ts"),
 ];
@@ -76,11 +85,10 @@ let nativeImportOk = true;
 for (const file of filesToCheck) {
   if (!fs.existsSync(file)) continue;
   const content = fs.readFileSync(file, "utf-8");
-  const hasTopLevelNativeImport =
-    /^import\s+.*\s+from\s+["']@react-native-firebase/.test(content) ||
-    /^import\s+.*\s+from\s+["']expo-mlkit-ocr["']/.test(content) ||
-    /^import\s+.*\s+from\s+["']expo-clipboard["']/.test(content);
-  const hasLazyLoad = content.includes("require(") || content.includes("try {");
+  const hasTopLevelNativeImport = nativeModulePackages.some((pkg) =>
+    new RegExp(`^import\\s+.*\\s+from\\s+["']${pkg.replace("/", "\\/")}["']`, "m").test(content)
+  );
+  const hasLazyLoad = content.includes("require(") || /try\s*\{/.test(content);
   if (hasTopLevelNativeImport && !hasLazyLoad) {
     failures++;
     log(path.relative(ROOT, file), "FAIL", "Top-level native import uden lazy load");
