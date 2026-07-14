@@ -6,7 +6,6 @@ import {
   getDoc,
   getDocs,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   updateDoc,
@@ -61,11 +60,7 @@ export function subscribeToItems(
   projectId: string,
   callback: (items: CaptureItem[]) => void
 ) {
-  const q = query(
-    itemsCollection,
-    where("projectId", "==", projectId),
-    orderBy("updatedAt", "desc")
-  );
+  const q = query(itemsCollection, where("projectId", "==", projectId));
 
   return onSnapshot(
     q,
@@ -74,10 +69,16 @@ export function subscribeToItems(
         callback([]);
         return;
       }
-      const items = snapshot.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<CaptureItem, "id">),
-      }));
+      const items = snapshot.docs
+        .map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<CaptureItem, "id">),
+        }))
+        .sort((a, b) => {
+          const aTime = a.updatedAt?.toMillis?.() || 0;
+          const bTime = b.updatedAt?.toMillis?.() || 0;
+          return bTime - aTime;
+        });
       callback(items);
     },
     (error) => {
@@ -88,16 +89,18 @@ export function subscribeToItems(
 }
 
 export async function getItemsForProject(projectId: string): Promise<CaptureItem[]> {
-  const q = query(
-    itemsCollection,
-    where("projectId", "==", projectId),
-    orderBy("updatedAt", "desc")
-  );
+  const q = query(itemsCollection, where("projectId", "==", projectId));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => ({
-    id: d.id,
-    ...(d.data() as Omit<CaptureItem, "id">),
-  }));
+  return snapshot.docs
+    .map((d) => ({
+      id: d.id,
+      ...(d.data() as Omit<CaptureItem, "id">),
+    }))
+    .sort((a, b) => {
+      const aTime = a.updatedAt?.toMillis?.() || 0;
+      const bTime = b.updatedAt?.toMillis?.() || 0;
+      return bTime - aTime;
+    });
 }
 
 export async function updateItem(
