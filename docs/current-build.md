@@ -7,11 +7,13 @@
 
 | Felt | Værdi |
 |---|---|
-| **Build-ID** | `8df6175a-3949-40c9-80b8-cd9dde8fef10` |
+| **Build-ID** | `6ee4d223-e0c0-4ade-91f4-0877cf07a321` |
 | **Platform** | iOS development build |
 | **Distribution** | Internal (EAS) |
 | **EAS Dashboard** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds |
-| **Installationslink** | Findes på EAS Dashboard under build-ID'et ovenfor |
+| **Installationslink** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/6ee4d223-e0c0-4ade-91f4-0877cf07a321 |
+| **Fokus i dette build** | RBAC + ansvarlige for sager |
+| **Git snapshot** | `6009baf` |
 
 ## Hurtigstart – når QR-koden er forsvundet
 
@@ -37,7 +39,7 @@
 
 1. Åbn Safari på enheden.
 2. Gå til EAS Dashboard: https://expo.dev/accounts/kgradm/projects/data-capture-app/builds
-3. Find build `8df6175a-3949-40c9-80b8-cd9dde8fef10`.
+3. Find build `6ee4d223-e0c0-4ade-91f4-0877cf07a321`.
 4. Tryk installationslinket og følg anvisningen.
 5. Åbn appen og accepter tilladelser.
 

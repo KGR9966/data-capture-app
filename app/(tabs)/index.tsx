@@ -19,6 +19,10 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useProject } from "../../contexts/ProjectContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
+  getItemsByAssignee,
+  unassignItemsFromMember,
+} from "../../services/items";
+import {
   addProjectMemberByEmail,
   createProject,
   Project,
@@ -177,7 +181,7 @@ export default function ProjectsScreen() {
     }
   };
 
-  const handleRemoveMember = (
+  const handleRemoveMember = async (
     projectId: string,
     member: ProjectMember,
     project: Project,
@@ -188,6 +192,41 @@ export default function ProjectsScreen() {
       Alert.alert("Begrænset adgang", "Du kan ikke fjerne dette medlem.");
       return;
     }
+
+    const assignedItems = member.userId
+      ? await getItemsByAssignee(projectId, member.userId)
+      : [];
+
+    const confirmRemoval = async () => {
+      try {
+        if (member.userId) {
+          await unassignItemsFromMember(projectId, member.userId);
+        }
+        await removeProjectMember(projectId, member.email, member.userId);
+      } catch (error) {
+        console.log("Remove member error", error);
+        Alert.alert("Fejl", "Kunne ikke fjerne medlemmet.");
+      }
+    };
+
+    if (assignedItems.length > 0) {
+      Alert.alert(
+        "Medlemmet er ansvarlig for sager",
+        `${member.email} er ansvarlig for ${assignedItems.length} ${
+          assignedItems.length === 1 ? "sag" : "sager"
+        }. Hvis du fjerner medlemmet, fjernes deres ansvarlig også fra disse sager.`,
+        [
+          { text: "Annuller", style: "cancel" },
+          {
+            text: "Fjern alligevel",
+            style: "destructive",
+            onPress: confirmRemoval,
+          },
+        ]
+      );
+      return;
+    }
+
     Alert.alert(
       "Fjern medlem",
       `Er du sikker på, at du vil fjerne ${member.email}?`,
@@ -196,14 +235,7 @@ export default function ProjectsScreen() {
         {
           text: "Fjern",
           style: "destructive",
-          onPress: async () => {
-            try {
-              await removeProjectMember(projectId, member.email, member.userId);
-            } catch (error) {
-              console.log("Remove member error", error);
-              Alert.alert("Fejl", "Kunne ikke fjerne medlemmet.");
-            }
-          },
+          onPress: confirmRemoval,
         },
       ]
     );
@@ -360,7 +392,7 @@ export default function ProjectsScreen() {
           style={styles.modalOverlay}
         >
           <View style={[styles.modalContent, styles.membersModalContent]}>
-            <Text style={styles.modalHeader}>Invitationer</Text>
+            <Text style={styles.modalHeader}>Medlemmer</Text>
 
             {/* Project selector tabs */}
             <ScrollView
@@ -463,7 +495,9 @@ export default function ProjectsScreen() {
                       return (
                         <View key={member.userId} style={styles.memberRow}>
                           <View style={styles.memberInfo}>
-                            <Text style={styles.memberEmail}>{member.email || member.userId}</Text>
+                            <Text style={styles.memberEmail} numberOfLines={1} ellipsizeMode="middle">
+                              {member.email || member.userId}
+                            </Text>
                             <Text style={styles.memberRole}>{ROLE_LABELS[member.role]}</Text>
                           </View>
                           {!isOwner ? (
@@ -783,6 +817,9 @@ const themedStyles = (isDark: boolean) =>
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
+      flexShrink: 1,
+      flexWrap: "wrap",
+      justifyContent: "flex-end",
     },
     roleChipSmall: {
       paddingHorizontal: 8,

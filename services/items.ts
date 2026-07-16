@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -123,4 +124,38 @@ export async function getItemById(itemId: string): Promise<CaptureItem | null> {
   const snap = await getDoc(doc(db, "items", itemId));
   if (!snap.exists) return null;
   return { id: snap.id, ...(snap.data() as Omit<CaptureItem, "id">) };
+}
+
+export async function getItemsByAssignee(
+  projectId: string,
+  assigneeId: string
+): Promise<CaptureItem[]> {
+  const q = query(
+    itemsCollection,
+    where("projectId", "==", projectId),
+    where("assignedTo", "==", assigneeId)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => ({
+    id: d.id,
+    ...(d.data() as Omit<CaptureItem, "id">),
+  }));
+}
+
+export async function unassignItemsFromMember(
+  projectId: string,
+  assigneeId: string
+): Promise<number> {
+  const items = await getItemsByAssignee(projectId, assigneeId);
+  if (items.length === 0) return 0;
+  await Promise.all(
+    items.map((item) =>
+      updateDoc(doc(db, "items", item.id), {
+        assignedTo: deleteField(),
+        assignedToName: deleteField(),
+        updatedAt: serverTimestamp(),
+      })
+    )
+  );
+  return items.length;
 }
