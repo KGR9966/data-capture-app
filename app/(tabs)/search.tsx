@@ -251,6 +251,11 @@ export default function SearchScreen() {
                 {item.content}
               </Text>
             ) : null}
+            {item.assignedToName ? (
+              <View style={styles.assigneeRow}>
+                <Text style={styles.assigneeText}>👤 {item.assignedToName}</Text>
+              </View>
+            ) : null}
             <View style={styles.metaRow}>
               <Text style={styles.metaText}>
                 {formatDate(item.createdAt)} · {formatCreator(item)}
@@ -379,6 +384,15 @@ const themedStyles = (isDark: boolean) =>
     metaText: {
       color: isDark ? "#94a3b8" : "#64748b",
       fontSize: 10,
+    },
+    assigneeRow: {
+      marginTop: 2,
+      marginBottom: 2,
+    },
+    assigneeText: {
+      color: "#38bdf8",
+      fontSize: 12,
+      fontWeight: "600",
     },
     statusText: {
       marginTop: 4,

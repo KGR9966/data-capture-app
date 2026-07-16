@@ -57,7 +57,7 @@ export async function createProject(
     updatedAt: serverTimestamp(),
   });
 
-  await setDoc(doc(membersSubcollection(projectRef.id), ownerId), {
+  await setDoc(doc(membersSubcollection(projectRef.id), ownerEmail || ownerId), {
     userId: ownerId,
     email: ownerEmail || "",
     role: "owner",

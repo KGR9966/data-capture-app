@@ -42,6 +42,8 @@
 - [x] Rolle- og rettighedsmodel (RBAC): owner/admin/editor/viewer
 - [x] Projektmedlemskab med rolle ved invitation og rolleændring
 - [x] Ansvarlige for sager (assignedTo / assignedToName) i Board, item-detalje og Optag-modal
+- [x] Vis ansvarlig i søgeresultater
+- [x] Forbedret visning af medlemmer i medlemsmodal (email på flere linjer, ejer vises korrekt)
 - [ ] Stemmeoptagelse og tale-til-tekst (udskudt pga. SDK 57-kompatibilitet)
 
 ## I gang / afventer PO-test
@@ -86,14 +88,27 @@
    - Afstemninger knyttet til et item eller som selvstændig funktion.
    - Resultater synlige for projektmedlemmer.
 
-### P4 – Intelligent hjælp og administration
-9. [ ] **AI-kategorisering via Firebase Functions**
-10. [ ] **Management panel med filtre og statusoversigt**
-11. [ ] **Eksport af data**
-12. [ ] **Personlig afkrydsningsliste (samleværktøj)**
+### P3 – Deling og eksport (øget fleksibilitet)
+8. [ ] **Kopiér billede fra sag**
+   - Mulighed for at kopiere/viddele et foto fra item-detalje til udklipsholder eller anden app.
+9. [ ] **Eksport og deling af tekst, oversættelser og billeder**
+   - Del item-indhold, OCR-tekst, oversættelser og fotos via native share-sheet, mail eller SMS.
+   - Understøtter både tekst og medier.
 
-### P5 – Platform
-13. [ ] **Fælles app-platform strategi** (allokeret til [[app-platform-strategy]])
+### P4 – Afstemning og engagement
+10. [ ] **Afstemning med genbrug fra Meetup-appen**
+    - Vurder om afstemningskomponenten fra Meetup-appen kan isoleres og genbruges.
+    - Afstemninger knyttet til et item eller som selvstændig funktion.
+    - Resultater synlige for projektmedlemmer.
+
+### P5 – Intelligent hjælp og administration
+11. [ ] **AI-kategorisering via Firebase Functions**
+12. [ ] **Management panel med filtre og statusoversigt**
+13. [ ] **Eksport af data**
+14. [ ] **Personlig afkrydsningsliste (samleværktøj)**
+
+### P6 – Platform
+15. [ ] **Fælles app-platform strategi** (allokeret til [[app-platform-strategy]])
 
 ## Push-notifikationstest – hvad skal du gøde?
 

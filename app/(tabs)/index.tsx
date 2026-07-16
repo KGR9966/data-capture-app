@@ -495,7 +495,7 @@ export default function ProjectsScreen() {
                       return (
                         <View key={member.userId} style={styles.memberRow}>
                           <View style={styles.memberInfo}>
-                            <Text style={styles.memberEmail} numberOfLines={1} ellipsizeMode="middle">
+                            <Text style={styles.memberEmail} numberOfLines={2}>
                               {member.email || member.userId}
                             </Text>
                             <Text style={styles.memberRole}>{ROLE_LABELS[member.role]}</Text>
@@ -800,13 +800,14 @@ const themedStyles = (isDark: boolean) =>
     },
     memberInfo: {
       flex: 1,
-      minWidth: 0,
+      minWidth: 120,
       marginRight: 8,
     },
     memberEmail: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: "600",
       color: isDark ? "#f8fafc" : "#0f172a",
+      lineHeight: 18,
     },
     memberRole: {
       fontSize: 12,
@@ -817,7 +818,7 @@ const themedStyles = (isDark: boolean) =>
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-      flexShrink: 1,
+      flexShrink: 0,
       flexWrap: "wrap",
       justifyContent: "flex-end",
     },

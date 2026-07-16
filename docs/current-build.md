@@ -13,7 +13,7 @@
 | **EAS Dashboard** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds |
 | **Installationslink** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/ebdb8ffc-7cfd-4648-929e-14398e6eb422 |
 | **Fokus i dette build** | RBAC + ansvarlige for sager + medlemsmodal UI-fix |
-| **Git snapshot** | `7fe0344` |
+| **Git snapshot** | `07de949` |
 | **Forrige build** | `6ee4d223-e0c0-4ade-91f4-0877cf07a321` |
 
 ## Hurtigstart – når QR-koden er forsvundet
