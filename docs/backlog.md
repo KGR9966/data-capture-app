@@ -28,23 +28,97 @@
 - [x] Metadata på indlæg: hvem og hvornår
 - [x] Multi-word søgning med bindestreg/mellemrum
 - [x] Voice-input til søgning
+- [x] Email-validering ved invitation af medlemmer
+- [x] Oversigt over invitationer per projekt
+- [x] Foto-markering i søgeresultater
+- [x] Fjern foto fra sag
+- [x] Arkiv-fane på Board
+- [x] OCR-læsning af tekst fra foto
+- [x] Oversættelse af OCR-tekst med sprogvalg
+- [x] OCR-oversættelse i Optag-modalen (VoiceCaptureModal)
+- [x] Annuller i + Tilføj nulstiller formen (undgår uønsket gemt sag)
+- [x] Kopiér-knap til original og oversat OCR-tekst
+- [x] Visuel feedback på Kopiér-knapper ("Kopieret!" i 1,5 sek.)
+- [x] Rolle- og rettighedsmodel (RBAC): owner/admin/editor/viewer
+- [x] Projektmedlemskab med rolle ved invitation og rolleændring
+- [x] Ansvarlige for sager (assignedTo / assignedToName) i Board, item-detalje og Optag-modal
 - [ ] Stemmeoptagelse og tale-til-tekst (udskudt pga. SDK 57-kompatibilitet)
 
-## I gang
+## I gang / afventer PO-test
 
 - [ ] Installer ny iOS build på iPhone 13 Pro med stemme/ikon/billede/medlemmer
-- [ ] Ret Firebase Storage regler så billedupload virker
-- [ ] Installer på iPhone Pro 17 og iPad
-- [ ] Test push-notifikationer på fysiske enheder
+- [x] Installer på iPad
+- [x] Installer på iPhone Pro 17
+- [x] Registrér push-token på fysiske enheder
+- [x] Modtag test-push-notifikation på fysisk enhed (iPad)
 - [ ] Byg Android development build
 
-## Klar til næste sprint
+## Prioriteret backlog – næste skridt
 
-- [ ] Billedupload til Firebase Storage
-- [ ] AI-kategorisering via Firebase Functions
-- [ ] Samarbejde / projektmedlemmer og rollebaseret adgang
-- [ ] Chat / kommentarer på indlæg
-- [ ] Notifikationer ved nye indlæg og tildelinger
-- [ ] Management panel med filtre og statusoversigt
-- [ ] Personlig afkrydsningsliste (samleværktøj) med sortering, fjernelse af gengangere, distribution via SMS/e-mail/backlog
-- [ ] Eksport af data
+> Anbefaling fra Master Agent, baseret på stabilitet, brugerværdi og afhængigheder.
+
+### P1 – Stabilitet og installation (gør appen brugbar på alle enheder)
+1. [ ] **iPad-installation og verifikation**
+   - Åben opgave: Safari/dev-link eller EAS build installeres på iPad.
+   - Blokeret af: usikkerhed om dev-link eller build-problem på iPad.
+2. [ ] **iPhone Pro 17 installation og verifikation**
+3. [ ] **Test push-notifikationer på fysiske enheder**
+   - Se detaljer under "Push-notifikationstest – hvad skal du gøre?" nedenfor.
+4. [ ] **Byg Android development build**
+
+### P2 – Samarbejde og ansvarlighed (høj brugerværdi for dig som owner + kgr@trust.dk som editor)
+5. [x] **Rolle- og rettighedsmodel (RBAC)**
+   - Owner/admin/editor/viewer.
+   - Firestore `roles` map + sikkerhedsregler.
+   - UI der skjuler/forkorter handlinger efter rolle.
+6. [x] **Ansvarlige for sager**
+   - Tildel en ansvarlig til hvert item.
+   - Vis ansvarlig i Board-liste og item-detalje.
+   - (Filtrer Board på "Mine sager" – udskudt til Phase 2.)
+7. [ ] **Chat / kommentarer på indlæg**
+   - Kommentar-tråd under hvert item.
+   - Understøtter 2 eller flere deltagere.
+   - Notifikation ved nye kommentarer.
+
+### P3 – Afstemning og engagement
+8. [ ] **Afstemning med genbrug fra Meetup-appen**
+   - Vurder om afstemningskomponenten fra Meetup-appen kan isoleres og genbruges.
+   - Afstemninger knyttet til et item eller som selvstændig funktion.
+   - Resultater synlige for projektmedlemmer.
+
+### P4 – Intelligent hjælp og administration
+9. [ ] **AI-kategorisering via Firebase Functions**
+10. [ ] **Management panel med filtre og statusoversigt**
+11. [ ] **Eksport af data**
+12. [ ] **Personlig afkrydsningsliste (samleværktøj)**
+
+### P5 – Platform
+13. [ ] **Fælles app-platform strategi** (allokeret til [[app-platform-strategy]])
+
+## Push-notifikationstest – hvad skal du gøde?
+
+Testen går ud på at verificere, at appen kan registrere et Expo push-token og modtage notifikationer på fysisk enhed.
+
+### Testtrin
+1. Åbn appen på din iPhone.
+2. Gå til **Indstillinger**.
+3. Tryk på knappen **"Registrer push"** (eller tilsvarende).
+4. Accepter tilladelsesdialogen, når iOS spørger om notifikationer.
+5. Et Expo push-token skulle nu vises på skærmen.
+
+### Forventet resultat
+- Et langt token-streng vises (f.eks. `ExponentPushToken[...]`).
+- Ingen rød fejlmeddelelse.
+
+### Næste niveau (valgfrit nu)
+- Send en test-push via Expo Push API eller Expo Notifications tool for at bekræfte, at notifikationen dukker op på låseskærmen.
+
+### Bemærkning
+- Push-notifikationer virker **ikke** i simulator.
+- Kræver netværk og at appen kører i en development build (ikke Expo Go).
+
+## Relateret
+
+- [[data-capture-test-baseline]] — afkrydset baseline-testplan med trafiklys.
+- [[data-capture-rbac-strategy]] — foreslået rolle- og rettighedsmodel.
+- [[app-platform-strategy]] — fælles app-platform strategi.

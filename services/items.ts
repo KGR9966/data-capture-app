@@ -32,6 +32,7 @@ export interface CaptureItem {
   mediaDuration?: number;
   tags?: string[];
   assignedTo?: string;
+  assignedToName?: string;
   createdAt?: any;
   updatedAt?: any;
 }

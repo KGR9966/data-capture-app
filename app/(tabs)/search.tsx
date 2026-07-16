@@ -239,6 +239,11 @@ export default function SearchScreen() {
               {item.category ? (
                 <Text style={styles.categoryText}>{item.category}</Text>
               ) : null}
+              {item.mediaUrl ? (
+                <View style={styles.photoBadge}>
+                  <Text style={styles.photoBadgeText}>📷 Foto</Text>
+                </View>
+              ) : null}
             </View>
             <Text style={styles.itemTitle}>{item.title}</Text>
             {item.content ? (
@@ -380,5 +385,17 @@ const themedStyles = (isDark: boolean) =>
       color: "#34d399",
       fontSize: 12,
       fontWeight: "700",
+    },
+    photoBadge: {
+      marginLeft: "auto",
+      backgroundColor: isDark ? "#334155" : "#e2e8f0",
+      borderRadius: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    photoBadgeText: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: isDark ? "#e2e8f0" : "#0f172a",
     },
   });

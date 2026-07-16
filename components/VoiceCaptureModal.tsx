@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -17,6 +18,7 @@ import { Image } from "expo-image";
 import { useTheme } from "../contexts/ThemeContext";
 import { useVoiceRecognition } from "../hooks/useVoiceRecognition";
 import { suggestCategory } from "../services/categories";
+import { copyToClipboard } from "../services/deeplinks";
 import { ItemType } from "../services/items";
 import {
   pickImage,
@@ -24,6 +26,9 @@ import {
   uploadImage,
 } from "../services/media";
 import { extractTextFromImage } from "../services/ocr";
+import { ProjectMember, subscribeToProjectMembers } from "../services/projects";
+import { canAssignOthers, canAssignItems, getProjectRole, ProjectRole } from "../services/roles";
+import { getLanguageLabel, SUPPORTED_LANGUAGES, translateText } from "../services/translation";
 
 const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   idea: "Idé",
@@ -108,6 +113,8 @@ interface VoiceCaptureModalProps {
     content: string;
     category: string;
     mediaUrl?: string;
+    assignedTo?: string;
+    assignedToName?: string;
   }) => void;
 }
 
@@ -132,6 +139,16 @@ export default function VoiceCaptureModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [autoSave, setAutoSave] = useState(true);
   const [autoSaveCountdown, setAutoSaveCountdown] = useState(0);
+  const [ocrOriginal, setOcrOriginal] = useState("");
+  const [ocrTranslated, setOcrTranslated] = useState("");
+  const [ocrSourceLang, setOcrSourceLang] = useState("auto");
+  const [ocrTargetLang, setOcrTargetLang] = useState("da");
+  const [translating, setTranslating] = useState(false);
+  const [copiedOriginal, setCopiedOriginal] = useState(false);
+  const [copiedTranslated, setCopiedTranslated] = useState(false);
+
+  const [assignedTo, setAssignedTo] = useState<string | null>(null);
+  const [assignedToName, setAssignedToName] = useState<string>("");
 
   const autoSaveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const editedRef = useRef(false);
@@ -181,6 +198,14 @@ export default function VoiceCaptureModal({
         setCategory("");
         setMediaUrl(null);
         setMediaUri(null);
+        setOcrOriginal("");
+        setOcrTranslated("");
+        setOcrSourceLang("auto");
+        setOcrTargetLang("da");
+        setCopiedOriginal(false);
+        setCopiedTranslated(false);
+        setAssignedTo(null);
+        setAssignedToName("");
         setAutoSave(true);
         editedRef.current = false;
         resetTranscript();
@@ -189,6 +214,32 @@ export default function VoiceCaptureModal({
     }
     return undefined;
   }, [visible, resetTranscript]);
+
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    return subscribeToProjectMembers(projectId, (data) => setMembers(data));
+  }, [projectId]);
+
+  const assignmentOptions = useMemo(() => {
+    const options: { id: string; label: string }[] = [
+      { id: "", label: "Ingen ansvarlig" },
+    ];
+    members.forEach((m) => {
+      if (m.userId) {
+        options.push({
+          id: m.userId,
+          label: m.displayName || m.email || m.userId,
+        });
+      }
+    });
+    return options;
+  }, [members]);
+
+  const projectRole: ProjectRole | null = projectId
+    ? getProjectRole({ id: projectId, ownerId: "" }, null, members)
+    : null;
 
   useEffect(() => {
     return () => {
@@ -211,10 +262,23 @@ export default function VoiceCaptureModal({
       category:
         category || suggestCategory({ title: finalTitle, content: finalContent, type: itemType }),
       mediaUrl: mediaUrl || undefined,
+      assignedTo: assignedTo || undefined,
+      assignedToName: assignedToName || undefined,
     });
     setIsProcessing(false);
     onClose();
-  }, [content, transcript, title, itemType, category, mediaUrl, onSave, onClose]);
+  }, [
+    content,
+    transcript,
+    title,
+    itemType,
+    category,
+    mediaUrl,
+    assignedTo,
+    assignedToName,
+    onSave,
+    onClose,
+  ]);
 
   const startAutoSaveCountdown = useCallback(() => {
     if (!autoSave || autoSaveIntervalRef.current) return;
@@ -290,6 +354,10 @@ export default function VoiceCaptureModal({
   const handleRemoveImage = () => {
     setMediaUrl(null);
     setMediaUri(null);
+    setOcrOriginal("");
+    setOcrTranslated("");
+    setCopiedOriginal(false);
+    setCopiedTranslated(false);
   };
 
   const handleReadTextFromImage = async () => {
@@ -300,6 +368,10 @@ export default function VoiceCaptureModal({
       const text = await extractTextFromImage(mediaUri);
       if (text) {
         setContent((prev) => (prev ? `${prev}\n\n${text}` : text));
+        setOcrOriginal(text);
+        setOcrTranslated("");
+        setCopiedOriginal(false);
+        setCopiedTranslated(false);
         const newCategory =
           category ||
           suggestCategory({
@@ -308,11 +380,41 @@ export default function VoiceCaptureModal({
             type: itemType,
           });
         setCategory(newCategory);
+      } else {
+        Alert.alert("Ingen tekst", "Billedet indeholdt ingen genkendelig tekst.");
       }
     } catch (error) {
       console.log("Voice modal OCR error", error);
+      Alert.alert("Fejl", "Kunne ikke læse tekst fra billedet.");
     } finally {
       setRecognizingText(false);
+    }
+  };
+
+  const handleTranslateOcr = async () => {
+    if (!ocrOriginal.trim()) return;
+    setTranslating(true);
+    clearAutoSaveTimer();
+    try {
+      const translated = await translateText(ocrOriginal, ocrTargetLang, ocrSourceLang);
+      setOcrTranslated(translated);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Oversættelse fejlede";
+      Alert.alert("Oversættelse", message);
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  const handleUseTranslated = () => {
+    if (ocrTranslated) {
+      setContent(ocrTranslated);
+    }
+  };
+
+  const handleUseOriginal = () => {
+    if (ocrOriginal) {
+      setContent(ocrOriginal);
     }
   };
 
@@ -500,6 +602,204 @@ export default function VoiceCaptureModal({
                 </TouchableOpacity>
               </View>
             )}
+
+            {ocrOriginal ? (
+              <View style={styles.ocrBox}>
+                <Text style={styles.ocrLabel}>OCR-oversættelse</Text>
+                <View style={styles.ocrLangRow}>
+                  <View style={styles.ocrLangColumn}>
+                    <Text style={styles.ocrLangLabel}>Fra</Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.ocrLangChips}
+                    >
+                      {SUPPORTED_LANGUAGES.map((lang) => (
+                        <TouchableOpacity
+                          key={`src-${lang.code}`}
+                          style={[
+                            styles.ocrLangChip,
+                            ocrSourceLang === lang.code && styles.ocrLangChipActive,
+                          ]}
+                          onPress={() => setOcrSourceLang(lang.code)}
+                        >
+                          <Text
+                            style={[
+                              styles.ocrLangChipText,
+                              ocrSourceLang === lang.code &&
+                                styles.ocrLangChipTextActive,
+                            ]}
+                          >
+                            {lang.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                  <View style={styles.ocrLangColumn}>
+                    <Text style={styles.ocrLangLabel}>Til</Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.ocrLangChips}
+                    >
+                      {SUPPORTED_LANGUAGES.filter((lang) => lang.code !== "auto").map(
+                        (lang) => (
+                          <TouchableOpacity
+                            key={`tgt-${lang.code}`}
+                            style={[
+                              styles.ocrLangChip,
+                              ocrTargetLang === lang.code && styles.ocrLangChipActive,
+                            ]}
+                            onPress={() => setOcrTargetLang(lang.code)}
+                          >
+                            <Text
+                              style={[
+                                styles.ocrLangChipText,
+                                ocrTargetLang === lang.code &&
+                                  styles.ocrLangChipTextActive,
+                              ]}
+                            >
+                              {lang.label}
+                            </Text>
+                          </TouchableOpacity>
+                        )
+                      )}
+                    </ScrollView>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.ocrTranslateButton,
+                    translating && styles.buttonDisabled,
+                  ]}
+                  onPress={handleTranslateOcr}
+                  disabled={translating}
+                >
+                  <Text style={styles.ocrTranslateButtonText}>
+                    {translating
+                      ? "Oversætter..."
+                      : `Oversæt til ${getLanguageLabel(ocrTargetLang)}`}
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={styles.ocrTextHeader}>
+                  <Text style={styles.ocrLangLabel}>Original OCR-tekst</Text>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      await copyToClipboard(ocrOriginal);
+                      setCopiedOriginal(true);
+                      setTimeout(() => setCopiedOriginal(false), 1500);
+                    }}
+                    hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+                  >
+                    <Text style={[styles.ocrCopyLink, copiedOriginal && styles.ocrCopyLinkActive]}>
+                      {copiedOriginal ? "Kopieret!" : "Kopiér"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={[styles.input, styles.textArea, styles.ocrOriginalInput]}
+                  value={ocrOriginal}
+                  editable={false}
+                  multiline
+                  numberOfLines={2}
+                  placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+                />
+
+                {ocrTranslated ? (
+                  <>
+                    <View style={styles.ocrTextHeader}>
+                      <Text style={styles.ocrLangLabel}>Oversat tekst</Text>
+                      <TouchableOpacity
+                        onPress={async () => {
+                          await copyToClipboard(ocrTranslated);
+                          setCopiedTranslated(true);
+                          setTimeout(() => setCopiedTranslated(false), 1500);
+                        }}
+                        hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+                      >
+                        <Text style={[styles.ocrCopyLink, copiedTranslated && styles.ocrCopyLinkActive]}>
+                          {copiedTranslated ? "Kopieret!" : "Kopiér"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    <TextInput
+                      style={[styles.input, styles.textArea, styles.ocrTranslatedInput]}
+                      value={ocrTranslated}
+                      onChangeText={setOcrTranslated}
+                      multiline
+                      numberOfLines={3}
+                      placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+                    />
+                  </>
+                ) : null}
+
+                <View style={styles.ocrActionRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.ocrActionButton,
+                      styles.ocrActionButtonSecondary,
+                    ]}
+                    onPress={handleUseOriginal}
+                  >
+                    <Text style={styles.ocrActionButtonSecondaryText}>
+                      Brug original
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.ocrActionButton,
+                      styles.ocrActionButtonPrimary,
+                      !ocrTranslated && styles.buttonDisabled,
+                    ]}
+                    onPress={handleUseTranslated}
+                    disabled={!ocrTranslated}
+                  >
+                    <Text style={styles.ocrActionButtonPrimaryText}>
+                      Brug oversat
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
+
+            {canAssignItems(projectRole) && assignmentOptions.length > 1 ? (
+              <View style={styles.assigneeSection}>
+                <Text style={styles.assigneeLabel}>Ansvarlig</Text>
+                <View style={styles.assigneeChips}>
+                  {assignmentOptions
+                    .filter((option) => {
+                      if (option.id === "") return true;
+                      return canAssignOthers(projectRole);
+                    })
+                    .map((option) => (
+                      <TouchableOpacity
+                        key={option.id}
+                        style={[
+                          styles.assigneeChip,
+                          assignedTo === option.id && styles.assigneeChipActive,
+                        ]}
+                        onPress={() => {
+                          setAssignedTo(option.id || null);
+                          setAssignedToName(option.label);
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.assigneeChipText,
+                            assignedTo === option.id && styles.assigneeChipTextActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                </View>
+              </View>
+            ) : null}
 
             <View style={styles.buttonRow}>
               <TouchableOpacity
@@ -701,5 +1001,147 @@ const themedStyles = (isDark: boolean) =>
     readTextButtonText: {
       color: "#38bdf8",
       fontWeight: "600",
+    },
+    ocrBox: {
+      backgroundColor: isDark ? "#0f172a" : "#f1f5f9",
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    ocrLabel: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      marginBottom: 10,
+    },
+    ocrLangRow: {
+      gap: 12,
+      marginBottom: 10,
+    },
+    ocrLangColumn: {
+      marginBottom: 6,
+    },
+    ocrLangLabel: {
+      fontSize: 11,
+      color: isDark ? "#94a3b8" : "#64748b",
+      marginBottom: 4,
+    },
+    ocrTextHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 2,
+    },
+    ocrCopyLink: {
+      fontSize: 12,
+      color: "#38bdf8",
+      fontWeight: "600",
+    },
+    ocrCopyLinkActive: {
+      color: "#34d399",
+    },
+    ocrLangChips: {
+      flexDirection: "row",
+    },
+    ocrLangChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 6,
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+      marginRight: 6,
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    ocrLangChipActive: {
+      backgroundColor: "#38bdf8",
+      borderColor: "#38bdf8",
+    },
+    ocrLangChipText: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: isDark ? "#e2e8f0" : "#0f172a",
+    },
+    ocrLangChipTextActive: {
+      color: "#0f172a",
+    },
+    ocrTranslateButton: {
+      backgroundColor: "#38bdf8",
+      borderRadius: 8,
+      paddingVertical: 10,
+      alignItems: "center",
+      marginBottom: 10,
+    },
+    ocrTranslateButtonText: {
+      color: "#0f172a",
+      fontWeight: "600",
+    },
+    ocrTranslatedInput: {
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+    },
+    ocrOriginalInput: {
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+      color: isDark ? "#94a3b8" : "#64748b",
+    },
+    ocrActionRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 4,
+    },
+    ocrActionButton: {
+      flex: 1,
+      borderRadius: 8,
+      paddingVertical: 10,
+      alignItems: "center",
+    },
+    ocrActionButtonPrimary: {
+      backgroundColor: "#38bdf8",
+    },
+    ocrActionButtonPrimaryText: {
+      color: "#0f172a",
+      fontWeight: "600",
+    },
+    ocrActionButtonSecondary: {
+      backgroundColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    ocrActionButtonSecondaryText: {
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      fontWeight: "600",
+    },
+    assigneeSection: {
+      marginBottom: 12,
+    },
+    assigneeLabel: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: isDark ? "#94a3b8" : "#64748b",
+      marginBottom: 6,
+    },
+    assigneeChips: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    assigneeChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 6,
+      backgroundColor: isDark ? "#334155" : "#e2e8f0",
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+      maxWidth: 160,
+    },
+    assigneeChipActive: {
+      backgroundColor: "#38bdf8",
+      borderColor: "#38bdf8",
+    },
+    assigneeChipText: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: isDark ? "#e2e8f0" : "#0f172a",
+    },
+    assigneeChipTextActive: {
+      color: "#0f172a",
     },
   });

@@ -1,5 +1,6 @@
 import {
   addDoc,
+  arrayRemove,
   arrayUnion,
   collection,
   deleteDoc,
@@ -15,6 +16,7 @@ import {
 } from "@react-native-firebase/firestore";
 
 import { db } from "./firebase";
+import type { ProjectRole } from "./roles";
 
 export interface Project {
   id: string;
@@ -22,6 +24,7 @@ export interface Project {
   description?: string;
   ownerId: string;
   memberEmails?: string[];
+  roles?: Record<string, ProjectRole>;
   createdAt?: any;
   updatedAt?: any;
 }
@@ -30,7 +33,7 @@ export interface ProjectMember {
   userId: string;
   email: string;
   displayName?: string;
-  role: "owner" | "admin" | "member" | "viewer";
+  role: ProjectRole;
   joinedAt?: any;
 }
 
@@ -49,6 +52,7 @@ export async function createProject(
     description: description || "",
     ownerId,
     memberEmails: ownerEmail ? [ownerEmail] : [],
+    roles: ownerEmail ? { [ownerId]: "owner" } : {},
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -193,7 +197,8 @@ export async function deleteProject(projectId: string) {
 
 export async function addProjectMemberByEmail(
   projectId: string,
-  email: string
+  email: string,
+  role: ProjectRole = "editor"
 ): Promise<void> {
   const normalizedEmail = email.trim().toLowerCase();
   if (!normalizedEmail) return;
@@ -206,9 +211,51 @@ export async function addProjectMemberByEmail(
 
   await setDoc(doc(membersSubcollection(projectId), normalizedEmail), {
     email: normalizedEmail,
-    role: "member",
+    role,
     joinedAt: serverTimestamp(),
   });
+}
+
+export async function updateProjectMemberRole(
+  projectId: string,
+  userIdOrEmail: string,
+  newRole: ProjectRole
+): Promise<void> {
+  const memberRef = doc(membersSubcollection(projectId), userIdOrEmail);
+  await updateDoc(memberRef, {
+    role: newRole,
+    updatedAt: serverTimestamp(),
+  });
+
+  const projectRef = doc(db, "projects", projectId);
+  await updateDoc(projectRef, {
+    [`roles.${userIdOrEmail}`]: newRole,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function removeProjectMember(
+  projectId: string,
+  email: string,
+  userIdOrEmail?: string
+): Promise<void> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const docId = userIdOrEmail || normalizedEmail;
+
+  const projectRef = doc(db, "projects", projectId);
+  await updateDoc(projectRef, {
+    memberEmails: arrayRemove(normalizedEmail),
+    [`roles.${docId}`]: deleteFieldHack(),
+    updatedAt: serverTimestamp(),
+  });
+
+  await deleteDoc(doc(membersSubcollection(projectId), docId));
+}
+
+function deleteFieldHack(): any {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { deleteField } = require("@react-native-firebase/firestore");
+  return deleteField();
 }
 
 export async function getProjectMembers(
@@ -219,4 +266,29 @@ export async function getProjectMembers(
     ...(d.data() as Omit<ProjectMember, "userId">),
     userId: d.id,
   }));
+}
+
+export function subscribeToProjectMembers(
+  projectId: string,
+  callback: (members: ProjectMember[]) => void
+) {
+  const q = membersSubcollection(projectId);
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      if (!snapshot || !snapshot.docs) {
+        callback([]);
+        return;
+      }
+      const members = snapshot.docs.map((d) => ({
+        ...(d.data() as Omit<ProjectMember, "userId">),
+        userId: d.id,
+      }));
+      callback(members);
+    },
+    (error) => {
+      console.error("[subscribeToProjectMembers] error:", error);
+      callback([]);
+    }
+  );
 }

@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -14,8 +14,11 @@ import {
   View,
 } from "react-native";
 
+import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { CaptureItem, deleteItem, getItemById, ItemStatus, ItemType, updateItem } from "../services/items";
+import { ProjectMember, subscribeToProjectMembers } from "../services/projects";
+import { canAssignItems, canDeleteItem, canEditItem, getProjectRole, ProjectRole } from "../services/roles";
 
 function formatDate(ts: any) {
   if (!ts) return "Ukendt tidspunkt";
@@ -59,7 +62,9 @@ export default function ItemDetailScreen() {
   const { itemId } = useLocalSearchParams();
   const router = useRouter();
   const { theme } = useTheme();
+  const { user } = useAuth();
   const [item, setItem] = useState<CaptureItem | null>(null);
+  const [members, setMembers] = useState<ProjectMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -69,13 +74,35 @@ export default function ItemDetailScreen() {
   const [editCategory, setEditCategory] = useState("");
   const [editStatus, setEditStatus] = useState<ItemStatus>("new");
   const [editTags, setEditTags] = useState("");
+  const [editAssignedTo, setEditAssignedTo] = useState<string | null>(null);
+  const [editAssignedToName, setEditAssignedToName] = useState<string>("");
   const isDark = theme === "dark";
   const styles = themedStyles(isDark);
+
+  const projectRole: ProjectRole | null = item?.projectId
+    ? getProjectRole({ id: item.projectId, ownerId: "" }, user?.uid, members)
+    : null;
+
+  const assignmentOptions = useMemo(() => {
+    const options: { id: string; label: string }[] = [
+      { id: "", label: "Ingen ansvarlig" },
+    ];
+    members.forEach((m) => {
+      if (m.userId) {
+        options.push({
+          id: m.userId,
+          label: m.displayName || m.email || m.userId,
+        });
+      }
+    });
+    return options;
+  }, [members]);
 
   useEffect(() => {
     if (!itemId || typeof itemId !== "string") {
       return;
     }
+    let unsubscribeMembers: (() => void) | undefined;
     getItemById(itemId)
       .then((data) => {
         setItem(data);
@@ -86,13 +113,25 @@ export default function ItemDetailScreen() {
           setEditCategory(data.category || "");
           setEditStatus(data.status);
           setEditTags(data.tags?.join(", ") || "");
+          setEditAssignedTo(data.assignedTo || null);
+          setEditAssignedToName(data.assignedToName || "");
+          if (data.projectId) {
+            unsubscribeMembers = subscribeToProjectMembers(data.projectId, (m) => setMembers(m));
+          }
         }
       })
       .catch(console.log)
       .finally(() => setLoading(false));
+    return () => {
+      if (unsubscribeMembers) unsubscribeMembers();
+    };
   }, [itemId]);
 
   const handleDelete = () => {
+    if (!item || !user?.uid || !canDeleteItem(projectRole, item, user.uid)) {
+      Alert.alert("Begrænset adgang", "Du har ikke rettighed til at slette dette indlæg.");
+      return;
+    }
     Alert.alert("Slet indlæg", "Er du sikker?", [
       { text: "Annuller", style: "cancel" },
       {
@@ -113,7 +152,11 @@ export default function ItemDetailScreen() {
   };
 
   const handleSave = async () => {
-    if (!itemId || typeof itemId !== "string" || !item) return;
+    if (!itemId || typeof itemId !== "string" || !item || !user?.uid) return;
+    if (!canEditItem(projectRole, item, user.uid)) {
+      Alert.alert("Begrænset adgang", "Du har ikke rettighed til at redigere dette indlæg.");
+      return;
+    }
     setSaving(true);
     try {
       const updates: Partial<CaptureItem> = {
@@ -126,6 +169,8 @@ export default function ItemDetailScreen() {
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean),
+        assignedTo: editAssignedTo || undefined,
+        assignedToName: editAssignedToName || undefined,
       };
       await updateItem(itemId, updates);
       setItem({ ...item, ...updates });
@@ -146,6 +191,8 @@ export default function ItemDetailScreen() {
     setEditCategory(item.category || "");
     setEditStatus(item.status);
     setEditTags(item.tags?.join(", ") || "");
+    setEditAssignedTo(item.assignedTo || null);
+    setEditAssignedToName(item.assignedToName || "");
     setEditing(false);
   };
 
@@ -181,16 +228,48 @@ export default function ItemDetailScreen() {
       ) : null}
 
       {item.mediaUrl ? (
-        <Image
-          source={{ uri: item.mediaUrl }}
-          style={styles.image}
-          contentFit="cover"
-        />
+        <View style={styles.imageCard}>
+          <Image
+            source={{ uri: item.mediaUrl }}
+            style={styles.image}
+            contentFit="cover"
+          />
+          <TouchableOpacity
+            style={styles.removeImageInlineButton}
+            onPress={() => {
+              Alert.alert("Fjern foto", "Er du sikker?", [
+                { text: "Annuller", style: "cancel" },
+                {
+                  text: "Fjern",
+                  style: "destructive",
+                  onPress: async () => {
+                    try {
+                      await updateItem(item.id, { mediaUrl: "" });
+                      setItem({ ...item, mediaUrl: undefined });
+                    } catch (error) {
+                      console.log("Remove image error", error);
+                      Alert.alert("Fejl", "Kunne ikke fjerne fotoet.");
+                    }
+                  },
+                },
+              ]);
+            }}
+          >
+            <Text style={styles.removeImageInlineText}>Fjern foto</Text>
+          </TouchableOpacity>
+        </View>
       ) : null}
 
       {item.content ? (
         <View style={styles.contentCard}>
           <Text style={styles.content}>{item.content}</Text>
+        </View>
+      ) : null}
+
+      {item.assignedToName ? (
+        <View style={styles.metaCard}>
+          <Text style={styles.metaLabel}>Ansvarlig</Text>
+          <Text style={styles.metaValue}>{item.assignedToName}</Text>
         </View>
       ) : null}
 
@@ -213,12 +292,31 @@ export default function ItemDetailScreen() {
 
       <View style={styles.buttonRow}>
         <TouchableOpacity
-          style={[styles.button, styles.buttonPrimary]}
-          onPress={() => setEditing(true)}
+          style={[
+            styles.button,
+            styles.buttonPrimary,
+            user?.uid && item && !canEditItem(projectRole, item, user.uid) && styles.buttonDisabled,
+          ]}
+          onPress={() => {
+            if (!user?.uid || !item || !canEditItem(projectRole, item, user.uid)) {
+              Alert.alert("Begrænset adgang", "Du har ikke rettighed til at redigere dette indlæg.");
+              return;
+            }
+            setEditing(true);
+          }}
+          disabled={user?.uid && item ? !canEditItem(projectRole, item, user.uid) : true}
         >
           <Text style={styles.buttonPrimaryText}>Rediger</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.button, styles.deleteButtonSmall]} onPress={handleDelete}>
+        <TouchableOpacity
+          style={[
+            styles.button,
+            styles.deleteButtonSmall,
+            user?.uid && item && !canDeleteItem(projectRole, item, user.uid) && styles.buttonDisabled,
+          ]}
+          onPress={handleDelete}
+          disabled={user?.uid && item ? !canDeleteItem(projectRole, item, user.uid) : true}
+        >
           <Text style={styles.deleteButtonText}>Slet</Text>
         </TouchableOpacity>
       </View>
@@ -312,6 +410,36 @@ export default function ItemDetailScreen() {
         onChangeText={setEditTags}
         placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
       />
+
+      {canAssignItems(projectRole) && assignmentOptions.length > 1 ? (
+        <>
+          <Text style={styles.sectionLabel}>Ansvarlig</Text>
+          <View style={styles.typeRow}>
+            {assignmentOptions.map((option) => (
+              <TouchableOpacity
+                key={option.id}
+                style={[
+                  styles.typeChip,
+                  editAssignedTo === option.id && styles.assigneeChipActive,
+                ]}
+                onPress={() => {
+                  setEditAssignedTo(option.id || null);
+                  setEditAssignedToName(option.label);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.typeChipText,
+                    editAssignedTo === option.id && styles.assigneeChipActiveText,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      ) : null}
 
       <View style={styles.buttonRow}>
         <TouchableOpacity
@@ -412,8 +540,18 @@ const themedStyles = (isDark: boolean) =>
       width: "100%",
       height: 220,
       borderRadius: 12,
-      marginBottom: 16,
       backgroundColor: isDark ? "#1e293b" : "#e2e8f0",
+    },
+    imageCard: {
+      marginBottom: 16,
+    },
+    removeImageInlineButton: {
+      marginTop: 10,
+      alignSelf: "flex-start",
+    },
+    removeImageInlineText: {
+      color: "#f87171",
+      fontWeight: "600",
     },
     contentCard: {
       backgroundColor: isDark ? "#1e293b" : "#ffffff",
@@ -530,5 +668,11 @@ const themedStyles = (isDark: boolean) =>
     },
     statusChipActive: {
       backgroundColor: "#34d399",
+    },
+    assigneeChipActive: {
+      backgroundColor: "#38bdf8",
+    },
+    assigneeChipActiveText: {
+      color: "#0f172a",
     },
   });

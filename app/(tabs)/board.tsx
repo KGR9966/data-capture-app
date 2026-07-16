@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -32,6 +32,9 @@ import {
   uploadImage,
 } from "../../services/media";
 import { extractTextFromImage } from "../../services/ocr";
+import { ProjectMember, subscribeToProjectMembers } from "../../services/projects";
+import { getProjectRole, canAssignOthers, canAssignItems, ProjectRole } from "../../services/roles";
+import { getLanguageLabel, SUPPORTED_LANGUAGES, translateText } from "../../services/translation";
 
 const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   idea: "Idé",
@@ -96,6 +99,7 @@ export default function BoardScreen() {
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [voiceModalVisible, setVoiceModalVisible] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [itemType, setItemType] = useState<ItemType>("idea");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -105,6 +109,46 @@ export default function BoardScreen() {
   const [uploading, setUploading] = useState(false);
   const [recognizingText, setRecognizingText] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [ocrOriginal, setOcrOriginal] = useState("");
+  const [ocrTranslated, setOcrTranslated] = useState("");
+  const [ocrSourceLang, setOcrSourceLang] = useState("auto");
+  const [ocrTargetLang, setOcrTargetLang] = useState("da");
+  const [translating, setTranslating] = useState(false);
+  const [copiedOriginal, setCopiedOriginal] = useState(false);
+  const [copiedTranslated, setCopiedTranslated] = useState(false);
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [assignedTo, setAssignedTo] = useState<string | null>(null);
+  const [assignedToName, setAssignedToName] = useState<string>("");
+
+  const assignmentOptions = useMemo(() => {
+    const options: { id: string; label: string }[] = [
+      { id: "", label: "Ingen ansvarlig" },
+    ];
+    if (user?.uid) {
+      options.push({
+        id: user.uid,
+        label: `Mig (${user.displayName || user.name || user.email || "mig"})`,
+      });
+    }
+    members.forEach((m) => {
+      if (m.userId && m.userId !== user?.uid) {
+        options.push({
+          id: m.userId,
+          label: m.displayName || m.email || m.userId,
+        });
+      }
+    });
+    return options;
+  }, [members, user]);
+
+  const isDark = theme === "dark";
+  const styles = themedStyles(isDark);
+
+  const projectRole: ProjectRole | null = activeProject
+    ? getProjectRole(activeProject, user?.uid, members)
+    : null;
+
+  const canAssignOthersInProject = canAssignOthers(projectRole);
 
   const filterCategory =
     typeof params.category === "string" ? params.category : undefined;
@@ -114,25 +158,31 @@ export default function BoardScreen() {
   const filteredItems = items.filter((item) => {
     if (filterCategory && item.category !== filterCategory) return false;
     if (filterStatus && item.status !== filterStatus) return false;
-    return true;
+    if (showArchived) return item.status === "archived";
+    return item.status !== "archived";
   });
 
-  const isDark = theme === "dark";
-  const styles = themedStyles(isDark);
-
   useEffect(() => {
-    if (!activeProject) {
-      return;
-    }
-    const unsubscribe = subscribeToItems(activeProject.id, (data) => {
+    if (!activeProject) return;
+    const unsubscribeItems = subscribeToItems(activeProject.id, (data) => {
       setItems(data);
       setLoading(false);
     });
-    return unsubscribe;
+    const unsubscribeMembers = subscribeToProjectMembers(activeProject.id, (data) => {
+      setMembers(data);
+    });
+    return () => {
+      unsubscribeItems();
+      unsubscribeMembers();
+    };
   }, [activeProject]);
 
   const handleCreateItem = async () => {
     if (!activeProject || !user?.uid || !title.trim()) return;
+    if (!canAssignItems(projectRole)) {
+      Alert.alert("Begrænset adgang", "Du har ikke rettighed til at oprette sager i dette projekt.");
+      return;
+    }
     setCreating(true);
     try {
       const finalCategory =
@@ -148,6 +198,8 @@ export default function BoardScreen() {
         category: finalCategory,
         status: "new",
         mediaUrl: mediaUrl || undefined,
+        assignedTo: assignedTo || undefined,
+        assignedToName: assignedToName || undefined,
       });
       setModalVisible(false);
       setTitle("");
@@ -155,6 +207,12 @@ export default function BoardScreen() {
       setCategory("");
       setMediaUrl(null);
       setMediaUri(null);
+      setOcrOriginal("");
+      setOcrTranslated("");
+      setCopiedOriginal(false);
+      setCopiedTranslated(false);
+      setAssignedTo(null);
+      setAssignedToName("");
       setItemType("idea");
     } catch (error) {
       console.log("Create item error", error);
@@ -207,6 +265,10 @@ export default function BoardScreen() {
   const handleRemoveImage = () => {
     setMediaUrl(null);
     setMediaUri(null);
+    setOcrOriginal("");
+    setOcrTranslated("");
+    setCopiedOriginal(false);
+    setCopiedTranslated(false);
   };
 
   const handleReadTextFromImage = async () => {
@@ -216,6 +278,10 @@ export default function BoardScreen() {
       const text = await extractTextFromImage(mediaUri);
       if (text) {
         setContent((prev) => (prev ? `${prev}\n\n${text}` : text));
+        setOcrOriginal(text);
+        setOcrTranslated("");
+        setCopiedOriginal(false);
+        setCopiedTranslated(false);
         setCategory(
           suggestCategory({ title: title || text, content: text, type: itemType })
         );
@@ -230,14 +296,46 @@ export default function BoardScreen() {
     }
   };
 
+  const handleTranslateOcr = async () => {
+    if (!ocrOriginal.trim()) return;
+    setTranslating(true);
+    try {
+      const translated = await translateText(ocrOriginal, ocrTargetLang, ocrSourceLang);
+      setOcrTranslated(translated);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Oversættelse fejlede";
+      Alert.alert("Oversættelse", message);
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  const handleUseTranslated = () => {
+    if (ocrTranslated) {
+      setContent(ocrTranslated);
+    }
+  };
+
+  const handleUseOriginal = () => {
+    if (ocrOriginal) {
+      setContent(ocrOriginal);
+    }
+  };
+
   const handleVoiceSave = async (voiceItem: {
     type: ItemType;
     title: string;
     content: string;
     category: string;
     mediaUrl?: string;
+    assignedTo?: string;
+    assignedToName?: string;
   }) => {
     if (!activeProject || !user?.uid) return;
+    if (!canAssignItems(projectRole)) {
+      Alert.alert("Begrænset adgang", "Du har ikke rettighed til at oprette sager i dette projekt.");
+      return;
+    }
     try {
       await createItem({
         projectId: activeProject.id,
@@ -250,6 +348,8 @@ export default function BoardScreen() {
         category: voiceItem.category,
         status: "new",
         mediaUrl: voiceItem.mediaUrl,
+        assignedTo: voiceItem.assignedTo,
+        assignedToName: voiceItem.assignedToName,
       });
     } catch (error) {
       console.log("Voice save error", error);
@@ -293,17 +393,48 @@ export default function BoardScreen() {
         <View style={styles.headerButtons}>
           <TouchableOpacity
             style={[styles.addButton, styles.voiceButton]}
-            onPress={() => setVoiceModalVisible(true)}
+            onPress={() => {
+              if (!canAssignItems(projectRole)) {
+                Alert.alert("Begrænset adgang", "Du har ikke rettighed til at oprette sager i dette projekt.");
+                return;
+              }
+              setVoiceModalVisible(true);
+            }}
           >
             <Text style={styles.addButtonText}>🎤 Optag</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => setModalVisible(true)}
+            style={[
+              styles.addButton,
+              !canAssignItems(projectRole) && styles.buttonDisabled,
+            ]}
+            onPress={() => {
+              if (!canAssignItems(projectRole)) {
+                Alert.alert("Begrænset adgang", "Du har ikke rettighed til at oprette sager i dette projekt.");
+                return;
+              }
+              setModalVisible(true);
+            }}
+            disabled={!canAssignItems(projectRole)}
           >
             <Text style={styles.addButtonText}>+ Tilføj</Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      <View style={styles.archiveToggleRow}>
+        <TouchableOpacity
+          style={[styles.archiveToggle, !showArchived && styles.archiveToggleActive]}
+          onPress={() => setShowArchived(false)}
+        >
+          <Text style={[!showArchived ? styles.archiveToggleActiveText : styles.archiveToggleText]}>Aktive</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.archiveToggle, showArchived && styles.archiveToggleActive]}
+          onPress={() => setShowArchived(true)}
+        >
+          <Text style={[showArchived ? styles.archiveToggleActiveText : styles.archiveToggleText]}>Arkiveret</Text>
+        </TouchableOpacity>
       </View>
 
       {(filterCategory || filterStatus) ? (
@@ -342,7 +473,7 @@ export default function BoardScreen() {
           }
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={styles.itemCard}
+              style={[styles.itemCard, item.status === "archived" && styles.archivedCard]}
               onPress={() => router.push(`/item?itemId=${item.id}`)}
             >
               <View style={styles.itemHeader}>
@@ -350,14 +481,20 @@ export default function BoardScreen() {
                   style={[
                     styles.typeBadge,
                     { backgroundColor: ITEM_TYPE_COLORS[item.type] },
+                    item.status === "archived" && styles.archivedTypeBadge,
                   ]}
                 >
-                  <Text style={styles.typeBadgeText}>
+                  <Text style={[styles.typeBadgeText, item.status === "archived" && styles.archivedTypeBadgeText]}>
                     {ITEM_TYPE_LABELS[item.type]}
                   </Text>
                 </View>
+                {item.mediaUrl ? (
+                  <View style={styles.photoBadge}>
+                    <Text style={styles.photoBadgeText}>📷 Foto</Text>
+                  </View>
+                ) : null}
                 {item.category ? (
-                  <Text style={styles.categoryText}>{item.category}</Text>
+                  <Text style={[styles.categoryText, item.status === "archived" && styles.archivedText]}>{item.category}</Text>
                 ) : null}
                 {item.category ? (
                   <TouchableOpacity
@@ -378,17 +515,21 @@ export default function BoardScreen() {
                   </TouchableOpacity>
                 ) : null}
               </View>
-              <Text style={styles.itemTitle}>{item.title}</Text>
+              <Text style={[styles.itemTitle, item.status === "archived" && styles.archivedText]}>{item.title}</Text>
               {item.content ? (
-                <Text style={styles.itemContent} numberOfLines={3}>
+                <Text style={[styles.itemContent, item.status === "archived" && styles.archivedText]} numberOfLines={3}>
                   {item.content}
                 </Text>
               ) : null}
-              {item.mediaUrl ? (
-                <Text style={styles.mediaIndicator}>📎 Foto vedhæftet</Text>
+              {item.assignedToName ? (
+                <View style={styles.assigneeRow}>
+                  <Text style={[styles.assigneeText, item.status === "archived" && styles.archivedText]}>
+                    👤 {item.assignedToName}
+                  </Text>
+                </View>
               ) : null}
               <View style={styles.metaRow}>
-                <Text style={styles.metaText}>
+                <Text style={[styles.metaText, item.status === "archived" && styles.archivedText]}>
                   {formatDate(item.createdAt)} · {formatCreator(item)}
                   {item.status ? ` · ${formatStatus(item.status)}` : ""}
                 </Text>
@@ -474,6 +615,54 @@ export default function BoardScreen() {
                 onChangeText={setCategory}
               />
 
+              {canAssignItems(projectRole) && assignmentOptions.length > 1 ? (
+                <View style={styles.assigneeSection}>
+                  <Text style={styles.assigneeLabel}>Ansvarlig</Text>
+                  <View style={styles.assigneeChips}>
+                    {assignmentOptions
+                      .filter((option) => {
+                        if (option.id === "") return true;
+                        if (option.id === user?.uid) return true;
+                        return canAssignOthersInProject;
+                      })
+                      .map((option) => (
+                        <TouchableOpacity
+                          key={option.id}
+                          style={[
+                            styles.assigneeChip,
+                            assignedTo === option.id && styles.assigneeChipActive,
+                            option.id === "" &&
+                              !canAssignOthersInProject &&
+                              assignedTo !== "" &&
+                              styles.assigneeChipHidden,
+                          ]}
+                          onPress={() => {
+                            if (option.id === "" && !canAssignOthersInProject) {
+                              return;
+                            }
+                            setAssignedTo(option.id || null);
+                            setAssignedToName(
+                              option.id === ""
+                                ? ""
+                                : option.label.replace(/^Mig \(/, "").replace(/\)$/, "")
+                            );
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.assigneeChipText,
+                              assignedTo === option.id && styles.assigneeChipTextActive,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                  </View>
+                </View>
+              ) : null}
+
               {mediaUrl ? (
                 <View style={styles.imagePreviewContainer}>
                   <Image
@@ -533,10 +722,186 @@ export default function BoardScreen() {
                 </View>
               )}
 
+              {ocrOriginal ? (
+                <View style={styles.ocrBox}>
+                  <Text style={styles.ocrLabel}>OCR-oversættelse</Text>
+                  <View style={styles.ocrLangRow}>
+                    <View style={styles.ocrLangColumn}>
+                      <Text style={styles.ocrLangLabel}>Fra</Text>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={styles.ocrLangChips}
+                      >
+                        {SUPPORTED_LANGUAGES.map((lang) => (
+                          <TouchableOpacity
+                            key={`src-${lang.code}`}
+                            style={[
+                              styles.ocrLangChip,
+                              ocrSourceLang === lang.code && styles.ocrLangChipActive,
+                            ]}
+                            onPress={() => setOcrSourceLang(lang.code)}
+                          >
+                            <Text
+                              style={[
+                                styles.ocrLangChipText,
+                                ocrSourceLang === lang.code &&
+                                  styles.ocrLangChipTextActive,
+                              ]}
+                            >
+                              {lang.label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                    <View style={styles.ocrLangColumn}>
+                      <Text style={styles.ocrLangLabel}>Til</Text>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={styles.ocrLangChips}
+                      >
+                        {SUPPORTED_LANGUAGES.filter((lang) => lang.code !== "auto").map(
+                          (lang) => (
+                            <TouchableOpacity
+                              key={`tgt-${lang.code}`}
+                              style={[
+                                styles.ocrLangChip,
+                                ocrTargetLang === lang.code && styles.ocrLangChipActive,
+                              ]}
+                              onPress={() => setOcrTargetLang(lang.code)}
+                            >
+                              <Text
+                                style={[
+                                  styles.ocrLangChipText,
+                                  ocrTargetLang === lang.code &&
+                                    styles.ocrLangChipTextActive,
+                                ]}
+                              >
+                                {lang.label}
+                              </Text>
+                            </TouchableOpacity>
+                          )
+                        )}
+                      </ScrollView>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.ocrTranslateButton,
+                      translating && styles.buttonDisabled,
+                    ]}
+                    onPress={handleTranslateOcr}
+                    disabled={translating}
+                  >
+                    <Text style={styles.ocrTranslateButtonText}>
+                      {translating
+                        ? "Oversætter..."
+                        : `Oversæt til ${getLanguageLabel(ocrTargetLang)}`}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.ocrTextHeader}>
+                    <Text style={styles.ocrLangLabel}>Original OCR-tekst</Text>
+                    <TouchableOpacity
+                      onPress={async () => {
+                        await copyToClipboard(ocrOriginal);
+                        setCopiedOriginal(true);
+                        setTimeout(() => setCopiedOriginal(false), 1500);
+                      }}
+                      hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+                    >
+                      <Text style={[styles.ocrCopyLink, copiedOriginal && styles.ocrCopyLinkActive]}>
+                        {copiedOriginal ? "Kopieret!" : "Kopiér"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TextInput
+                    style={[styles.input, styles.textArea, styles.ocrOriginalInput]}
+                    value={ocrOriginal}
+                    editable={false}
+                    multiline
+                    numberOfLines={2}
+                    placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+                  />
+
+                  {ocrTranslated ? (
+                    <>
+                      <View style={styles.ocrTextHeader}>
+                        <Text style={styles.ocrLangLabel}>Oversat tekst</Text>
+                        <TouchableOpacity
+                          onPress={async () => {
+                            await copyToClipboard(ocrTranslated);
+                            setCopiedTranslated(true);
+                            setTimeout(() => setCopiedTranslated(false), 1500);
+                          }}
+                          hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+                        >
+                          <Text style={[styles.ocrCopyLink, copiedTranslated && styles.ocrCopyLinkActive]}>
+                            {copiedTranslated ? "Kopieret!" : "Kopiér"}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                      <TextInput
+                        style={[styles.input, styles.textArea, styles.ocrTranslatedInput]}
+                        value={ocrTranslated}
+                        onChangeText={setOcrTranslated}
+                        multiline
+                        numberOfLines={3}
+                        placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+                      />
+                    </>
+                  ) : null}
+
+                  <View style={styles.ocrActionRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.ocrActionButton,
+                        styles.ocrActionButtonSecondary,
+                      ]}
+                      onPress={handleUseOriginal}
+                    >
+                      <Text style={styles.ocrActionButtonSecondaryText}>
+                        Brug original
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.ocrActionButton,
+                        styles.ocrActionButtonPrimary,
+                        !ocrTranslated && styles.buttonDisabled,
+                      ]}
+                      onPress={handleUseTranslated}
+                      disabled={!ocrTranslated}
+                    >
+                      <Text style={styles.ocrActionButtonPrimaryText}>
+                        Brug oversat
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+
               <View style={styles.modalButtons}>
                 <TouchableOpacity
                   style={[styles.button, styles.buttonSecondary]}
-                  onPress={() => setModalVisible(false)}
+                  onPress={() => {
+                    setModalVisible(false);
+                    setTitle("");
+                    setContent("");
+                    setCategory("");
+                    setMediaUrl(null);
+                    setMediaUri(null);
+                    setOcrOriginal("");
+                    setOcrTranslated("");
+                    setCopiedOriginal(false);
+                    setCopiedTranslated(false);
+                    setAssignedTo(null);
+                    setAssignedToName("");
+                    setItemType("idea");
+                  }}
                 >
                   <Text style={styles.buttonSecondaryText}>Annuller</Text>
                 </TouchableOpacity>
@@ -630,6 +995,47 @@ const themedStyles = (isDark: boolean) =>
       fontSize: 12,
       marginLeft: 4,
     },
+    archiveToggleRow: {
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 12,
+    },
+    archiveToggle: {
+      flex: 1,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: isDark ? "#1e293b" : "#f1f5f9",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    archiveToggleActive: {
+      backgroundColor: "#38bdf8",
+      borderColor: "#38bdf8",
+    },
+    archiveToggleText: {
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      fontWeight: "600",
+    },
+    archiveToggleActiveText: {
+      color: "#0f172a",
+      fontWeight: "700",
+    },
+    archivedCard: {
+      opacity: 0.9,
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+      borderStyle: "dashed",
+      borderColor: isDark ? "#475569" : "#94a3b8",
+    },
+    archivedText: {
+      color: isDark ? "#94a3b8" : "#64748b",
+    },
+    archivedTypeBadge: {
+      opacity: 0.85,
+    },
+    archivedTypeBadgeText: {
+      color: "#0f172a",
+    },
     emptyState: {
       paddingVertical: 40,
       alignItems: "center",
@@ -692,6 +1098,18 @@ const themedStyles = (isDark: boolean) =>
       fontSize: 12,
       fontWeight: "700",
     },
+    photoBadge: {
+      marginLeft: "auto",
+      backgroundColor: isDark ? "#334155" : "#e2e8f0",
+      borderRadius: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    photoBadgeText: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: isDark ? "#e2e8f0" : "#0f172a",
+    },
     mediaIndicator: {
       marginTop: 2,
       color: isDark ? "#94a3b8" : "#64748b",
@@ -703,6 +1121,53 @@ const themedStyles = (isDark: boolean) =>
     metaText: {
       color: isDark ? "#94a3b8" : "#64748b",
       fontSize: 10,
+    },
+    assigneeRow: {
+      marginTop: 4,
+      marginBottom: 2,
+    },
+    assigneeText: {
+      fontSize: 12,
+      color: "#38bdf8",
+      fontWeight: "600",
+    },
+    assigneeSection: {
+      marginBottom: 12,
+    },
+    assigneeLabel: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: isDark ? "#94a3b8" : "#64748b",
+      marginBottom: 6,
+    },
+    assigneeChips: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    assigneeChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 6,
+      backgroundColor: isDark ? "#334155" : "#e2e8f0",
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+      maxWidth: 160,
+    },
+    assigneeChipActive: {
+      backgroundColor: "#38bdf8",
+      borderColor: "#38bdf8",
+    },
+    assigneeChipHidden: {
+      display: "none",
+    },
+    assigneeChipText: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: isDark ? "#e2e8f0" : "#0f172a",
+    },
+    assigneeChipTextActive: {
+      color: "#0f172a",
     },
     modalOverlay: {
       flex: 1,
@@ -787,6 +1252,113 @@ const themedStyles = (isDark: boolean) =>
     },
     buttonDisabled: {
       opacity: 0.5,
+    },
+    ocrBox: {
+      backgroundColor: isDark ? "#0f172a" : "#f1f5f9",
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    ocrLabel: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      marginBottom: 10,
+    },
+    ocrLangRow: {
+      gap: 12,
+      marginBottom: 10,
+    },
+    ocrLangColumn: {
+      marginBottom: 6,
+    },
+    ocrLangLabel: {
+      fontSize: 11,
+      color: isDark ? "#94a3b8" : "#64748b",
+      marginBottom: 4,
+    },
+    ocrTextHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 2,
+    },
+    ocrCopyLink: {
+      fontSize: 12,
+      color: "#38bdf8",
+      fontWeight: "600",
+    },
+    ocrCopyLinkActive: {
+      color: "#34d399",
+    },
+    ocrLangChips: {
+      flexDirection: "row",
+    },
+    ocrLangChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 6,
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+      marginRight: 6,
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    ocrLangChipActive: {
+      backgroundColor: "#38bdf8",
+      borderColor: "#38bdf8",
+    },
+    ocrLangChipText: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: isDark ? "#e2e8f0" : "#0f172a",
+    },
+    ocrLangChipTextActive: {
+      color: "#0f172a",
+    },
+    ocrTranslateButton: {
+      backgroundColor: "#38bdf8",
+      borderRadius: 8,
+      paddingVertical: 10,
+      alignItems: "center",
+      marginBottom: 10,
+    },
+    ocrTranslateButtonText: {
+      color: "#0f172a",
+      fontWeight: "600",
+    },
+    ocrTranslatedInput: {
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+    },
+    ocrOriginalInput: {
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+      color: isDark ? "#94a3b8" : "#64748b",
+    },
+    ocrActionRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 4,
+    },
+    ocrActionButton: {
+      flex: 1,
+      borderRadius: 8,
+      paddingVertical: 10,
+      alignItems: "center",
+    },
+    ocrActionButtonPrimary: {
+      backgroundColor: "#38bdf8",
+    },
+    ocrActionButtonPrimaryText: {
+      color: "#0f172a",
+      fontWeight: "600",
+    },
+    ocrActionButtonSecondary: {
+      backgroundColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    ocrActionButtonSecondaryText: {
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      fontWeight: "600",
     },
     imagePreviewContainer: {
       marginBottom: 12,
