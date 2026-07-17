@@ -13,10 +13,27 @@ import {
   where,
 } from "@react-native-firebase/firestore";
 
+import { deleteAllCommentsForItem } from "./comments";
 import { db } from "./firebase";
 
-export type ItemType = "idea" | "observation" | "bug" | "comment" | "photo" | "voice" | "other";
+export type ItemType = "idea" | "observation" | "bug" | "note" | "photo" | "voice" | "other";
 export type ItemStatus = "new" | "in_progress" | "done" | "archived";
+
+const VALID_ITEM_TYPES: ItemType[] = [
+  "idea",
+  "observation",
+  "bug",
+  "note",
+  "photo",
+  "voice",
+  "other",
+];
+
+export function normalizeItemType(type: string | null | undefined): ItemType {
+  if (type === "comment") return "note";
+  if (VALID_ITEM_TYPES.includes(type as ItemType)) return type as ItemType;
+  return "other";
+}
 
 export interface CaptureItem {
   id: string;
@@ -75,6 +92,7 @@ export function subscribeToItems(
         .map((d) => ({
           id: d.id,
           ...(d.data() as Omit<CaptureItem, "id">),
+          type: normalizeItemType((d.data() as { type?: string }).type),
         }))
         .sort((a, b) => {
           const aTime = a.updatedAt?.toMillis?.() || 0;
@@ -97,6 +115,7 @@ export async function getItemsForProject(projectId: string): Promise<CaptureItem
     .map((d) => ({
       id: d.id,
       ...(d.data() as Omit<CaptureItem, "id">),
+      type: normalizeItemType((d.data() as { type?: string }).type),
     }))
     .sort((a, b) => {
       const aTime = a.updatedAt?.toMillis?.() || 0;
@@ -117,13 +136,15 @@ export async function updateItem(
 }
 
 export async function deleteItem(itemId: string) {
+  await deleteAllCommentsForItem(itemId);
   await deleteDoc(doc(db, "items", itemId));
 }
 
 export async function getItemById(itemId: string): Promise<CaptureItem | null> {
   const snap = await getDoc(doc(db, "items", itemId));
   if (!snap.exists) return null;
-  return { id: snap.id, ...(snap.data() as Omit<CaptureItem, "id">) };
+  const data = snap.data() as Omit<CaptureItem, "id" | "type"> & { type?: string };
+  return { id: snap.id, ...data, type: normalizeItemType(data.type) };
 }
 
 export async function getItemsByAssignee(
@@ -139,6 +160,7 @@ export async function getItemsByAssignee(
   return snapshot.docs.map((d) => ({
     id: d.id,
     ...(d.data() as Omit<CaptureItem, "id">),
+    type: normalizeItemType((d.data() as { type?: string }).type),
   }));
 }
 

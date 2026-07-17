@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,9 +16,10 @@ import {
 
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
+import { Comment, createComment, deleteComment, subscribeToComments } from "../services/comments";
 import { CaptureItem, deleteItem, getItemById, ItemStatus, ItemType, updateItem } from "../services/items";
 import { ProjectMember, subscribeToProjectMembers } from "../services/projects";
-import { canAssignItems, canDeleteItem, canEditItem, getProjectRole, ProjectRole } from "../services/roles";
+import { canAssignItems, canComment, canDeleteItem, canEditItem, getProjectRole, ProjectRole } from "../services/roles";
 
 function formatDate(ts: any) {
   if (!ts) return "Ukendt tidspunkt";
@@ -38,11 +39,15 @@ function formatCreator(item: CaptureItem) {
   return "Mig";
 }
 
+function currentTimestamp() {
+  return Date.now();
+}
+
 const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   idea: "Idé",
   observation: "Observation",
   bug: "Bug",
-  comment: "Kommentar",
+  note: "Notat",
   photo: "Foto",
   voice: "Stemme",
   other: "Andet",
@@ -52,7 +57,7 @@ const ITEM_TYPE_COLORS: Record<ItemType, string> = {
   idea: "#38bdf8",
   observation: "#a78bfa",
   bug: "#f87171",
-  comment: "#fbbf24",
+  note: "#fbbf24",
   photo: "#34d399",
   voice: "#fb923c",
   other: "#94a3b8",
@@ -76,8 +81,20 @@ export default function ItemDetailScreen() {
   const [editTags, setEditTags] = useState("");
   const [editAssignedTo, setEditAssignedTo] = useState<string | null>(null);
   const [editAssignedToName, setEditAssignedToName] = useState<string>("");
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentText, setCommentText] = useState("");
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [scrollViewHeight, setScrollViewHeight] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
+  const [scrollY, setScrollY] = useState(0);
+  const lastSendTimeRef = useRef<number>(0);
+  const recentCommentTimestampsRef = useRef<Record<string, number[]>>({});
+  const hasInitiallyScrolledRef = useRef(false);
   const isDark = theme === "dark";
   const styles = themedStyles(isDark);
+
+  const AUTO_SCROLL_THRESHOLD = 80;
 
   const projectRole: ProjectRole | null = item?.projectId
     ? getProjectRole({ id: item.projectId, ownerId: "" }, user?.uid, members)
@@ -103,6 +120,7 @@ export default function ItemDetailScreen() {
       return;
     }
     let unsubscribeMembers: (() => void) | undefined;
+    let unsubscribeComments: (() => void) | undefined;
     getItemById(itemId)
       .then((data) => {
         setItem(data);
@@ -117,6 +135,7 @@ export default function ItemDetailScreen() {
           setEditAssignedToName(data.assignedToName || "");
           if (data.projectId) {
             unsubscribeMembers = subscribeToProjectMembers(data.projectId, (m) => setMembers(m));
+            unsubscribeComments = subscribeToComments(data.projectId, itemId, (c) => setComments(c));
           }
         }
       })
@@ -124,6 +143,7 @@ export default function ItemDetailScreen() {
       .finally(() => setLoading(false));
     return () => {
       if (unsubscribeMembers) unsubscribeMembers();
+      if (unsubscribeComments) unsubscribeComments();
     };
   }, [itemId]);
 
@@ -194,6 +214,108 @@ export default function ItemDetailScreen() {
     setEditAssignedTo(item.assignedTo || null);
     setEditAssignedToName(item.assignedToName || "");
     setEditing(false);
+  };
+
+  const canDeleteCurrentComment = (comment: Comment) => {
+    if (!user?.uid || !item) return false;
+    if (comment.authorId === user.uid) return true;
+    if (projectRole === "owner" || projectRole === "admin") return true;
+    return false;
+  };
+
+  const isNearBottom = () => {
+    if (contentHeight <= scrollViewHeight) return true;
+    return scrollY + scrollViewHeight >= contentHeight - AUTO_SCROLL_THRESHOLD;
+  };
+
+  const scrollToBottomIfNearEnd = (animated = true) => {
+    if (isNearBottom()) {
+      scrollViewRef.current?.scrollToEnd({ animated });
+    }
+  };
+
+  useEffect(() => {
+    if (!comments.length) return;
+    if (!hasInitiallyScrolledRef.current) {
+      hasInitiallyScrolledRef.current = true;
+      scrollViewRef.current?.scrollToEnd({ animated: false });
+      return;
+    }
+    const nearBottom =
+      contentHeight <= scrollViewHeight ||
+      scrollY + scrollViewHeight >= contentHeight - AUTO_SCROLL_THRESHOLD;
+    if (nearBottom) {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }
+  }, [comments.length, contentHeight, scrollViewHeight, scrollY]);
+
+  const handleSubmitComment = async () => {
+    if (!item || !item.projectId || !user?.uid) return;
+    const trimmed = commentText.trim();
+    if (!trimmed) return;
+    if (trimmed.length > 2000) {
+      Alert.alert("For lang", "Kommentaren må max være 2000 tegn.");
+      return;
+    }
+    if (!canComment(projectRole)) {
+      Alert.alert("Begrænset adgang", "Du har ikke rettighed til at skrive kommentarer.");
+      return;
+    }
+
+    const now = currentTimestamp();
+    const lastSend = lastSendTimeRef.current;
+    if (now - lastSend < 2000) {
+      Alert.alert("Langsommere", "Vent et øjeblik før du sender en ny kommentar.");
+      return;
+    }
+
+    const itemId = item.id;
+    const timestamps = recentCommentTimestampsRef.current[itemId] || [];
+    const oneMinuteAgo = now - 60 * 1000;
+    const recent = timestamps.filter((t) => t > oneMinuteAgo);
+    if (recent.length >= 10) {
+      Alert.alert("For mange kommentarer", "Du kan maksimalt sende 10 kommentarer i minuttet på denne sag.");
+      return;
+    }
+
+    setSubmittingComment(true);
+    lastSendTimeRef.current = now;
+    try {
+      await createComment(item.projectId, itemId, trimmed);
+      recentCommentTimestampsRef.current[itemId] = [...recent, now];
+      setCommentText("");
+      scrollToBottomIfNearEnd(true);
+    } catch (error) {
+      console.log("Create comment error", error);
+      Alert.alert("Fejl", "Kunne ikke sende kommentaren. Prøv igen.");
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  const handleDeleteComment = (comment: Comment) => {
+    if (!item || !item.projectId || !canDeleteCurrentComment(comment)) return;
+    Alert.alert("Slet kommentar", "Er du sikker?", [
+      { text: "Annuller", style: "cancel" },
+      {
+        text: "Slet",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteComment(item.projectId, item.id, comment.id);
+          } catch (error) {
+            console.log("Delete comment error", error);
+            Alert.alert("Fejl", "Kunne ikke slette kommentaren.");
+          }
+        },
+      },
+    ]);
+  };
+
+  const formatCommentAuthor = (comment: Comment) => {
+    if (comment.authorName) return comment.authorName;
+    if (comment.authorEmail) return comment.authorEmail.split("@")[0];
+    return "Ukendt";
   };
 
   if (loading) {
@@ -320,6 +442,32 @@ export default function ItemDetailScreen() {
           <Text style={styles.deleteButtonText}>Slet</Text>
         </TouchableOpacity>
       </View>
+
+      <View style={styles.commentsSection}>
+        <Text style={styles.commentsHeader}>Kommentarer</Text>
+        {comments.length === 0 ? (
+          <Text style={styles.emptyComments}>Ingen kommentarer endnu. Vær den første til at skrive noget.</Text>
+        ) : (
+          comments.map((comment) => (
+            <View key={comment.id} style={styles.commentCard}>
+              <View style={styles.commentHeader}>
+                <Text style={styles.commentAuthor}>{formatCommentAuthor(comment)}</Text>
+                <Text style={styles.commentTime}>{formatDate(comment.createdAt)}</Text>
+              </View>
+              <Text style={styles.commentText}>{comment.text}</Text>
+              {canDeleteCurrentComment(comment) ? (
+                <TouchableOpacity
+                  style={styles.deleteCommentButton}
+                  onPress={() => handleDeleteComment(comment)}
+                  hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+                >
+                  <Text style={styles.deleteCommentText}>Slet</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ))
+        )}
+      </View>
     </>
   );
 
@@ -328,7 +476,7 @@ export default function ItemDetailScreen() {
       <Text style={styles.sectionLabel}>Type</Text>
       <View style={styles.typeRow}>
         {(
-          ["other", "observation", "bug", "idea", "comment", "photo", "voice"] as ItemType[]
+          ["other", "observation", "bug", "idea", "note", "photo", "voice"] as ItemType[]
         ).map((type) => (
           <TouchableOpacity
             key={type}
@@ -460,21 +608,62 @@ export default function ItemDetailScreen() {
     </>
   );
 
+  const isInputDisabled =
+    !commentText.trim() || submittingComment || commentText.trim().length > 2000;
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
     >
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.backText}>← Tilbage</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={{ flex: 1 }}>
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.scrollContent}
+          onContentSizeChange={(_, h) => setContentHeight(h)}
+          onLayout={(e) => setScrollViewHeight(e.nativeEvent.layout.height)}
+          onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
+          scrollEventThrottle={150}
+        >
+          <View style={styles.headerRow}>
+            <TouchableOpacity onPress={() => router.back()}>
+              <Text style={styles.backText}>← Tilbage</Text>
+            </TouchableOpacity>
+          </View>
 
-        {editing ? renderEdit() : renderView()}
-      </ScrollView>
+          {editing ? renderEdit() : renderView()}
+        </ScrollView>
+
+        {!editing && canComment(projectRole) ? (
+          <View style={styles.commentInputBar}>
+            <TextInput
+              style={styles.commentInput}
+              placeholder="Skriv en kommentar..."
+              placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+              value={commentText}
+              onChangeText={setCommentText}
+              multiline
+              maxLength={2000}
+              editable={!submittingComment}
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                isInputDisabled && styles.buttonDisabled,
+              ]}
+              onPress={handleSubmitComment}
+              disabled={isInputDisabled}
+            >
+              {submittingComment ? (
+                <ActivityIndicator size="small" color="#0f172a" />
+              ) : (
+                <Text style={styles.sendButtonText}>Send</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : null}
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -487,6 +676,13 @@ const themedStyles = (isDark: boolean) =>
       paddingTop: 60,
       paddingHorizontal: 16,
       paddingBottom: 40,
+    },
+    scrollContent: {
+      flexGrow: 1,
+      backgroundColor: isDark ? "#0f172a" : "#f8fafc",
+      paddingTop: 60,
+      paddingHorizontal: 16,
+      paddingBottom: 16,
     },
     headerRow: {
       marginBottom: 16,
@@ -674,5 +870,92 @@ const themedStyles = (isDark: boolean) =>
     },
     assigneeChipActiveText: {
       color: "#0f172a",
+    },
+    commentsSection: {
+      marginTop: 24,
+      marginBottom: 8,
+    },
+    commentsHeader: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: isDark ? "#f8fafc" : "#0f172a",
+      marginBottom: 12,
+    },
+    emptyComments: {
+      fontSize: 14,
+      color: isDark ? "#94a3b8" : "#64748b",
+      fontStyle: "italic",
+    },
+    commentCard: {
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+      borderRadius: 12,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+      marginBottom: 10,
+    },
+    commentHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 6,
+    },
+    commentAuthor: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: isDark ? "#f8fafc" : "#0f172a",
+    },
+    commentTime: {
+      fontSize: 12,
+      color: isDark ? "#94a3b8" : "#64748b",
+    },
+    commentText: {
+      fontSize: 15,
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      lineHeight: 22,
+    },
+    deleteCommentButton: {
+      alignSelf: "flex-start",
+      marginTop: 8,
+    },
+    deleteCommentText: {
+      color: "#f87171",
+      fontSize: 13,
+      fontWeight: "600",
+    },
+    commentInputBar: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      gap: 10,
+      paddingHorizontal: 16,
+      paddingTop: 10,
+      paddingBottom: 24,
+      backgroundColor: isDark ? "#0f172a" : "#f8fafc",
+      borderTopWidth: 1,
+      borderTopColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    commentInput: {
+      flex: 1,
+      maxHeight: 120,
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      borderRadius: 10,
+      padding: 12,
+      fontSize: 15,
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    sendButton: {
+      backgroundColor: "#38bdf8",
+      borderRadius: 10,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    sendButtonText: {
+      color: "#0f172a",
+      fontWeight: "700",
+      fontSize: 15,
     },
   });

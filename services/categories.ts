@@ -37,5 +37,7 @@ export function suggestCategory(item: Partial<CaptureItem>): string {
     ? "Test"
     : item.type === "idea"
     ? "Idé"
+    : item.type === "note"
+    ? "Notat"
     : "Andet";
 }

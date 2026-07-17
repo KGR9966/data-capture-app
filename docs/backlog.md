@@ -77,10 +77,11 @@
    - Tildel en ansvarlig til hvert item.
    - Vis ansvarlig i Board-liste og item-detalje.
    - (Filtrer Board på "Mine sager" – udskudt til Phase 2.)
-7. [ ] **Chat / kommentarer på indlæg**
+7. [ ] **Chat / kommentarer på indlæg (CHAT-001)** — in-progress
    - Kommentar-tråd under hvert item.
    - Understøtter 2 eller flere deltagere.
-   - Notifikation ved nye kommentarer.
+   - Notifikation ved nye kommentarer (udskudt; data-model forberedes).
+   - Omdøb item-type `comment` → `note` i hele appen; legacy `type: "comment"` vises som "Notat".
 
 ### P3 – Afstemning og engagement
 8. [ ] **Afstemning med genbrug fra Meetup-appen**
@@ -131,6 +132,12 @@ Testen går ud på at verificere, at appen kan registrere et Expo push-token og 
 ### Bemærkning
 - Push-notifikationer virker **ikke** i simulator.
 - Kræver netværk og at appen kører i en development build (ikke Expo Go).
+
+## Compliance / Noter
+
+- **CHAT-001**: Privatlivspolitikken skal opdateres, fordi chat/kommentarer gemmer nye persondata (forfatter-id, navn, e-mail, tekst og timestamp).
+- **CHAT-001**: Item-type `comment` omdøbes til `note` i hele appen. Eksisterende Firestore-dokumenter med `type: "comment"` fortsætter med at virke og vises med label "Notat".
+- **CHAT-001**: Firestore Security Rules skal håndhæve projektmedlemskab og roller server-side; `viewer` må ikke oprette kommentarer.
 
 ## Relateret
 

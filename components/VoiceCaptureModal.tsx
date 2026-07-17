@@ -34,7 +34,7 @@ const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   idea: "Idé",
   observation: "Observation",
   bug: "Bug",
-  comment: "Kommentar",
+  note: "Notat",
   photo: "Foto",
   voice: "Stemme",
   other: "Andet",
@@ -49,9 +49,10 @@ const VOICE_COMMANDS: Record<string, { itemType: ItemType; category: string }> =
   observation: { itemType: "observation", category: "Observation" },
   observer: { itemType: "observation", category: "Observation" },
   observeret: { itemType: "observation", category: "Observation" },
-  kommentar: { itemType: "comment", category: "Kommentar" },
-  bemærkning: { itemType: "comment", category: "Kommentar" },
-  spørgsmål: { itemType: "comment", category: "Spørgsmål" },
+  notat: { itemType: "note", category: "Notat" },
+  bemærkning: { itemType: "note", category: "Notat" },
+  kommentar: { itemType: "note", category: "Notat" },
+  spørgsmål: { itemType: "note", category: "Spørgsmål" },
 };
 
 function normalizeCategoryName(name: string): string {
@@ -63,7 +64,7 @@ function parseVoiceCommand(text: string) {
   const separator = "(?:\\s*[.,]?\\s+|\\s*[.,]\\s*|\\s+$|\\b(?=\\s))";
 
   const knownMatch = trimmed.match(
-    new RegExp(`^\\s*(idé|ide|idea|bug|fejl|observation|observer|observeret|kommentar|bemærkning|spørgsmål)${separator}`, "i")
+    new RegExp(`^\\s*(idé|ide|idea|bug|fejl|observation|observer|observeret|notat|bemærkning|kommentar|spørgsmål)${separator}`, "i")
   );
 
   if (knownMatch) {
@@ -97,7 +98,7 @@ const ITEM_TYPE_COLORS: Record<ItemType, string> = {
   idea: "#38bdf8",
   observation: "#a78bfa",
   bug: "#f87171",
-  comment: "#fbbf24",
+  note: "#fbbf24",
   photo: "#34d399",
   voice: "#fb923c",
   other: "#94a3b8",
@@ -462,7 +463,7 @@ export default function VoiceCaptureModal({
 
             <View style={styles.typeRow}>
               {(
-                ["other", "observation", "bug", "idea", "comment"] as ItemType[]
+                ["other", "observation", "bug", "idea", "note"] as ItemType[]
               ).map((type) => (
                 <TouchableOpacity
                   key={type}

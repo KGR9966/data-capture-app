@@ -47,6 +47,10 @@ export function canCreateItem(role: ProjectRole | null): boolean {
   return role === "owner" || role === "admin" || role === "editor";
 }
 
+export function canComment(role: ProjectRole | null): boolean {
+  return role === "owner" || role === "admin" || role === "editor";
+}
+
 export function canEditItem(
   role: ProjectRole | null,
   item: CaptureItem,
