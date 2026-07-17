@@ -7,14 +7,16 @@
 
 | Felt | Værdi |
 |---|---|
-| **Build-ID** | `ebdb8ffc-7cfd-4648-929e-14398e6eb422` |
-| **Platform** | iOS development build |
+| **Build-ID** | `fab85114-d346-4406-8eba-0fa5f9e1b8f1` (Android), `bc7a5b59-aca6-4195-92b3-f4c22ce05e91` (iOS) |
+| **Platform** | Android + iOS preview build |
 | **Distribution** | Internal (EAS) |
 | **EAS Dashboard** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds |
-| **Installationslink** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/ebdb8ffc-7cfd-4648-929e-14398e6eb422 |
-| **Fokus i dette build** | RBAC + ansvarlige for sager + medlemsmodal UI-fix |
-| **Git snapshot** | `07de949` |
-| **Forrige build** | `6ee4d223-e0c0-4ade-91f4-0877cf07a321` |
+| **Android installationslink** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/fab85114-d346-4406-8eba-0fa5f9e1b8f1 |
+| **iOS installationslink** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/bc7a5b59-aca6-4195-92b3-f4c22ce05e91 |
+| **QR-kode** | Scan QR-koden på de respektive EAS build-sider via linksene ovenfor. |
+| **Fokus i dette build** | CHAT-001 chat/kommentarer på items + omdøbning `comment` → `note` |
+| **Git snapshot** | `a5533db` |
+| **Forrige build** | `ebdb8ffc-7cfd-4648-929e-14398e6eb422` |
 
 ## Hurtigstart – når QR-koden er forsvundet
 
@@ -38,11 +40,29 @@
 
 ## Installationsinstruktion per enhed
 
-1. Åbn Safari på enheden.
+1. Åbn Safari (iOS) eller Chrome (Android) på enheden.
 2. Gå til EAS Dashboard: https://expo.dev/accounts/kgradm/projects/data-capture-app/builds
-3. Find build `ebdb8ffc-7cfd-4648-929e-14398e6eb422`.
-4. Tryk installationslinket og følg anvisningen.
+3. Find det ønskede build:
+   - Android: `fab85114-d346-4406-8eba-0fa5f9e1b8f1`
+   - iOS: `bc7a5b59-aca6-4195-92b3-f4c22ce05e91`
+4. Tryk installationslinket og scan QR-koden på siden, eller følg anvisningen.
 5. Åbn appen og accepter tilladelser.
+
+## Ændringsoversigt (CHAT-001)
+
+- Ny chat/kommentartråd under hver sag (item) med real-time opdateringer.
+- Roller håndhæves: `viewer` kan ikke skrive kommentarer; `editor`, `admin` og `owner` kan.
+- Forfattere kan slette egne kommentarer; `admin`/`owner` kan slette alle kommentarer i projektet.
+- Kaskade-sletning: kommentarer slettes automatisk, når en sag slettes.
+- `comment` → `note` omdøbning i item-typer, labels og kategori-forslag.
+- Client-side throttling: maks 1 send pr. 2 sekunder og maks 10 kommentarer pr. minut pr. item.
+
+## Kendte begrænsninger
+
+- Push-notifikationer ved nye kommentarer er ikke inkluderet i v1.
+- Redigering af egne kommentarer er ikke inkluderet i v1; brugere kan slette og oprette ny.
+- Server-side rate limiting er ikke implementeret i v1; client-side throttling kan omgås af en manipuleret klient.
+- **Firestore Security Rules er endnu ikke deployet** (se statusfil og release notes); deploy kræver manuelt skridt i Firebase Console eller opsætning af Firebase CLI.
 
 ## Når der kommer nyt build
 
