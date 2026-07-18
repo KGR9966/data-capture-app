@@ -90,6 +90,16 @@
    - Afstemninger knyttet til et item eller som selvstændig funktion.
    - Resultater synlige for projektmedlemmer.
 
+### P2 – Samarbejde og eksekvering (ny)
+8. [ ] **Aktionslister fra søgning (CHECKLIST-001)** — proposed
+   - Omdan søgeresultater til navngivne, vedligeholdelige checklister med flueben.
+   - Deduplikering, alfabetisk sortering af åbne punkter, udførte punkter i bunden.
+   - Deling via e-mail/SMS (native share-sheet).
+   - Valgfri status-tilbagekobling til den originale sag (marker som udført/arkiveret).
+   - AI: smart deduplikering, auto-gruppering, opsummering til deling.
+   - Separat "Aktionslister" fane med gemte, navngivne lister og dynamiske søgebaserede lister.
+   - Se detaljeret case: `docs/backlog-cases/CHECKLIST-001-search-action-list.md`.
+
 ### P3 – Deling og eksport (øget fleksibilitet)
 8. [x] **Kopiér billede fra sag (COPY-001)**
    - Mulighed for at kopiere et foto fra item-detalje til udklipsholder.
