@@ -91,14 +91,25 @@
    - Resultater synlige for projektmedlemmer.
 
 ### P2 – Samarbejde og eksekvering (ny)
-8. [ ] **Aktionslister fra søgning (CHECKLIST-001)** — proposed
+8. [ ] **Context Lists – aktionslister fra søgning (CHECKLIST-001)** — proposed
    - Omdan søgeresultater til navngivne, vedligeholdelige checklister med flueben.
+   - Hvert listepunkt er knyttet til en reel sag; nye punkter oprettes først som sager.
    - Deduplikering, alfabetisk sortering af åbne punkter, udførte punkter i bunden.
+   - Automatisk status-tilbagekobling til original sag når punktet afkrydses.
    - Deling via e-mail/SMS (native share-sheet).
-   - Valgfri status-tilbagekobling til den originale sag (marker som udført/arkiveret).
-   - AI: smart deduplikering, auto-gruppering, opsummering til deling.
-   - Separat "Aktionslister" fane med gemte, navngivne lister og dynamiske søgebaserede lister.
+   - AI: smart deduplikering, auto-gruppering, opsummering til deling (altid forslag, aldrig tvang).
+   - Separat "Context Lists" fane med gemte, navngivne lister og dynamiske søgebaserede lister.
+   - Deadlines og påmindelser; notifikationer ved nye matches undgås (for støjende).
    - Se detaljeret case: `docs/backlog-cases/CHECKLIST-001-search-action-list.md`.
+   - Kreativ berigelse: `docs/backlog-cases/CHECKLIST-001-creative-enrichment.md`.
+
+9. [ ] **Context Lists – lokationstriggere (GEOFENCE-001)** — proposed
+   - Aktionslister popper op når brugeren nærmer sig et relevant sted.
+   - Bruger telefonens automatisering (iOS Shortcuts / Android Tasker) + deep links.
+   - Appen tracker IKKE baggrundslokation selv.
+   - Wizard til opsætning af sted, radius og deep link.
+   - Eksempler: indkøbsliste ved butik, aflever pakke ved posthus, hent skjorter i renseri.
+   - Se detaljeret case: `docs/backlog-cases/GEOFENCE-001-location-triggered-lists.md`.
 
 ### P3 – Deling og eksport (øget fleksibilitet)
 8. [x] **Kopiér billede fra sag (COPY-001)**
