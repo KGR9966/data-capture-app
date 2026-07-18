@@ -7,16 +7,16 @@
 
 | Felt | Værdi |
 |---|---|
-| **Build-ID** | `fab85114-d346-4406-8eba-0fa5f9e1b8f1` (Android), `bc7a5b59-aca6-4195-92b3-f4c22ce05e91` (iOS) |
-| **Platform** | Android + iOS preview build |
+| **Build-ID** | *Afventer nyt build* (forrige: `fab85114-d346-4406-8eba-0fa5f9e1b8f1` Android, `bc7a5b59-aca6-4195-92b3-f4c22ce05e91` iOS) |
+| **Platform** | Android + iOS preview build (planlagt) |
 | **Distribution** | Internal (EAS) |
 | **EAS Dashboard** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds |
-| **Android installationslink** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/fab85114-d346-4406-8eba-0fa5f9e1b8f1 |
-| **iOS installationslink** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/bc7a5b59-aca6-4195-92b3-f4c22ce05e91 |
-| **QR-kode** | Scan QR-koden på de respektive EAS build-sider via linksene ovenfor. |
-| **Fokus i dette build** | CHAT-001 chat/kommentarer på items + omdøbning `comment` → `note` |
-| **Git snapshot** | `a5533db` |
-| **Forrige build** | `ebdb8ffc-7cfd-4648-929e-14398e6eb422` |
+| **Android installationslink** | *Opdateres når build er færdigt* (forrige: https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/fab85114-d346-4406-8eba-0fa5f9e1b8f1) |
+| **iOS installationslink** | *Opdateres når build er færdigt* (forrige: https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/bc7a5b59-aca6-4195-92b3-f4c22ce05e91) |
+| **QR-kode** | Findes på EAS build-siden, når build er færdigt. |
+| **Fokus i dette build** | CHAT-001 rettelser (kommentar-afsendelse, "Ingen ansvarlig" redigering) + COPY-001 del/kopiér foto + Google Translate EAS env-variabel + Firestore Security Rules |
+| **Git snapshot** | `c7aeb03` (`v2026.07.15-rc1`) |
+| **Forrige build** | `fab85114-d346-4406-8eba-0fa5f9e1b8f1` / `bc7a5b59-aca6-4195-92b3-f4c22ce05e91` |
 
 ## Hurtigstart – når QR-koden er forsvundet
 
@@ -48,7 +48,7 @@
 4. Tryk installationslinket og scan QR-koden på siden, eller følg anvisningen.
 5. Åbn appen og accepter tilladelser.
 
-## Ændringsoversigt (CHAT-001)
+## Ændringsoversigt (CHAT-001 + COPY-001)
 
 - Ny chat/kommentartråd under hver sag (item) med real-time opdateringer.
 - Roller håndhæves: `viewer` kan ikke skrive kommentarer; `editor`, `admin` og `owner` kan.
@@ -56,13 +56,14 @@
 - Kaskade-sletning: kommentarer slettes automatisk, når en sag slettes.
 - `comment` → `note` omdøbning i item-typer, labels og kategori-forslag.
 - Client-side throttling: maks 1 send pr. 2 sekunder og maks 10 kommentarer pr. minut pr. item.
+- **Rettet i denne RC**: kommentarer kan nu sendes (undefined-værdier fjernes før Firestore-skriv); "Ingen ansvarlig"-knap virker i redigeringstilstand.
 
 ## Kendte begrænsninger
 
 - Push-notifikationer ved nye kommentarer er ikke inkluderet i v1.
 - Redigering af egne kommentarer er ikke inkluderet i v1; brugere kan slette og oprette ny.
 - Server-side rate limiting er ikke implementeret i v1; client-side throttling kan omgås af en manipuleret klient.
-- **Firestore Security Rules er endnu ikke deployet** (se statusfil og release notes); deploy kræver manuelt skridt i Firebase Console eller opsætning af Firebase CLI.
+- **Firestore Security Rules er deployet** manuelt 2026-07-15; automatisk CLI-deploy (AUTO-001) er stadig åben.
 
 ## Når der kommer nyt build
 

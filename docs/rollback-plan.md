@@ -1,41 +1,48 @@
 # Data Capture – Rollback Plan
 
 > Dokumentation over hvordan vi ruller native moduler tilbage og frem igen.
-> Sidst opdateret: 2026-07-08
+> Sidst opdateret: 2026-07-15
 
 ---
 
 ## Baggrund
 
-Vi har installeret native moduler som kræver nyt EAS build:
+Native moduler installeret per release-kandidat `v2026.07.15-rc1`:
 - `@react-native-firebase/app`
+- `@react-native-firebase/auth`
+- `@react-native-firebase/firestore`
 - `@react-native-firebase/storage`
 - `expo-mlkit-ocr`
 - `expo-clipboard`
-- `@gabriel-sisjr/react-native-background-location`
-- `react-native-background-geolocation`
+- `react-native-share` (nyt i COPY-001)
+- `@gabriel-sisjr/react-native-background-location` (pt. ikke aktivt brugt)
+- `react-native-background-geolocation` (pt. ikke aktivt brugt)
 
-For at teste deep links uden at bruge et build, ruller vi midlertidigt native modulerne tilbage.
+Når nye native moduler tilføjes (f.eks. `react-native-share`), kræves et nyt EAS build; OTA (`eas update`) er ikke tilstrækkeligt.
 
 ---
 
 ## Native-modul tilstand A: Alle native moduler installeret (til fremtidigt all-in build)
 
-### package.json dependencies
+### package.json dependencies (per `v2026.07.15-rc1`)
 ```json
 "@gabriel-sisjr/react-native-background-location": "^1.0.0",
 "@react-native-firebase/app": "^25.1.0",
+"@react-native-firebase/auth": "^25.1.0",
+"@react-native-firebase/firestore": "^25.1.0",
 "@react-native-firebase/storage": "^25.1.0",
 "expo-clipboard": "~57.0.0",
 "expo-mlkit-ocr": "^0.2.7",
 "react-native-background-geolocation": "^5.3.0",
+"react-native-share": "^12.3.1"
 ```
 
-### app.json plugins
+### app.json plugins (per `v2026.07.15-rc1`)
 ```json
 "@react-native-firebase/app",
 "expo-mlkit-ocr",
-"react-native-background-geolocation"
+"react-native-background-geolocation",
+["react-native-share", {}]
 ```
 
 ### app.json iOS infoPlist additions

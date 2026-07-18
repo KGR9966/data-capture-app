@@ -77,11 +77,12 @@
    - Tildel en ansvarlig til hvert item.
    - Vis ansvarlig i Board-liste og item-detalje.
    - (Filtrer Board på "Mine sager" – udskudt til Phase 2.)
-7. [ ] **Chat / kommentarer på indlæg (CHAT-001)** — in-progress
+7. [x] **Chat / kommentarer på indlæg (CHAT-001)**
    - Kommentar-tråd under hvert item.
    - Understøtter 2 eller flere deltagere.
    - Notifikation ved nye kommentarer (udskudt; data-model forberedes).
    - Omdøb item-type `comment` → `note` i hele appen; legacy `type: "comment"` vises som "Notat".
+   - Rettelser: kommentar-afsendelse og "Ingen ansvarlig" redigering virker i RC `v2026.07.15-rc1`.
 
 ### P3 – Afstemning og engagement
 8. [ ] **Afstemning med genbrug fra Meetup-appen**
@@ -90,8 +91,10 @@
    - Resultater synlige for projektmedlemmer.
 
 ### P3 – Deling og eksport (øget fleksibilitet)
-8. [ ] **Kopiér billede fra sag**
-   - Mulighed for at kopiere/viddele et foto fra item-detalje til udklipsholder eller anden app.
+8. [x] **Kopiér billede fra sag (COPY-001)**
+   - Mulighed for at kopiere et foto fra item-detalje til udklipsholder.
+   - Mulighed for at dele et foto via native share-sheet.
+   - Implementeret med `react-native-share` og `expo-clipboard` i RC `v2026.07.15-rc1`.
 9. [ ] **Eksport og deling af tekst, oversættelser og billeder**
    - Del item-indhold, OCR-tekst, oversættelser og fotos via native share-sheet, mail eller SMS.
    - Understøtter både tekst og medier.

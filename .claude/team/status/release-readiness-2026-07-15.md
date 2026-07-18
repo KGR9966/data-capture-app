@@ -15,9 +15,9 @@ metadata:
 | Felt | Værdi |
 |---|---|
 | Branch | `master` |
-| Commit | `93b702b` |
+| Commit | `c7aeb03` |
 | Tag | `v2026.07.15-rc1` |
-| Commit message | `feat: COPY-001 share/copy photo + CHAT-001 note fixes + Firestore rules update` |
+| Commit message | `docs: add release readiness checklist for 2026-07-15 RC1` |
 | Baseline tag | `baseline-chat-feature-2026-07-15` (`9c7b204`) |
 
 ---
@@ -28,13 +28,13 @@ metadata:
 |---|---|---|---|
 | 1 | Code committed and tagged | [x] | Commit `93b702b`, tag `v2026.07.15-rc1` oprettet. |
 | 2 | EAS env variables verified (`EXPO_PUBLIC_GOOGLE_TRANSLATE_API_KEY`) | [ ] | Lokal `.env` indeholder nøglen. `project-services-register.md` angiver EAS env oprettet for production/preview/development. Interaktiv EAS CLI-verifikation (`eas env:list`) kunne ikke køres non-interaktivt. |
-| 3 | Native prebuild validates | [x] | `npx expo prebuild --no-install` gennemført uden fejl. |
-| 4 | TypeScript / lint passes | [x] | `npx tsc --noEmit` ✅, `npx expo lint` ✅. |
-| 5 | Runtime smoke tests pass | [ ] | Automatiske gates bestået. Fysiske enheds-smoke-tests (opret projekt, item, kommentar, del foto) er ikke kørt. |
+| 3 | Native prebuild validates | [x] | `npx expo prebuild --no-install` gennemført uden fejl for Android; plugin `react-native-share` konfigureret korrekt. |
+| 4 | TypeScript / lint passes | [x] | `npx tsc --noEmit` ✅, `npx expo lint` ✅, `node scripts/release-gate.js` ✅. |
+| 5 | Runtime smoke tests pass | [ ] | Automatiske gates bestået. Fysiske enheds-smoke-tests afventer nyt build eller lokal dev-client. |
 | 6 | Firestore rules deployed and smoke-tested | [ ] | `team-status.md` angiver manuelt deployet og publishet 2026-07-15. Ingen smoke-test-rapport set. `firestore.rules` / `firebase.json` til automatisk CLI-deploy findes ikke i repoet endnu (AUTO-001 åben). |
 | 7 | PO approval for build obtained | [ ]] | Afventer PO-go. |
 | 8 | Build profile selected | [x] | `preview` anbefales til intern test (internal distribution, Android APK + iOS). Afventer PO-go. |
-| 9 | Rollback plan (tag + restore known-good config) | [x] | Tag `v2026.07.15-rc1` + baseline `baseline-chat-feature-2026-07-15` findes. `docs/rollback-plan.md` findes, men er forældet (sidst opdateret 2026-07-08) og dækker ikke COPY-001 / react-native-share. |
+| 9 | Rollback plan (tag + restore known-good config) | [x] | Tag `v2026.07.15-rc1` + baseline `baseline-chat-feature-2026-07-15` findes. `docs/rollback-plan.md` opdateret 2026-07-15 med `react-native-share` og COPY-001. |
 
 ---
 
@@ -44,12 +44,12 @@ metadata:
 
 | Fil | Findes | Dækker seneste ændringer | Bemærkning |
 |---|---|---|---|
-| `docs/backlog.md` | ✅ | Delvist | Nævner CHAT-001 og `comment`→`note`. COPY-001 står stadig som ikke-gennemført (P3) trods implementering. |
-| `docs/current-build.md` | ✅ | Nej | Reflekterer `a5533db` / CHAT-001 build. Er ikke opdateret med `93b702b` / COPY-001 / ny nøglekonfiguration. |
+| `docs/backlog.md` | ✅ | Ja | Opdateret: CHAT-001 markeret færdig; COPY-001 markeret færdig i P3. |
+| `docs/current-build.md` | ✅ | Ja | Opdateret med `c7aeb03` / `v2026.07.15-rc1`, COPY-001, Google Translate EAS env og CHAT-001 rettelser. |
 | `docs/firestore-rules.md` | ✅ | Ja | Indeholder CHAT-001 kommentar-regler og catch-all. Nævner at server-side rate limiting ikke er i v1. |
 | `docs/user-guide.md` | ✅ | Delvist | Beskriver kommentarer / roller. Omtaler ikke COPY-001 del/kopiér foto. |
 | `docs/privacy-notes.md` | ✅ | Ja | Opdateret med CHAT-001 persondatafelter, opbevaring, synlighed, retention og PO-beslutning om redigering. |
-| `docs/rollback-plan.md` | ✅ | Nej | Forældet (2026-07-08); dækker ikke `react-native-share` / COPY-001. |
+| `docs/rollback-plan.md` | ✅ | Ja | Opdateret 2026-07-15 med `react-native-share` og COPY-001.
 
 ### Team-filer (`C:\Users\kimgr\.claude\projects\C--cloud-agent\.claude\team\`)
 
@@ -102,8 +102,7 @@ eas build --profile preview --platform ios
 
 1. **EAS env verification:** `EXPO_PUBLIC_GOOGLE_TRANSLATE_API_KEY` er påstået konfigureret, men ikke verificeret via CLI. Hvis nøglen ikke er bundet korrekt, vil oversættelses-API fejle i buildet.
 2. **Firestore rules smoke-test:** Reglerne er påstået deployet, men der er ingen dokumenteret smoke-test efter deploy. Anbefalet: opret projekt, opret item, opret kommentar, slet item.
-3. **Rollback-plan forældet:** `docs/rollback-plan.md` skal opdateres til at dække `react-native-share` og COPY-001 før release.
-4. **PO-go:** Ingen build må køres før PO-go ifølge SOP §2.1.
+3. **PO-go:** Ingen build må køres før PO-go ifølge SOP §2.1.
 
 ---
 
@@ -115,6 +114,4 @@ Koden er committed, tagged, og alle automatiske gates er grønne. Men følgende 
 
 - Verificer `EXPO_PUBLIC_GOOGLE_TRANSLATE_API_KEY` i EAS (f.eks. via `eas env:list` efter login).
 - Smoke-test Firestore Security Rules på en fysisk enhed eller emulator.
-- Opdater `docs/current-build.md` med `93b702b` / `v2026.07.15-rc1` og COPY-001 ændringer.
-- Opdater `docs/rollback-plan.md` til at dække COPY-001 / react-native-share.
 - Få PO-go til build.
