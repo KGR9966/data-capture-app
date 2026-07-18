@@ -1,7 +1,7 @@
 # Data Capture – Aktuelt build og hurtigstart
 
 > Levende dokument med det seneste udviklings-build, installationslink og start-procedure.
-> Sidst opdateret: 2026-07-15
+> Sidst opdateret: 2026-07-18
 
 ## Aktuelt dev build
 
@@ -14,7 +14,7 @@
 | **Android EAS build-side** | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/e823cf07-aa97-421e-88ed-98e86b33c70f) |
 | **Android direkte download (APK)** | *Afventer færdiggørelse af build* |
 | **iOS EAS build-side** | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/0323bbbb-bee5-4fb0-a040-2cfb4f34bf64) |
-| **iOS direkte download (IPA)** | *Afventer færdiggørelse af build* |
+| **iOS direkte download (IPA)** | [Download iOS IPA](https://expo.dev/artifacts/eas/Psrqp4nWJUYnQHjxn7G_pn70JSOiQK6PiM9slWVmays.ipa) |
 | **QR-kode** | Scan QR-koden på de respektive EAS build-sider via linksene ovenfor. |
 | **Fokus i dette build** | B+C quick wins og Context Lists: del tekst/oversættelser, avanceret søgning, stemmekommandoer, nyt "Lister"-modul med status-synkronisering |
 | **Git snapshot** | `f85bda8` (`v2026.07.18-rc2`) |
