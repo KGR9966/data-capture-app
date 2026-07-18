@@ -27,7 +27,7 @@ metadata:
 | # | Item | Status | Bemærkning |
 |---|---|---|---|
 | 1 | Code committed and tagged | [x] | Commit `c8f43ed`, tag `v2026.07.15-rc1` oprettet. |
-| 2 | EAS env variables verified (`EXPO_PUBLIC_GOOGLE_TRANSLATE_API_KEY`) | [x] | Verificeret via `eas env:list` for production, preview og development. Nøgle er til stede med `sensitive` visibility i alle tre miljøer. |
+| 2 | EAS env variables verified (`EXPO_PUBLIC_GOOGLE_TRANSLATE_API_KEY`) | [x] | Opdateret 2026-07-15 med ny nøgle `AIzaSyCjfpOQE-7YlVroPbRhx2O4hDbNobAazYI` i production, preview og development. Testet OK mod Cloud Translation API. Gamle nøgle returnerede 403 og bør slettes. |
 | 3 | Native prebuild validates | [x] | `npx expo prebuild --no-install` gennemført uden fejl for Android; plugin `react-native-share` konfigureret korrekt. |
 | 4 | TypeScript / lint passes | [x] | `npx tsc --noEmit` ✅, `npx expo lint` ✅, `node scripts/release-gate.js` ✅. |
 | 5 | Runtime smoke tests pass | [ ] | Automatiske gates bestået. Fysiske enheds-smoke-tests afventer nyt build eller lokal dev-client. |
