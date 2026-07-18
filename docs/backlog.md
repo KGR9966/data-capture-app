@@ -51,21 +51,20 @@
 ## I gang / afventer PO-test
 
 - [x] Installer ny iOS build på iPhone 13 / iPhone 17 / iPad med CHAT-001 + COPY-001 + ny Google Translate nøgle
-- [ ] Kør acceptance test: kommentarer, COPY-001, oversættelse, opret/rediger item
+- [x] Kør acceptance test: kommentarer, COPY-001, oversættelse, opret/rediger item
 - [x] Registrér push-token på fysiske enheder
 - [x] Modtag test-push-notifikation på fysisk enhed (iPad)
 - [ ] Byg Android development build
+- [ ] Installér og test B+C build på iPhone 13 / iPhone 17 / iPad
 
 ## Prioriteret backlog – næste skridt
 
 > Anbefaling fra Master Agent, baseret på stabilitet, brugerværdi og afhængigheder.
 
 ### P1 – Stabilitet og installation (gør appen brugbar på alle enheder)
-1. [ ] **iPad-installation og verifikation**
-   - Åben opgave: Safari/dev-link eller EAS build installeres på iPad.
-   - Blokeret af: usikkerhed om dev-link eller build-problem på iPad.
-2. [ ] **iPhone Pro 17 installation og verifikation**
-3. [ ] **Test push-notifikationer på fysiske enheder**
+1. [x] **iPad-installation og verifikation**
+2. [x] **iPhone Pro 17 installation og verifikation**
+3. [x] **Test push-notifikationer på fysiske enheder**
    - Se detaljer under "Push-notifikationstest – hvad skal du gøre?" nedenfor.
 4. [ ] **Byg Android development build**
 
@@ -86,7 +85,7 @@
    - Rettelser: kommentar-afsendelse og "Ingen ansvarlig" redigering virker i RC `v2026.07.15-rc1`.
 
 ### P2 – Samarbejde, søgning og eksekvering
-8. [ ] **Forbedret søgning (SEARCH-001)** — proposed
+8. [x] **Forbedret søgning (SEARCH-001)** — implemented
    - Præcis ordsøgning: `*vand*` finder kun hele ordet, ikke "Vandkande".
    - Frasesøgning: `"vandkande med blomster"`.
    - Negation: `vand -kande`.
@@ -96,14 +95,14 @@
    - Fuzzy søgning (fase 2).
    - Se detaljeret case: `docs/backlog-cases/SEARCH-001-search-improvements.md`.
 
-9. [ ] **Context Lists – aktionslister fra søgning (CHECKLIST-001)** — proposed
+9. [x] **Context Lists – aktionslister fra søgning (CHECKLIST-001)** — implemented (MVP)
    - Omdan søgeresultater til navngivne, vedligeholdelige checklister med flueben.
    - Hvert listepunkt er knyttet til en reel sag; nye punkter oprettes først som sager.
    - Deduplikering, alfabetisk sortering af åbne punkter, udførte punkter i bunden.
    - Automatisk status-tilbagekobling til original sag når punktet afkrydses.
    - Deling via e-mail/SMS (native share-sheet).
-   - AI: smart deduplikering, auto-gruppering, opsummering til deling (altid forslag, aldrig tvang).
-   - Separat "Context Lists" fane med gemte, navngivne lister og dynamiske søgebaserede lister.
+   - AI: smart deduplikering, auto-gruppering, opsummering til deling (altid forslag, aldrig tvang) — fase 2.
+   - Separat "Context Lists" fane med gemte, navngivne lister og dynamiske søgebaserede lister — dynamiske lister fase 2.
    - Deadlines og påmindelser; notifikationer ved nye matches undgås (for støjende).
    - Se detaljeret case: `docs/backlog-cases/CHECKLIST-001-search-action-list.md`.
    - Kreativ berigelse: `docs/backlog-cases/CHECKLIST-001-creative-enrichment.md`.
@@ -117,7 +116,7 @@
    - Se detaljeret case: `docs/backlog-cases/GEOFENCE-001-location-triggered-lists.md`.
 
 ### P2 – Stemmeindtaling (forbedret)
-11. [ ] **Forbedret stemmeindtaling (VOICE-001)** — proposed
+11. [x] **Forbedret stemmeindtaling (VOICE-001)** — implemented
    - Kommandoord under indtaling: "skift" (ny linje), "punktum", "komma", "slet sidste ord", "fortryd", "gem", "annuller".
    - Post-processing: mellemrum efter tegnsætning, fjern dobbeltmellemrum, trim.
    - Redigerbart preview før gem (løser auto-save problem).
@@ -129,7 +128,7 @@
    - Mulighed for at kopiere et foto fra item-detalje til udklipsholder.
    - Mulighed for at dele et foto via native share-sheet.
    - Implementeret med `react-native-share` og `expo-clipboard` i RC `v2026.07.15-rc1`.
-13. [ ] **Del tekst og oversættelser fra sag**
+13. [x] **Del tekst og oversættelser fra sag**
    - Del original OCR-tekst og oversat tekst via native share-sheet eller clipboard.
    - Tilføj del-knapper i item-detail og VoiceCaptureModal.
 14. [ ] **Eksport og deling af kombineret item-indhold**

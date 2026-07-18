@@ -19,8 +19,9 @@ import { useTheme } from "../contexts/ThemeContext";
 import { Comment, createComment, deleteComment, subscribeToComments } from "../services/comments";
 import { CaptureItem, deleteItem, getItemById, ItemStatus, ItemType, updateItem } from "../services/items";
 import { ProjectMember, subscribeToProjectMembers } from "../services/projects";
-import { copyImageToClipboard, shareImage } from "../services/share";
+import { copyImageToClipboard, shareImage, shareText } from "../services/share";
 import { canAssignItems, canComment, canDeleteItem, canEditItem, getProjectRole, ProjectRole } from "../services/roles";
+import { copyToClipboard } from "../services/deeplinks";
 
 function formatDate(ts: any) {
   if (!ts) return "Ukendt tidspunkt";
@@ -96,6 +97,7 @@ export default function ItemDetailScreen() {
   const [copyLoading, setCopyLoading] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const [textCopied, setTextCopied] = useState(false);
   const isImageActionLoading = copyLoading || shareLoading;
   const isDark = theme === "dark";
   const styles = themedStyles(isDark);
@@ -366,6 +368,32 @@ export default function ItemDetailScreen() {
     }
   };
 
+  const handleShareContent = async () => {
+    if (!item?.content) return;
+    try {
+      await shareText(
+        item.content,
+        item.title,
+        `Tekst fra "${item.title}" i Data Capture`
+      );
+    } catch (error) {
+      console.log("Share content error", error);
+      Alert.alert("Fejl", "Kunne ikke dele teksten. Tjek din forbindelse.");
+    }
+  };
+
+  const handleCopyContent = async () => {
+    if (!item?.content) return;
+    try {
+      await copyToClipboard(item.content);
+      setTextCopied(true);
+      setTimeout(() => setTextCopied(false), 1500);
+    } catch (error) {
+      console.log("Copy content error", error);
+      Alert.alert("Fejl", "Kunne ikke kopiere teksten.");
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -471,6 +499,22 @@ export default function ItemDetailScreen() {
       {item.content ? (
         <View style={styles.contentCard}>
           <Text style={styles.content}>{item.content}</Text>
+          <View style={styles.textActionsRow}>
+            <TouchableOpacity
+              style={[styles.textActionButton, styles.buttonSecondary]}
+              onPress={handleCopyContent}
+            >
+              <Text style={styles.textActionButtonText}>
+                {textCopied ? "Kopieret!" : "Kopiér tekst"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.textActionButton, styles.buttonPrimary]}
+              onPress={handleShareContent}
+            >
+              <Text style={styles.textActionButtonPrimaryText}>Del tekst</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       ) : null}
 
@@ -874,6 +918,27 @@ const themedStyles = (isDark: boolean) =>
       fontSize: 16,
       color: isDark ? "#e2e8f0" : "#0f172a",
       lineHeight: 24,
+    },
+    textActionsRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 12,
+    },
+    textActionButton: {
+      flex: 1,
+      borderRadius: 10,
+      padding: 10,
+      alignItems: "center",
+    },
+    textActionButtonText: {
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      fontWeight: "600",
+      fontSize: 13,
+    },
+    textActionButtonPrimaryText: {
+      color: "#0f172a",
+      fontWeight: "600",
+      fontSize: 13,
     },
     metaCard: {
       backgroundColor: isDark ? "#1e293b" : "#ffffff",

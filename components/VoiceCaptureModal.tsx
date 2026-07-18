@@ -7,7 +7,6 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -20,6 +19,7 @@ import { useVoiceRecognition } from "../hooks/useVoiceRecognition";
 import { suggestCategory } from "../services/categories";
 import { copyToClipboard } from "../services/deeplinks";
 import { ItemType } from "../services/items";
+import { shareText } from "../services/share";
 import {
   pickImage,
   takePhoto,
@@ -29,6 +29,7 @@ import { extractTextFromImage } from "../services/ocr";
 import { ProjectMember, subscribeToProjectMembers } from "../services/projects";
 import { canAssignOthers, canAssignItems, getProjectRole, ProjectRole } from "../services/roles";
 import { getLanguageLabel, SUPPORTED_LANGUAGES, translateText } from "../services/translation";
+import { processVoiceCommands } from "../services/voiceCommands";
 
 const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   idea: "Idé",
@@ -138,8 +139,6 @@ export default function VoiceCaptureModal({
   const [uploading, setUploading] = useState(false);
   const [recognizingText, setRecognizingText] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [autoSave, setAutoSave] = useState(true);
-  const [autoSaveCountdown, setAutoSaveCountdown] = useState(0);
   const [ocrOriginal, setOcrOriginal] = useState("");
   const [ocrTranslated, setOcrTranslated] = useState("");
   const [ocrSourceLang, setOcrSourceLang] = useState("auto");
@@ -151,16 +150,8 @@ export default function VoiceCaptureModal({
   const [assignedTo, setAssignedTo] = useState<string>("");
   const [assignedToName, setAssignedToName] = useState<string>("");
 
-  const autoSaveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const editedRef = useRef(false);
-
-  const clearAutoSaveTimer = () => {
-    if (autoSaveIntervalRef.current) {
-      clearInterval(autoSaveIntervalRef.current);
-      autoSaveIntervalRef.current = null;
-    }
-    setAutoSaveCountdown(0);
-  };
+  const stopPendingRef = useRef(false);
 
   const {
     transcript,
@@ -171,9 +162,36 @@ export default function VoiceCaptureModal({
   } = useVoiceRecognition({
     locale: "da-DK",
     onResult: (text, isFinal) => {
-      const parsed = parseVoiceCommand(text);
+      const commands = processVoiceCommands(text);
+
+      if (commands.shouldCancel) {
+        stopRecording();
+        onClose();
+        return;
+      }
+      if (commands.shouldClear) {
+        resetTranscript();
+        setContent("");
+        return;
+      }
+
+      let processedText = commands.text;
+      if (stopPendingRef.current) {
+        // ignorer videre input efter stop-kommando indtil optagelse slutter
+        processedText = content;
+      }
+
+      const parsed = parseVoiceCommand(processedText);
       setContent(parsed.cleanedText);
+
+      if (commands.shouldStop && !stopPendingRef.current) {
+        stopPendingRef.current = true;
+        stopRecording();
+        return;
+      }
+
       if (isFinal) {
+        stopPendingRef.current = false;
         if (parsed.itemType) setItemType(parsed.itemType);
         const suggested = parsed.category
           ? parsed.category
@@ -207,8 +225,8 @@ export default function VoiceCaptureModal({
         setCopiedTranslated(false);
         setAssignedTo("");
         setAssignedToName("");
-        setAutoSave(true);
         editedRef.current = false;
+        stopPendingRef.current = false;
         resetTranscript();
       }, 0);
       return () => clearTimeout(timeout);
@@ -242,11 +260,6 @@ export default function VoiceCaptureModal({
     ? getProjectRole({ id: projectId, ownerId: "" }, null, members)
     : null;
 
-  useEffect(() => {
-    return () => {
-      clearAutoSaveTimer();
-    };
-  }, []);
 
   const handleSaveInternal = useCallback(() => {
     const finalContent = content.trim() || transcript.trim();
@@ -254,7 +267,6 @@ export default function VoiceCaptureModal({
       title.trim() || finalContent.split(" ").slice(0, 6).join(" ");
     if (!finalTitle && !finalContent) return;
 
-    clearAutoSaveTimer();
     setIsProcessing(true);
     onSave({
       type: itemType,
@@ -281,35 +293,13 @@ export default function VoiceCaptureModal({
     onClose,
   ]);
 
-  const startAutoSaveCountdown = useCallback(() => {
-    if (!autoSave || autoSaveIntervalRef.current) return;
-    setAutoSaveCountdown(5);
-    autoSaveIntervalRef.current = setInterval(() => {
-      setAutoSaveCountdown((prev) => Math.max(0, prev - 1));
-    }, 1000);
-  }, [autoSave]);
-
-  useEffect(() => {
-    if (autoSaveCountdown === 0) return;
-    if (autoSaveCountdown <= 1 && autoSaveIntervalRef.current && !editedRef.current) {
-      clearInterval(autoSaveIntervalRef.current);
-      autoSaveIntervalRef.current = null;
-      handleSaveInternal();
-    }
-  }, [autoSaveCountdown, handleSaveInternal]);
-
-  useEffect(() => {
-    if (!isRecording && content.trim() && autoSave && !editedRef.current) {
-      startAutoSaveCountdown();
-    }
-  }, [isRecording, content, autoSave, startAutoSaveCountdown]);
-
   const handleToggleRecording = () => {
     if (isRecording) {
       stopRecording();
     } else {
       editedRef.current = false;
-      clearAutoSaveTimer();
+      stopPendingRef.current = false;
+      resetTranscript();
       startRecording();
     }
   };
@@ -364,7 +354,6 @@ export default function VoiceCaptureModal({
   const handleReadTextFromImage = async () => {
     if (!mediaUri) return;
     setRecognizingText(true);
-    clearAutoSaveTimer();
     try {
       const text = await extractTextFromImage(mediaUri);
       if (text) {
@@ -395,7 +384,6 @@ export default function VoiceCaptureModal({
   const handleTranslateOcr = async () => {
     if (!ocrOriginal.trim()) return;
     setTranslating(true);
-    clearAutoSaveTimer();
     try {
       const translated = await translateText(ocrOriginal, ocrTargetLang, ocrSourceLang);
       setOcrTranslated(translated);
@@ -421,6 +409,7 @@ export default function VoiceCaptureModal({
 
   const handleSave = () => {
     editedRef.current = true;
+    stopPendingRef.current = false;
     handleSaveInternal();
   };
 
@@ -447,19 +436,10 @@ export default function VoiceCaptureModal({
             </Text>
 
             <View style={styles.rowBetween}>
-              <Text style={styles.toggleLabel}>Auto-gem efter 5 sek.</Text>
-              <Switch
-                value={autoSave}
-                onValueChange={setAutoSave}
-                trackColor={{ false: isDark ? "#334155" : "#cbd5e1", true: "#38bdf8" }}
-                thumbColor="#ffffff"
-              />
-            </View>
-            {autoSaveCountdown > 0 ? (
-              <Text style={styles.countdownText}>
-                Gemmer om {autoSaveCountdown} sek...
+              <Text style={styles.toggleLabel}>
+                Sig punktum, komma, skift, slet sidste ord, fortryd eller gem
               </Text>
-            ) : null}
+            </View>
 
             <View style={styles.typeRow}>
               {(
@@ -514,7 +494,6 @@ export default function VoiceCaptureModal({
               value={content}
               onChangeText={(text) => {
                 editedRef.current = true;
-                clearAutoSaveTimer();
                 setContent(text);
               }}
               multiline
@@ -528,7 +507,6 @@ export default function VoiceCaptureModal({
               value={title}
               onChangeText={(text) => {
                 editedRef.current = true;
-                clearAutoSaveTimer();
                 setTitle(text);
               }}
             />
@@ -540,7 +518,6 @@ export default function VoiceCaptureModal({
               value={category}
               onChangeText={(text) => {
                 editedRef.current = true;
-                clearAutoSaveTimer();
                 setCategory(text);
               }}
             />
@@ -687,18 +664,32 @@ export default function VoiceCaptureModal({
 
                 <View style={styles.ocrTextHeader}>
                   <Text style={styles.ocrLangLabel}>Original OCR-tekst</Text>
-                  <TouchableOpacity
-                    onPress={async () => {
-                      await copyToClipboard(ocrOriginal);
-                      setCopiedOriginal(true);
-                      setTimeout(() => setCopiedOriginal(false), 1500);
-                    }}
-                    hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-                  >
-                    <Text style={[styles.ocrCopyLink, copiedOriginal && styles.ocrCopyLinkActive]}>
-                      {copiedOriginal ? "Kopieret!" : "Kopiér"}
-                    </Text>
-                  </TouchableOpacity>
+                  <View style={styles.ocrActionLinks}>
+                    <TouchableOpacity
+                      onPress={async () => {
+                        await copyToClipboard(ocrOriginal);
+                        setCopiedOriginal(true);
+                        setTimeout(() => setCopiedOriginal(false), 1500);
+                      }}
+                      hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+                    >
+                      <Text style={[styles.ocrCopyLink, copiedOriginal && styles.ocrCopyLinkActive]}>
+                        {copiedOriginal ? "Kopieret!" : "Kopiér"}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={async () => {
+                        try {
+                          await shareText(ocrOriginal, "OCR-tekst", "OCR-tekst fra Data Capture");
+                        } catch (error) {
+                          console.log("Share OCR original error", error);
+                        }
+                      }}
+                      hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.ocrCopyLink}>Del</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 <TextInput
                   style={[styles.input, styles.textArea, styles.ocrOriginalInput]}
@@ -713,18 +704,36 @@ export default function VoiceCaptureModal({
                   <>
                     <View style={styles.ocrTextHeader}>
                       <Text style={styles.ocrLangLabel}>Oversat tekst</Text>
-                      <TouchableOpacity
-                        onPress={async () => {
-                          await copyToClipboard(ocrTranslated);
-                          setCopiedTranslated(true);
-                          setTimeout(() => setCopiedTranslated(false), 1500);
-                        }}
-                        hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-                      >
-                        <Text style={[styles.ocrCopyLink, copiedTranslated && styles.ocrCopyLinkActive]}>
-                          {copiedTranslated ? "Kopieret!" : "Kopiér"}
-                        </Text>
-                      </TouchableOpacity>
+                      <View style={styles.ocrActionLinks}>
+                        <TouchableOpacity
+                          onPress={async () => {
+                            await copyToClipboard(ocrTranslated);
+                            setCopiedTranslated(true);
+                            setTimeout(() => setCopiedTranslated(false), 1500);
+                          }}
+                          hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+                        >
+                          <Text style={[styles.ocrCopyLink, copiedTranslated && styles.ocrCopyLinkActive]}>
+                            {copiedTranslated ? "Kopieret!" : "Kopiér"}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={async () => {
+                            try {
+                              await shareText(
+                                ocrTranslated,
+                                "Oversat tekst",
+                                "Oversat tekst fra Data Capture"
+                              );
+                            } catch (error) {
+                              console.log("Share OCR translated error", error);
+                            }
+                          }}
+                          hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.ocrCopyLink}>Del</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                     <TextInput
                       style={[styles.input, styles.textArea, styles.ocrTranslatedInput]}
@@ -1034,6 +1043,10 @@ const themedStyles = (isDark: boolean) =>
       justifyContent: "space-between",
       alignItems: "center",
       marginBottom: 2,
+    },
+    ocrActionLinks: {
+      flexDirection: "row",
+      gap: 12,
     },
     ocrCopyLink: {
       fontSize: 12,

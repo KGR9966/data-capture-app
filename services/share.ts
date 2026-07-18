@@ -72,6 +72,19 @@ export async function shareImage(
   }
 }
 
+export async function shareText(
+  text: string,
+  title?: string,
+  subject?: string
+): Promise<void> {
+  await Share.open({
+    message: text,
+    title,
+    subject,
+    failOnCancel: false,
+  });
+}
+
 export async function cleanupCachedImage(localUri: string): Promise<void> {
   try {
     const cachedFile = new File(localUri);

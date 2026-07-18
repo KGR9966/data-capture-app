@@ -1,0 +1,127 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Hjælpefunktioner
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserId() {
+      return request.auth.uid;
+    }
+
+    // Projekter
+    match /projects/{projectId} {
+      allow read: if isAuthenticated()
+                   && (resource.data.ownerId == getUserId()
+                       || getUserId() in resource.data.members
+                       || getUserId() in resource.data.roles);
+
+      allow create: if isAuthenticated() && request.resource.data.ownerId == getUserId();
+
+      allow update: if isAuthenticated()
+                     && (resource.data.ownerId == getUserId()
+                         || (getUserId() in resource.data.roles
+                             && request.resource.data.roles.get(getUserId(), null) in ["owner", "admin"]));
+
+      allow delete: if isAuthenticated() && resource.data.ownerId == getUserId();
+    }
+
+    // Sager / items
+    match /items/{itemId} {
+      allow read: if isAuthenticated()
+                   && exists(/databases/$(database)/documents/projects/$(resource.data.projectId))
+                   && (get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.ownerId == getUserId()
+                       || getUserId() in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.members
+                       || getUserId() in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.roles);
+
+      allow create: if isAuthenticated()
+                     && request.resource.data.keys().hasAll(["projectId", "createdBy"])
+                     && exists(/databases/$(database)/documents/projects/$(request.resource.data.projectId))
+                     && (get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.ownerId == getUserId()
+                         || (getUserId() in get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.roles
+                             && ["owner", "admin", "editor"].hasAny([get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.roles.get(getUserId(), null)])));
+
+      allow update: if isAuthenticated()
+                     && exists(/databases/$(database)/documents/projects/$(resource.data.projectId))
+                     && (get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.ownerId == getUserId()
+                         || (getUserId() in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.roles
+                             && ["owner", "admin", "editor"].hasAny([get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.roles.get(getUserId(), null)]))
+                         || (resource.data.assignedTo == getUserId()
+                             && getUserId() in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.roles
+                             && get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.roles.get(getUserId(), null) == "editor"));
+
+      allow delete: if isAuthenticated()
+                     && exists(/databases/$(database)/documents/projects/$(resource.data.projectId))
+                     && (get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.ownerId == getUserId()
+                         || (getUserId() in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.roles
+                             && ["owner", "admin"].hasAny([get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.roles.get(getUserId(), null)])));
+    }
+
+    // Kommentarer
+    match /items/{itemId}/comments/{commentId} {
+      allow read: if isAuthenticated()
+                   && exists(/databases/$(database)/documents/items/$(itemId))
+                   && exists(/databases/$(database)/documents/projects/$(get(/databases/$(database)/documents/items/$(itemId)).data.projectId))
+                   && (get(/databases/$(database)/documents/projects/$(get(/databases/$(database)/documents/items/$(itemId)).data.projectId)).data.ownerId == getUserId()
+                       || getUserId() in get(/databases/$(database)/documents/projects/$(get(/databases/$(database)/documents/items/$(itemId)).data.projectId)).data.members
+                       || getUserId() in get(/databases/$(database)/documents/projects/$(get(/databases/$(database)/documents/items/$(itemId)).data.projectId)).data.roles);
+
+      allow create: if isAuthenticated()
+                     && request.resource.data.keys().hasAll(["projectId", "itemId", "text"])
+                     && exists(/databases/$(database)/documents/projects/$(request.resource.data.projectId))
+                     && (get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.ownerId == getUserId()
+                         || (getUserId() in get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.roles
+                             && ["owner", "admin", "editor"].hasAny([get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.roles.get(getUserId(), null)])));
+
+      allow update, delete: if isAuthenticated()
+                             && exists(/databases/$(database)/documents/items/$(itemId))
+                             && (resource.data.authorId == getUserId()
+                                 || (get(/databases/$(database)/documents/projects/$(get(/databases/$(database)/documents/items/$(itemId)).data.projectId)).data.ownerId == getUserId())
+                                 || (getUserId() in get(/databases/$(database)/documents/projects/$(get(/databases/$(database)/documents/items/$(itemId)).data.projectId)).data.roles
+                                     && ["owner", "admin"].hasAny([get(/databases/$(database)/documents/projects/$(get(/databases/$(database)/documents/items/$(itemId)).data.projectId)).data.roles.get(getUserId(), null)])));
+    }
+
+    // Aktionslister / checklists
+    match /checklists/{checklistId} {
+      allow read: if isAuthenticated()
+                   && (resource.data.ownerId == getUserId()
+                       || getUserId() in resource.data.sharedWith);
+
+      allow create: if isAuthenticated()
+                     && request.resource.data.keys().hasAll(["name", "ownerId"])
+                     && request.resource.data.ownerId == getUserId();
+
+      allow update: if isAuthenticated()
+                     && (resource.data.ownerId == getUserId()
+                         || (getUserId() in resource.data.sharedWith
+                             && resource.data.sharedWith.get(getUserId(), null) in ["owner", "admin", "editor"]));
+
+      allow delete: if isAuthenticated()
+                     && resource.data.ownerId == getUserId();
+    }
+
+    match /checklists/{checklistId}/items/{itemId} {
+      allow read: if isAuthenticated()
+                   && exists(/databases/$(database)/documents/checklists/$(checklistId))
+                   && (get(/databases/$(database)/documents/checklists/$(checklistId)).data.ownerId == getUserId()
+                       || getUserId() in get(/databases/$(database)/documents/checklists/$(checklistId)).data.sharedWith);
+
+      allow create: if isAuthenticated()
+                     && exists(/databases/$(database)/documents/checklists/$(checklistId))
+                     && (get(/databases/$(database)/documents/checklists/$(checklistId)).data.ownerId == getUserId()
+                         || (getUserId() in get(/databases/$(database)/documents/checklists/$(checklistId)).data.sharedWith
+                             && get(/databases/$(database)/documents/checklists/$(checklistId)).data.sharedWith.get(getUserId(), null) in ["owner", "admin", "editor"]));
+
+      allow update, delete: if isAuthenticated()
+                             && exists(/databases/$(database)/documents/checklists/$(checklistId))
+                             && (get(/databases/$(database)/documents/checklists/$(checklistId)).data.ownerId == getUserId()
+                                 || (getUserId() in get(/databases/$(database)/documents/checklists/$(checklistId)).data.sharedWith
+                                     && get(/databases/$(database)/documents/checklists/$(checklistId)).data.sharedWith.get(getUserId(), null) in ["owner", "admin", "editor"]));
+    }
+  }
+}

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -13,8 +14,10 @@ import {
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useVoiceRecognition } from "../../hooks/useVoiceRecognition";
+import { createChecklistFromItems } from "../../services/checklists";
 import { CaptureItem, subscribeToItems } from "../../services/items";
 import { subscribeToProjects } from "../../services/projects";
+import { searchItems } from "../../services/search";
 
 const ITEM_TYPE_LABELS: Record<string, string> = {
   idea: "Idé",
@@ -68,6 +71,7 @@ export default function SearchScreen() {
   const [allItems, setAllItems] = useState<CaptureItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [voiceActive, setVoiceActive] = useState(false);
+  const [creatingChecklist, setCreatingChecklist] = useState(false);
   const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearMaxDurationTimer = () => {
@@ -135,35 +139,23 @@ export default function SearchScreen() {
   }, [user?.uid, user?.email]);
 
   const results = useMemo(() => {
-    if (!query.trim()) return allItems;
-    const terms = query
-      .toLowerCase()
-      .split(/[\s\-_,;|+]+/)
-      .map((t) => t.trim())
-      .filter(Boolean);
-    if (terms.length === 0) return allItems;
-
-    return allItems
-      .map((item) => {
-        const fields = [
-          item.title,
-          item.content,
-          item.category,
-          ITEM_TYPE_LABELS[item.type],
-          ...(item.tags || []),
-        ]
-          .filter((s): s is string => Boolean(s))
-          .map((s) => s.toLowerCase());
-
-        const matches = terms.filter((term) =>
-          fields.some((field) => field.includes(term))
-        ).length;
-        return { item, matches };
-      })
-      .filter(({ matches }) => matches > 0)
-      .sort((a, b) => b.matches - a.matches)
-      .map(({ item }) => item);
+    return searchItems(allItems, query);
   }, [query, allItems]);
+
+  const handleCreateChecklist = async () => {
+    if (results.length === 0) return;
+    const name = `Søgning: ${query.trim() || "alle resultater"}`;
+    setCreatingChecklist(true);
+    try {
+      const { checklist } = await createChecklistFromItems(name, results);
+      router.push(`/checklist?id=${checklist.id}` as any);
+    } catch (error) {
+      console.log("Create checklist error", error);
+      Alert.alert("Fejl", "Kunne ikke oprette aktionslisten.");
+    } finally {
+      setCreatingChecklist(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -171,7 +163,7 @@ export default function SearchScreen() {
       <View style={styles.searchBar}>
         <TextInput
           style={styles.input}
-          placeholder="Søg efter titel, tekst, kategori, type eller flere ord..."
+          placeholder={'Søg: *vand* "frase" type:note kategori:indkøb -kande OR flaske'}
           placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
           value={query}
           onChangeText={setQuery}
@@ -212,9 +204,22 @@ export default function SearchScreen() {
         ) : null}
       </View>
 
-      <Text style={styles.resultCount}>
-        {loading ? "Indlæser..." : `${results.length} resultat${results.length === 1 ? "" : "er"}`}
-      </Text>
+      <View style={styles.resultHeader}>
+        <Text style={styles.resultCount}>
+          {loading ? "Indlæser..." : `${results.length} resultat${results.length === 1 ? "" : "er"}`}
+        </Text>
+        {results.length > 0 ? (
+          <TouchableOpacity
+            style={[styles.createListButton, creatingChecklist && styles.buttonDisabled]}
+            onPress={handleCreateChecklist}
+            disabled={creatingChecklist}
+          >
+            <Text style={styles.createListButtonText}>
+              {creatingChecklist ? "Opretter..." : "Opret aktionsliste"}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
 
       <FlatList
         data={results}
@@ -320,10 +325,29 @@ const themedStyles = (isDark: boolean) =>
     voiceButtonText: {
       fontSize: 16,
     },
+    resultHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 12,
+    },
     resultCount: {
       fontSize: 13,
       color: isDark ? "#94a3b8" : "#64748b",
-      marginBottom: 12,
+    },
+    createListButton: {
+      backgroundColor: "#38bdf8",
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    createListButtonText: {
+      color: "#0f172a",
+      fontWeight: "600",
+      fontSize: 12,
+    },
+    buttonDisabled: {
+      opacity: 0.5,
     },
     list: {
       paddingBottom: 24,

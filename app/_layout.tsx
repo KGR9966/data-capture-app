@@ -19,6 +19,8 @@ export default function RootLayout() {
                 <Stack.Screen name="index" />
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="item" />
+                <Stack.Screen name="checklist" />
+                <Stack.Screen name="open-list" />
               </Stack>
             </ProjectProvider>
             <StatusBar style="auto" />

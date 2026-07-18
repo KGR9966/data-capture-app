@@ -11,8 +11,10 @@
 | **Platform** | Android + iOS preview build |
 | **Distribution** | Internal (EAS) |
 | **EAS Dashboard** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds |
-| **Android installationslink** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/376a3067-cabb-4afe-b49c-e70467177a93 |
-| **iOS installationslink** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/6c3c014c-5f0d-42ca-91b5-3e1b259aff9e |
+| **Android EAS build-side** | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/376a3067-cabb-4afe-b49c-e70467177a93) |
+| **Android direkte download (APK)** | [Download Android APK](https://expo.dev/artifacts/eas/okTC0nIyfcUxLISxZF6p7sQbLSo4zKQGNyqH8aBgBxY.apk) |
+| **iOS EAS build-side** | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/6c3c014c-5f0d-42ca-91b5-3e1b259aff9e) |
+| **iOS direkte download (IPA)** | [Download iOS IPA](https://expo.dev/artifacts/eas/PSgKl5r-E8f7JfZvxJpdBSG45XV8Oh7g8OWn2zX48Ds.ipa) |
 | **QR-kode** | Scan QR-koden på de respektive EAS build-sider via linksene ovenfor. |
 | **Fokus i dette build** | CHAT-001 rettelser (kommentar-afsendelse, "Ingen ansvarlig" redigering) + COPY-001 del/kopiér foto + ny Google Translate API-nøgle |
 | **Git snapshot** | `ad34f80` (`v2026.07.15-rc1`) |

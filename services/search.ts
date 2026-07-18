@@ -1,0 +1,386 @@
+// Client-side søgemotor for Data Capture.
+// Parser en query-string med syntaks: "frase", *ord*, -negation, OR, og key:value filtre.
+
+import { CaptureItem, ItemStatus, ItemType } from "./items";
+
+const ITEM_TYPE_LABELS: Record<ItemType, string> = {
+  idea: "Idé",
+  observation: "Observation",
+  bug: "Bug",
+  note: "Notat",
+  photo: "Foto",
+  voice: "Stemme",
+  other: "Andet",
+};
+
+const STATUS_LABELS: Record<ItemStatus, string> = {
+  new: "Ny",
+  in_progress: "I gang",
+  done: "Færdig",
+  archived: "Arkiveret",
+};
+
+export interface SearchQuery {
+  required: string[]; // hele ord der skal findes (AND)
+  phrases: string[]; // præcise sætninger
+  excluded: string[]; // ord/sætninger der ikke må findes
+  orGroups: string[][]; // grupper af alternativer (OR)
+  filters: SearchFilters;
+  raw: string;
+}
+
+export interface SearchFilters {
+  type?: ItemType;
+  category?: string;
+  status?: ItemStatus;
+  assignee?: string; // søger i assignedToName eller e-mail
+  projectId?: string;
+  hasPhoto?: boolean;
+}
+
+type Token =
+  | { kind: "phrase"; value: string }
+  | { kind: "word"; value: string; exact: boolean }
+  | { kind: "exclude"; value: string; exact: boolean }
+  | { kind: "or" }
+  | { kind: "filter"; key: string; value: string };
+
+const FILTER_ALIASES: Record<string, keyof SearchFilters> = {
+  type: "type",
+  type_: "type",
+  kategori: "category",
+  kategori_: "category",
+  category: "category",
+  status: "status",
+  status_: "status",
+  ansvarlig: "assignee",
+  assignee: "assignee",
+  assigned: "assignee",
+  projekt: "projectId",
+  project: "projectId",
+  projectid: "projectId",
+  has: "hasPhoto",
+};
+
+const ITEM_TYPE_ALIASES: Record<string, ItemType> = {
+  idé: "idea",
+  ide: "idea",
+  idea: "idea",
+  observation: "observation",
+  bug: "bug",
+  fejl: "bug",
+  notat: "note",
+  note: "note",
+  foto: "photo",
+  photo: "photo",
+  stemme: "voice",
+  voice: "voice",
+  andet: "other",
+  other: "other",
+};
+
+const STATUS_ALIASES: Record<string, ItemStatus> = {
+  ny: "new",
+  new: "new",
+  igang: "in_progress",
+  "i gang": "in_progress",
+  inprogress: "in_progress",
+  in_progress: "in_progress",
+  færdig: "done",
+  ferdig: "done",
+  done: "done",
+  arkiveret: "archived",
+  archived: "archived",
+};
+
+function normalize(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/[æ]/g, "ae")
+    .replace(/[ø]/g, "oe")
+    .replace(/[å]/g, "aa")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .trim();
+}
+
+function tokenize(raw: string): Token[] {
+  const tokens: Token[] = [];
+  let remaining = raw.trim();
+
+  while (remaining.length > 0) {
+    remaining = remaining.trimStart();
+
+    // Phrase: "..."
+    if (remaining.startsWith('"')) {
+      const end = remaining.indexOf('"', 1);
+      if (end > 0) {
+        tokens.push({ kind: "phrase", value: remaining.slice(1, end) });
+        remaining = remaining.slice(end + 1);
+        continue;
+      }
+      // unmatched quote: treat rest as phrase
+      tokens.push({ kind: "phrase", value: remaining.slice(1) });
+      break;
+    }
+
+    // Exclude: -word or -"phrase"
+    if (remaining.startsWith("-")) {
+      if (remaining.startsWith('-"')) {
+        const end = remaining.indexOf('"', 2);
+        if (end > 0) {
+          tokens.push({
+            kind: "exclude",
+            value: remaining.slice(2, end),
+            exact: false,
+          });
+          remaining = remaining.slice(end + 1);
+          continue;
+        }
+      }
+      const nextSpace = remaining.search(/\s/);
+      const term =
+        nextSpace > 0 ? remaining.slice(1, nextSpace) : remaining.slice(1);
+      tokens.push({
+        kind: "exclude",
+        value: term.replace(/^\*+|\*+$/g, ""),
+        exact: !term.startsWith("*") && !term.endsWith("*"),
+      });
+      remaining = nextSpace > 0 ? remaining.slice(nextSpace) : "";
+      continue;
+    }
+
+    // Filter key:value
+    const filterMatch = remaining.match(/^([a-zæøåéA-ZÆØÅÉ0-9_]+):([^\s]+)/i);
+    if (filterMatch) {
+      tokens.push({
+        kind: "filter",
+        key: filterMatch[1].toLowerCase(),
+        value: filterMatch[2],
+      });
+      remaining = remaining.slice(filterMatch[0].length);
+      continue;
+    }
+
+    // OR operator
+    if (remaining.toLowerCase().startsWith("or ")) {
+      tokens.push({ kind: "or" });
+      remaining = remaining.slice(3);
+      continue;
+    }
+
+    // Plain word with optional *...* word-boundary marker
+    const nextSpace = remaining.search(/\s/);
+    const term =
+      nextSpace > 0 ? remaining.slice(0, nextSpace) : remaining;
+    const cleaned = term.replace(/^\*+|\*+$/g, "");
+    tokens.push({
+      kind: "word",
+      value: cleaned,
+      exact: term.startsWith("*") || term.endsWith("*"),
+    });
+    remaining = nextSpace > 0 ? remaining.slice(nextSpace) : "";
+  }
+
+  return tokens;
+}
+
+function resolveType(value: string): ItemType | undefined {
+  return ITEM_TYPE_ALIASES[value.toLowerCase()];
+}
+
+function resolveStatus(value: string): ItemStatus | undefined {
+  return STATUS_ALIASES[value.toLowerCase()];
+}
+
+export function parseSearchQuery(raw: string): SearchQuery {
+  const tokens = tokenize(raw);
+  const query: SearchQuery = {
+    required: [],
+    phrases: [],
+    excluded: [],
+    orGroups: [],
+    filters: {},
+    raw,
+  };
+
+  let currentOrGroup: string[] = [];
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+
+    if (token.kind === "filter") {
+      const filterKey = FILTER_ALIASES[token.key];
+      if (!filterKey) continue;
+      const value = token.value.toLowerCase();
+
+      if (filterKey === "type") {
+        const type = resolveType(value);
+        if (type) query.filters.type = type;
+      } else if (filterKey === "status") {
+        const status = resolveStatus(value);
+        if (status) query.filters.status = status;
+      } else if (filterKey === "hasPhoto") {
+        query.filters.hasPhoto =
+          value === "photo" || value === "billede" || value === "foto";
+      } else if (filterKey === "category") {
+        query.filters.category = token.value;
+      } else if (filterKey === "assignee") {
+        query.filters.assignee = token.value;
+      } else if (filterKey === "projectId") {
+        query.filters.projectId = token.value;
+      }
+      continue;
+    }
+
+    if (token.kind === "or") {
+      if (currentOrGroup.length > 0) {
+        query.orGroups.push(currentOrGroup);
+        currentOrGroup = [];
+      }
+      continue;
+    }
+
+    const value = token.value.trim();
+    if (!value) continue;
+
+    if (token.kind === "phrase") {
+      if (currentOrGroup.length > 0) {
+        currentOrGroup.push(value);
+      } else {
+        query.phrases.push(value);
+      }
+    } else if (token.kind === "exclude") {
+      query.excluded.push(value);
+    } else if (token.kind === "word") {
+      if (currentOrGroup.length > 0) {
+        currentOrGroup.push(value);
+      } else {
+        query.required.push(value);
+      }
+    }
+  }
+
+  if (currentOrGroup.length > 0) {
+    query.orGroups.push(currentOrGroup);
+  }
+
+  return query;
+}
+
+function getSearchableText(item: CaptureItem): string {
+  const parts = [
+    item.title,
+    item.content,
+    item.category,
+    ITEM_TYPE_LABELS[item.type],
+    STATUS_LABELS[item.status],
+    item.assignedToName,
+    item.createdByName,
+    item.createdByEmail,
+    item.assignedTo,
+    ...(item.tags || []),
+  ];
+  return parts.filter((s): s is string => Boolean(s)).join(" ").toLowerCase();
+}
+
+function hasWholeWord(haystack: string, needle: string): boolean {
+  const normalizedHaystack = normalize(haystack);
+  const normalizedNeedle = normalize(needle);
+  if (!normalizedNeedle) return false;
+  const pattern = new RegExp(
+    `(^|\\s|\\b)${normalizedNeedle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|\\s|\\b)`,
+    "i"
+  );
+  return pattern.test(normalizedHaystack);
+}
+
+function containsPhrase(haystack: string, phrase: string): boolean {
+  return haystack.toLowerCase().includes(phrase.toLowerCase());
+}
+
+function matchesFilters(item: CaptureItem, filters: SearchFilters): boolean {
+  if (filters.type && item.type !== filters.type) return false;
+  if (filters.category) {
+    const itemCategory = (item.category || "").toLowerCase();
+    if (itemCategory !== filters.category.toLowerCase()) return false;
+  }
+  if (filters.status && item.status !== filters.status) return false;
+  if (filters.assignee) {
+    const assignee = (filters.assignee || "").toLowerCase();
+    const name = (item.assignedToName || "").toLowerCase();
+    const userId = (item.assignedTo || "").toLowerCase();
+    if (!name.includes(assignee) && !userId.includes(assignee)) return false;
+  }
+  if (filters.projectId && item.projectId !== filters.projectId) return false;
+  if (filters.hasPhoto === true && !item.mediaUrl) return false;
+  if (filters.hasPhoto === false && item.mediaUrl) return false;
+  return true;
+}
+
+export function matchItem(item: CaptureItem, query: SearchQuery): number {
+  if (!matchesFilters(item, query.filters)) return 0;
+
+  const text = getSearchableText(item);
+  let score = 0;
+
+  // Required words (AND)
+  for (const word of query.required) {
+    if (hasWholeWord(text, word)) {
+      score += 1;
+      // Bonus for title match
+      if (item.title && hasWholeWord(item.title, word)) score += 2;
+    } else {
+      return 0;
+    }
+  }
+
+  // Phrases
+  for (const phrase of query.phrases) {
+    if (containsPhrase(text, phrase)) {
+      score += 3;
+      if (item.title && containsPhrase(item.title, phrase)) score += 2;
+    } else {
+      return 0;
+    }
+  }
+
+  // OR groups
+  for (const group of query.orGroups) {
+    const matched = group.some(
+      (term) => hasWholeWord(text, term) || containsPhrase(text, term)
+    );
+    if (!matched) return 0;
+    score += 1;
+  }
+
+  // Excluded terms
+  for (const term of query.excluded) {
+    if (hasWholeWord(text, term) || containsPhrase(text, term)) {
+      return 0;
+    }
+  }
+
+  return score;
+}
+
+export function searchItems(
+  items: CaptureItem[],
+  rawQuery: string
+): CaptureItem[] {
+  const query = parseSearchQuery(rawQuery);
+
+  if (
+    query.required.length === 0 &&
+    query.phrases.length === 0 &&
+    query.orGroups.length === 0 &&
+    Object.keys(query.filters).length === 0
+  ) {
+    return items;
+  }
+
+  return items
+    .map((item) => ({ item, score: matchItem(item, query) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(({ item }) => item);
+}
