@@ -26,13 +26,13 @@ metadata:
 
 | # | Item | Status | Bemærkning |
 |---|---|---|---|
-| 1 | Code committed and tagged | [x] | Commit `93b702b`, tag `v2026.07.15-rc1` oprettet. |
-| 2 | EAS env variables verified (`EXPO_PUBLIC_GOOGLE_TRANSLATE_API_KEY`) | [ ] | Lokal `.env` indeholder nøglen. `project-services-register.md` angiver EAS env oprettet for production/preview/development. Interaktiv EAS CLI-verifikation (`eas env:list`) kunne ikke køres non-interaktivt. |
+| 1 | Code committed and tagged | [x] | Commit `c8f43ed`, tag `v2026.07.15-rc1` oprettet. |
+| 2 | EAS env variables verified (`EXPO_PUBLIC_GOOGLE_TRANSLATE_API_KEY`) | [x] | Verificeret via `eas env:list` for production, preview og development. Nøgle er til stede med `sensitive` visibility i alle tre miljøer. |
 | 3 | Native prebuild validates | [x] | `npx expo prebuild --no-install` gennemført uden fejl for Android; plugin `react-native-share` konfigureret korrekt. |
 | 4 | TypeScript / lint passes | [x] | `npx tsc --noEmit` ✅, `npx expo lint` ✅, `node scripts/release-gate.js` ✅. |
 | 5 | Runtime smoke tests pass | [ ] | Automatiske gates bestået. Fysiske enheds-smoke-tests afventer nyt build eller lokal dev-client. |
 | 6 | Firestore rules deployed and smoke-tested | [ ] | `team-status.md` angiver manuelt deployet og publishet 2026-07-15. Ingen smoke-test-rapport set. `firestore.rules` / `firebase.json` til automatisk CLI-deploy findes ikke i repoet endnu (AUTO-001 åben). |
-| 7 | PO approval for build obtained | [ ]] | Afventer PO-go. |
+| 7 | PO approval for build obtained | [ ] | Afventer PO-go efter runtime smoke-test resultat.
 | 8 | Build profile selected | [x] | `preview` anbefales til intern test (internal distribution, Android APK + iOS). Afventer PO-go. |
 | 9 | Rollback plan (tag + restore known-good config) | [x] | Tag `v2026.07.15-rc1` + baseline `baseline-chat-feature-2026-07-15` findes. `docs/rollback-plan.md` opdateret 2026-07-15 med `react-native-share` og COPY-001. |
 
@@ -44,8 +44,8 @@ metadata:
 
 | Fil | Findes | Dækker seneste ændringer | Bemærkning |
 |---|---|---|---|
-| `docs/backlog.md` | ✅ | Ja | Opdateret: CHAT-001 markeret færdig; COPY-001 markeret færdig i P3. |
-| `docs/current-build.md` | ✅ | Ja | Opdateret med `c7aeb03` / `v2026.07.15-rc1`, COPY-001, Google Translate EAS env og CHAT-001 rettelser. |
+| `docs/backlog.md` | ✅ | Ja | Opdateret: CHAT-001 markeret færdig; COPY-001 markeret færdig i P3; CHECKLIST-001 og GEOFENCE-001 tilføjet under P2. |
+| `docs/current-build.md` | ✅ | Ja | Opdateret med `c8f43ed` / `v2026.07.15-rc1`, COPY-001, Google Translate EAS env og CHAT-001 rettelser. |
 | `docs/firestore-rules.md` | ✅ | Ja | Indeholder CHAT-001 kommentar-regler og catch-all. Nævner at server-side rate limiting ikke er i v1. |
 | `docs/user-guide.md` | ✅ | Delvist | Beskriver kommentarer / roller. Omtaler ikke COPY-001 del/kopiér foto. |
 | `docs/privacy-notes.md` | ✅ | Ja | Opdateret med CHAT-001 persondatafelter, opbevaring, synlighed, retention og PO-beslutning om redigering. |
@@ -100,8 +100,8 @@ eas build --profile preview --platform ios
 
 ## Risikoer og blockers
 
-1. **EAS env verification:** `EXPO_PUBLIC_GOOGLE_TRANSLATE_API_KEY` er påstået konfigureret, men ikke verificeret via CLI. Hvis nøglen ikke er bundet korrekt, vil oversættelses-API fejle i buildet.
-2. **Firestore rules smoke-test:** Reglerne er påstået deployet, men der er ingen dokumenteret smoke-test efter deploy. Anbefalet: opret projekt, opret item, opret kommentar, slet item.
+1. **Runtime smoke-test:** Afventer resultat fra lokal/physical-device smoke-test af kommentar-afsendelse, "Ingen ansvarlig" redigering, COPY-001 del/kopiér foto og oversættelse.
+2. **Firestore rules smoke-test:** Reglerne er deployet, men der er ingen dokumenteret smoke-test efter deploy. Anbefalet: opret projekt, opret item, opret kommentar, slet item.
 3. **PO-go:** Ingen build må køres før PO-go ifølge SOP §2.1.
 
 ---
@@ -112,6 +112,6 @@ eas build --profile preview --platform ios
 
 Koden er committed, tagged, og alle automatiske gates er grønne. Men følgende skal på plads før PO-go / build:
 
-- Verificer `EXPO_PUBLIC_GOOGLE_TRANSLATE_API_KEY` i EAS (f.eks. via `eas env:list` efter login).
+- Modtag runtime smoke-test resultat (undervejs).
 - Smoke-test Firestore Security Rules på en fysisk enhed eller emulator.
 - Få PO-go til build.
