@@ -44,13 +44,14 @@
 - [x] Ansvarlige for sager (assignedTo / assignedToName) i Board, item-detalje og Optag-modal
 - [x] Vis ansvarlig i søgeresultater
 - [x] Forbedret visning af medlemmer i medlemsmodal (email på flere linjer, ejer vises korrekt)
+- [x] Kopiér billede fra sag (COPY-001)
+- [x] Chat / kommentarer på indlæg (CHAT-001)
 - [ ] Stemmeoptagelse og tale-til-tekst (udskudt pga. SDK 57-kompatibilitet)
 
 ## I gang / afventer PO-test
 
-- [ ] Installer ny iOS build på iPhone 13 Pro med stemme/ikon/billede/medlemmer
-- [x] Installer på iPad
-- [x] Installer på iPhone Pro 17
+- [x] Installer ny iOS build på iPhone 13 / iPhone 17 / iPad med CHAT-001 + COPY-001 + ny Google Translate nøgle
+- [ ] Kør acceptance test: kommentarer, COPY-001, oversættelse, opret/rediger item
 - [x] Registrér push-token på fysiske enheder
 - [x] Modtag test-push-notifikation på fysisk enhed (iPad)
 - [ ] Byg Android development build
@@ -84,14 +85,18 @@
    - Omdøb item-type `comment` → `note` i hele appen; legacy `type: "comment"` vises som "Notat".
    - Rettelser: kommentar-afsendelse og "Ingen ansvarlig" redigering virker i RC `v2026.07.15-rc1`.
 
-### P3 – Afstemning og engagement
-8. [ ] **Afstemning med genbrug fra Meetup-appen**
-   - Vurder om afstemningskomponenten fra Meetup-appen kan isoleres og genbruges.
-   - Afstemninger knyttet til et item eller som selvstændig funktion.
-   - Resultater synlige for projektmedlemmer.
+### P2 – Samarbejde, søgning og eksekvering
+8. [ ] **Forbedret søgning (SEARCH-001)** — proposed
+   - Præcis ordsøgning: `*vand*` finder kun hele ordet, ikke "Vandkande".
+   - Frasesøgning: `"vandkande med blomster"`.
+   - Negation: `vand -kande`.
+   - OR-søgning: `vand OR flaske`.
+   - Filtre: type, kategori, status, ansvarlig, projekt, har foto/kommentar.
+   - Nylige og gemte søgninger; gemte søgninger bliver grundlag for Context Lists.
+   - Fuzzy søgning (fase 2).
+   - Se detaljeret case: `docs/backlog-cases/SEARCH-001-search-improvements.md`.
 
-### P2 – Samarbejde og eksekvering (ny)
-8. [ ] **Context Lists – aktionslister fra søgning (CHECKLIST-001)** — proposed
+9. [ ] **Context Lists – aktionslister fra søgning (CHECKLIST-001)** — proposed
    - Omdan søgeresultater til navngivne, vedligeholdelige checklister med flueben.
    - Hvert listepunkt er knyttet til en reel sag; nye punkter oprettes først som sager.
    - Deduplikering, alfabetisk sortering af åbne punkter, udførte punkter i bunden.
@@ -103,7 +108,7 @@
    - Se detaljeret case: `docs/backlog-cases/CHECKLIST-001-search-action-list.md`.
    - Kreativ berigelse: `docs/backlog-cases/CHECKLIST-001-creative-enrichment.md`.
 
-9. [ ] **Context Lists – lokationstriggere (GEOFENCE-001)** — proposed
+10. [ ] **Context Lists – lokationstriggere (GEOFENCE-001)** — proposed
    - Aktionslister popper op når brugeren nærmer sig et relevant sted.
    - Bruger telefonens automatisering (iOS Shortcuts / Android Tasker) + deep links.
    - Appen tracker IKKE baggrundslokation selv.
@@ -111,29 +116,40 @@
    - Eksempler: indkøbsliste ved butik, aflever pakke ved posthus, hent skjorter i renseri.
    - Se detaljeret case: `docs/backlog-cases/GEOFENCE-001-location-triggered-lists.md`.
 
+### P2 – Stemmeindtaling (forbedret)
+11. [ ] **Forbedret stemmeindtaling (VOICE-001)** — proposed
+   - Kommandoord under indtaling: "skift" (ny linje), "punktum", "komma", "slet sidste ord", "fortryd", "gem", "annuller".
+   - Post-processing: mellemrum efter tegnsætning, fjern dobbeltmellemrum, trim.
+   - Redigerbart preview før gem (løser auto-save problem).
+   - Fase 2: AI-korrektur og kontekstbaseret opdeling af sammensatte ord.
+   - Se detaljeret case: `docs/backlog-cases/VOICE-001-voice-input-improvements.md`.
+
 ### P3 – Deling og eksport (øget fleksibilitet)
-8. [x] **Kopiér billede fra sag (COPY-001)**
+12. [x] **Kopiér billede fra sag (COPY-001)**
    - Mulighed for at kopiere et foto fra item-detalje til udklipsholder.
    - Mulighed for at dele et foto via native share-sheet.
    - Implementeret med `react-native-share` og `expo-clipboard` i RC `v2026.07.15-rc1`.
-9. [ ] **Eksport og deling af tekst, oversættelser og billeder**
-   - Del item-indhold, OCR-tekst, oversættelser og fotos via native share-sheet, mail eller SMS.
+13. [ ] **Del tekst og oversættelser fra sag**
+   - Del original OCR-tekst og oversat tekst via native share-sheet eller clipboard.
+   - Tilføj del-knapper i item-detail og VoiceCaptureModal.
+14. [ ] **Eksport og deling af kombineret item-indhold**
+   - Del item-indhold (titel, note, OCR, oversættelse, foto) samlet via native share-sheet, mail eller SMS.
    - Understøtter både tekst og medier.
 
 ### P4 – Afstemning og engagement
-10. [ ] **Afstemning med genbrug fra Meetup-appen**
+15. [ ] **Afstemning med genbrug fra Meetup-appen**
     - Vurder om afstemningskomponenten fra Meetup-appen kan isoleres og genbruges.
     - Afstemninger knyttet til et item eller som selvstændig funktion.
     - Resultater synlige for projektmedlemmer.
 
 ### P5 – Intelligent hjælp og administration
-11. [ ] **AI-kategorisering via Firebase Functions**
-12. [ ] **Management panel med filtre og statusoversigt**
-13. [ ] **Eksport af data**
-14. [ ] **Personlig afkrydsningsliste (samleværktøj)**
+16. [ ] **AI-kategorisering via Firebase Functions**
+17. [ ] **Management panel med filtre og statusoversigt**
+18. [ ] **Eksport af data**
+19. [ ] **Personlig afkrydsningsliste (samleværktøj)**
 
 ### P6 – Platform
-15. [ ] **Fælles app-platform strategi** (allokeret til [[app-platform-strategy]])
+20. [ ] **Fælles app-platform strategi** (allokeret til [[app-platform-strategy]])
 
 ## Push-notifikationstest – hvad skal du gøde?
 
