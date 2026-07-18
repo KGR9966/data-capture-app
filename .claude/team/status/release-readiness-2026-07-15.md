@@ -26,15 +26,16 @@ metadata:
 
 | # | Item | Status | Bemærkning |
 |---|---|---|---|
-| 1 | Code committed and tagged | [x] | Commit `c8f43ed`, tag `v2026.07.15-rc1` oprettet. |
+| 1 | Code committed and tagged | [x] | Commit `ad34f80`, tag `v2026.07.15-rc1` oprettet. |
 | 2 | EAS env variables verified (`EXPO_PUBLIC_GOOGLE_TRANSLATE_API_KEY`) | [x] | Opdateret 2026-07-15 med ny nøgle `AIzaSyCjfpOQE-7YlVroPbRhx2O4hDbNobAazYI` i production, preview og development. Testet OK mod Cloud Translation API. Gamle nøgle returnerede 403 og bør slettes. |
 | 3 | Native prebuild validates | [x] | `npx expo prebuild --no-install` gennemført uden fejl for Android; plugin `react-native-share` konfigureret korrekt. |
 | 4 | TypeScript / lint passes | [x] | `npx tsc --noEmit` ✅, `npx expo lint` ✅, `node scripts/release-gate.js` ✅. |
-| 5 | Runtime smoke tests pass | [ ] | Automatiske gates bestået. Fysiske enheds-smoke-tests afventer nyt build eller lokal dev-client. |
+| 5 | Runtime smoke tests pass | [x] | Pre-build automatiserede gates ✅. Fysisk acceptance test afventer PO på nyt build. |
 | 5a | 360° midtvejsaudit gennemført | [x] | Fire specialiserede audits udført: process, arkitektur, sikkerhed/App Store, UX/produkt. Master-rapport og skabelon oprettet. |
+| 6 | EAS preview build completed | [x] | Android `376a3067-cabb-4afe-b49c-e70467177a93` og iOS `6c3c014c-5f0d-42ca-91b5-3e1b259aff9e` færdige med exit code 0. |
 | 6 | Firestore rules deployed and smoke-tested | [ ] | `team-status.md` angiver manuelt deployet og publishet 2026-07-15. Ingen smoke-test-rapport set. `firestore.rules` / `firebase.json` til automatisk CLI-deploy findes ikke i repoet endnu (AUTO-001 åben). |
-| 7 | PO approval for build obtained | [ ] | Afventer PO-go efter runtime smoke-test resultat.
-| 8 | Build profile selected | [x] | `preview` anbefales til intern test (internal distribution, Android APK + iOS). Afventer PO-go. |
+| 7 | PO approval for build obtained | [x] | PO-go givet 2026-07-15. |
+| 8 | Build profile selected | [x] | `preview` til intern test (internal distribution, Android APK + iOS). Build gennemført. |
 | 9 | Rollback plan (tag + restore known-good config) | [x] | Tag `v2026.07.15-rc1` + baseline `baseline-chat-feature-2026-07-15` findes. `docs/rollback-plan.md` opdateret 2026-07-15 med `react-native-share` og COPY-001. |
 
 ---
@@ -114,7 +115,7 @@ eas build --profile preview --platform ios
 
 Koden er committed, tagged, og alle automatiske gates er grønne. Men følgende skal på plads før PO-go / build:
 
-- Modtag runtime smoke-test resultat (undervejs).
-- Smoke-test Firestore Security Rules på en fysisk enhed eller emulator.
-- PO afgør, om P0 audit-fund skal rettes før preview build, eller om preview build køres nu som intern test mens P0 actions påbegyndes.
-- Få PO-go til build.
+- PO installerer nyt build på fysiske enheder.
+- PO kører acceptance test baseret på `.claude/team/qa/CHAT-001-testcases.md` + COPY-001 + oversættelse.
+- Smoke-test Firestore Security Rules på en fysisk enhed (opret projekt, item, kommentar, slet item).
+- PO afgør, om P0 audit-fund (catch-all Firestore-regel, privacy policy, Firebase config i git) skal adresseres før produktionsrelease.

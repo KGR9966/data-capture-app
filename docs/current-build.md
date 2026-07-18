@@ -7,15 +7,15 @@
 
 | Felt | Værdi |
 |---|---|
-| **Build-ID** | *Afventer nyt build* (forrige: `fab85114-d346-4406-8eba-0fa5f9e1b8f1` Android, `bc7a5b59-aca6-4195-92b3-f4c22ce05e91` iOS) |
-| **Platform** | Android + iOS preview build (planlagt) |
+| **Build-ID** | `376a3067-cabb-4afe-b49c-e70467177a93` (Android), `6c3c014c-5f0d-42ca-91b5-3e1b259aff9e` (iOS) |
+| **Platform** | Android + iOS preview build |
 | **Distribution** | Internal (EAS) |
 | **EAS Dashboard** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds |
-| **Android installationslink** | *Opdateres når build er færdigt* (forrige: https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/fab85114-d346-4406-8eba-0fa5f9e1b8f1) |
-| **iOS installationslink** | *Opdateres når build er færdigt* (forrige: https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/bc7a5b59-aca6-4195-92b3-f4c22ce05e91) |
-| **QR-kode** | Findes på EAS build-siden, når build er færdigt. |
-| **Fokus i dette build** | CHAT-001 rettelser (kommentar-afsendelse, "Ingen ansvarlig" redigering) + COPY-001 del/kopiér foto + Google Translate EAS env-variabel + Firestore Security Rules |
-| **Git snapshot** | `c7aeb03` (`v2026.07.15-rc1`) |
+| **Android installationslink** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/376a3067-cabb-4afe-b49c-e70467177a93 |
+| **iOS installationslink** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/6c3c014c-5f0d-42ca-91b5-3e1b259aff9e |
+| **QR-kode** | Scan QR-koden på de respektive EAS build-sider via linksene ovenfor. |
+| **Fokus i dette build** | CHAT-001 rettelser (kommentar-afsendelse, "Ingen ansvarlig" redigering) + COPY-001 del/kopiér foto + ny Google Translate API-nøgle |
+| **Git snapshot** | `ad34f80` (`v2026.07.15-rc1`) |
 | **Forrige build** | `fab85114-d346-4406-8eba-0fa5f9e1b8f1` / `bc7a5b59-aca6-4195-92b3-f4c22ce05e91` |
 
 ## Hurtigstart – når QR-koden er forsvundet
@@ -43,8 +43,8 @@
 1. Åbn Safari (iOS) eller Chrome (Android) på enheden.
 2. Gå til EAS Dashboard: https://expo.dev/accounts/kgradm/projects/data-capture-app/builds
 3. Find det ønskede build:
-   - Android: `fab85114-d346-4406-8eba-0fa5f9e1b8f1`
-   - iOS: `bc7a5b59-aca6-4195-92b3-f4c22ce05e91`
+   - Android: `376a3067-cabb-4afe-b49c-e70467177a93`
+   - iOS: `6c3c014c-5f0d-42ca-91b5-3e1b259aff9e`
 4. Tryk installationslinket og scan QR-koden på siden, eller følg anvisningen.
 5. Åbn appen og accepter tilladelser.
 
@@ -57,6 +57,8 @@
 - `comment` → `note` omdøbning i item-typer, labels og kategori-forslag.
 - Client-side throttling: maks 1 send pr. 2 sekunder og maks 10 kommentarer pr. minut pr. item.
 - **Rettet i denne RC**: kommentarer kan nu sendes (undefined-værdier fjernes før Firestore-skriv); "Ingen ansvarlig"-knap virker i redigeringstilstand.
+- **COPY-001**: knapperne "Kopiér foto" og "Del foto" vises under foto på item-detail.
+- **Oversættelse**: ny Google Translate API-nøgle bundet i EAS build (den gamle returnerede 403).
 
 ## Kendte begrænsninger
 
