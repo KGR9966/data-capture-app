@@ -31,6 +31,10 @@ function commentsCollection(itemId: string) {
   return collection(db, "items", itemId, "comments");
 }
 
+function stripUndefined(obj: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+}
+
 export async function createComment(
   projectId: string,
   itemId: string,
@@ -56,7 +60,7 @@ export async function createComment(
     throw new Error("Du skal være logget ind for at skrive en kommentar.");
   }
 
-  const payload = {
+  const payload = stripUndefined({
     itemId,
     projectId,
     authorId: currentUser.uid,
@@ -65,10 +69,40 @@ export async function createComment(
     text: trimmed,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  };
+  });
 
-  const docRef = await addDoc(commentsCollection(itemId), payload);
-  return { id: docRef.id, ...payload };
+  try {
+    const docRef = await addDoc(commentsCollection(itemId), payload);
+    return { id: docRef.id, ...payload } as Comment;
+  } catch (error) {
+    const code = (error as { code?: string })?.code || "unknown";
+    const message = (error as { message?: string })?.message || String(error);
+    console.error("[createComment] Firestore write failed:", {
+      code,
+      message,
+      projectId,
+      itemId,
+      authorId: currentUser.uid,
+      hasText: !!trimmed,
+      textLength: trimmed.length,
+    });
+
+    if (code === "permission-denied") {
+      throw new Error(
+        "Kommentaren blev afvist af sikkerhedsreglerne. Tjek at du har skriverettigheder i projektet."
+      );
+    }
+    if (code === "unauthenticated") {
+      throw new Error("Du er ikke logget ind. Log ind og prøv igen.");
+    }
+    if (code === "invalid-argument") {
+      throw new Error("Ugyldige data sendt til serveren. Prøv igen.");
+    }
+    if (code === "not-found") {
+      throw new Error("Sagen blev ikke fundet. Den kan være slettet.");
+    }
+    throw new Error(`Kunne ikke sende kommentaren (${code}). Prøv igen.`);
+  }
 }
 
 export function subscribeToComments(

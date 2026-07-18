@@ -124,13 +124,22 @@ export async function getItemsForProject(projectId: string): Promise<CaptureItem
     });
 }
 
+function prepareUpdateFields(updates: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(updates).map(([key, value]) => [
+      key,
+      value === undefined ? deleteField() : value,
+    ])
+  );
+}
+
 export async function updateItem(
   itemId: string,
   updates: Partial<Omit<CaptureItem, "id" | "createdAt" | "updatedAt">>
 ) {
   const itemRef = doc(db, "items", itemId);
   await updateDoc(itemRef, {
-    ...updates,
+    ...prepareUpdateFields(updates as Record<string, unknown>),
     updatedAt: serverTimestamp(),
   });
 }

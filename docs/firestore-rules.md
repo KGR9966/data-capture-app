@@ -1,97 +1,105 @@
-# Firestore Security Rules for CHAT-001
+# Firestore Security Rules for Data Capture
 
-These rules must be copied into Firebase Console under Firestore Database > Rules.
-They enforce project membership, role-based write access for comments, and
-validate the comment document shape.
+**Advarsel:** Disse regler erstatter ALLE eksisterende regler i Firebase Console.
+Sørg for at læse hele filen igennem før deploy, og test grundigt efterfølgende.
 
-## Full rules (append inside `service cloud.firestore { match /databases/$(database)/documents { ... }}`)
+## Full rules (replace the entire content of the Firebase Console Rules tab)
 
 ```firestore
-function isSignedIn() {
-  return request.auth != null;
-}
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
 
-function getProjectId(itemId) {
-  return get(/databases/$(database)/documents/items/$(itemId)).data.projectId;
-}
+    // TIDLIGERE REGEL: Åben adgang indtil 2026-08-09.
+    // Bemærk: Denne regel giver fortsat læse- og skriveadgang til HELE databasen
+    // indtil denne dato. CHAT-001 reglerne nedenfor tilføjer specifik sikkerhed
+    // for kommentarer, men den generelle åbne regel trumfer indtil videre.
+    // PLAN: Efterhånden som RBAC og item/itemMember-regler skrives, skal denne
+    // catch-all regel fjernes og erstattes af specifikke regler per collection.
+    match /{document=**} {
+      allow read, write: if request.time < timestamp.date(2026, 8, 9);
+    }
 
-function isProjectMember(projectId) {
-  let project = get(/databases/$(database)/documents/projects/$(projectId));
-  let uid = request.auth.uid;
-  let email = request.auth.token.email;
+    // --- CHAT-001: Kommentarer på items ---
 
-  return project.data.ownerId == uid
-      || exists(/databases/$(database)/documents/projects/$(projectId)/members/$(uid))
-      || exists(/databases/$(database)/documents/projects/$(projectId)/members/$(email))
-      || project.data.roles[uid] != null
-      || project.data.roles[email] != null;
-}
+    function isSignedIn() {
+      return request.auth != null;
+    }
 
-function canWriteComment(projectId) {
-  let project = get(/databases/$(database)/documents/projects/$(projectId));
-  let uid = request.auth.uid;
-  let email = request.auth.token.email;
-  let role = project.data.ownerId == uid ? "owner"
-      : project.data.roles[uid]
-      ?? project.data.roles[email]
-      ?? get(/databases/$(database)/documents/projects/$(projectId)/members/$(uid)).data.role
-      ?? get(/databases/$(database)/documents/projects/$(projectId)/members/$(email)).data.role;
-  return role in ["owner", "admin", "editor"];
-}
+    function getProjectId(itemId) {
+      return get(/databases/$(database)/documents/items/$(itemId)).data.projectId;
+    }
 
-function isOwnerOrAdmin(projectId) {
-  let project = get(/databases/$(database)/documents/projects/$(projectId));
-  let uid = request.auth.uid;
-  let email = request.auth.token.email;
-  let role = project.data.ownerId == uid ? "owner"
-      : project.data.roles[uid]
-      ?? project.data.roles[email]
-      ?? get(/databases/$(database)/documents/projects/$(projectId)/members/$(uid)).data.role
-      ?? get(/databases/$(database)/documents/projects/$(projectId)/members/$(email)).data.role;
-  return role in ["owner", "admin"];
-}
+    function isProjectMember(projectId) {
+      let project = get(/databases/$(database)/documents/projects/$(projectId));
+      let uid = request.auth.uid;
+      let email = request.auth.token.email;
 
-match /items/{itemId}/comments/{commentId} {
-  allow read: if isSignedIn()
-      && isProjectMember(getProjectId(itemId));
+      return project.data.ownerId == uid
+          || exists(/databases/$(database)/documents/projects/$(projectId)/members/$(uid))
+          || exists(/databases/$(database)/documents/projects/$(projectId)/members/$(email))
+          || project.data.roles[uid] != null
+          || project.data.roles[email] != null;
+    }
 
-  allow create: if isSignedIn()
-      && canWriteComment(getProjectId(itemId))
-      && exists(/databases/$(database)/documents/items/$(itemId))
-      && request.resource.data.projectId == getProjectId(itemId)
-      && request.resource.data.itemId == itemId
-      && request.resource.data.authorId == request.auth.uid
-      && request.resource.data.text is string
-      && request.resource.data.text.size() > 0
-      && request.resource.data.text.size() <= 2000
-      && request.resource.data.createdAt == request.time
-      && request.resource.data.updatedAt == request.time;
+    function getUserRole(projectId) {
+      let project = get(/databases/$(database)/documents/projects/$(projectId));
+      let uid = request.auth.uid;
+      let email = request.auth.token.email;
 
-  allow delete: if isSignedIn()
-      && isProjectMember(getProjectId(itemId))
-      && (
-          request.auth.uid == resource.data.authorId
-          || isOwnerOrAdmin(getProjectId(itemId))
-      );
+      return project.data.ownerId == uid ? "owner"
+          : project.data.roles[uid] != null ? project.data.roles[uid]
+          : project.data.roles[email] != null ? project.data.roles[email]
+          : exists(/databases/$(database)/documents/projects/$(projectId)/members/$(uid)) ? get(/databases/$(database)/documents/projects/$(projectId)/members/$(uid)).data.role
+          : exists(/databases/$(database)/documents/projects/$(projectId)/members/$(email)) ? get(/databases/$(database)/documents/projects/$(projectId)/members/$(email)).data.role
+          : null;
+    }
 
-  allow update: if false;
+    function canWriteComment(projectId) {
+      return getUserRole(projectId) in ["owner", "admin", "editor"];
+    }
+
+    function isOwnerOrAdmin(projectId) {
+      return getUserRole(projectId) in ["owner", "admin"];
+    }
+
+    match /items/{itemId}/comments/{commentId} {
+      allow read: if isSignedIn()
+          && isProjectMember(getProjectId(itemId));
+
+      allow create: if isSignedIn()
+          && canWriteComment(getProjectId(itemId))
+          && exists(/databases/$(database)/documents/items/$(itemId))
+          && request.resource.data.projectId == getProjectId(itemId)
+          && request.resource.data.itemId == itemId
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+
+      allow delete: if isSignedIn()
+          && isProjectMember(getProjectId(itemId))
+          && (
+              request.auth.uid == resource.data.authorId
+              || isOwnerOrAdmin(getProjectId(itemId))
+          );
+
+      allow update: if false;
+    }
+  }
 }
 ```
 
-## Notes
+## Bemærkninger
 
-- There is no composite index required for the default query
-  `items/{itemId}/comments orderBy createdAt asc` because it sorts on a single
-  field.
-- **Rate limiting:** Client-side throttling is implemented in `app/item.tsx`:
-  maximum one send click per 2 seconds and maximum 10 comments per minute per
-  item (kept in memory). This reduces accidental spam but can be bypassed by a
-  determined client because it is not enforced server-side.
-- **Server-side rate limiting is not implemented in v1.** Firestore Security
-  Rules do not support time-window counting across multiple documents without
-  extra write overhead and race conditions. A robust rate limiter should be
-  added later via a Cloud Function (or a dedicated rate-limit counter collection
-  updated transactionally) that validates recent writes before creating the
-  comment document.
-- `updatedAt` is included in the create rule so the client can set it alongside
-  `createdAt` using `serverTimestamp()`.
+- **Catch-all reglen** (`match /{document=**}`) giver fortsat fuld læse- og skriveadgang
+  indtil 2026-08-09. Det betyder, at CHAT-001 kommentar-reglerne ikke i praksis
+  begrænser adgang yderligere end den allerede åbne regel. De er dog klar til,
+  når catch-all reglen senere fjernes.
+- Der er ingen composite index påkrævet for `items/{itemId}/comments` sorteret efter
+  `createdAt`, da der sorteres på ét felt.
+- **Rate limiting:** Kun client-side throttling i appen. Server-side rate limiting
+  kræver Cloud Function eller dedikeret counter collection.
+- **Data retention:** Kommentarer slettes kaskade sammen med item i app-koden.

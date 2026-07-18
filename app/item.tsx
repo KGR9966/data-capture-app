@@ -19,6 +19,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { Comment, createComment, deleteComment, subscribeToComments } from "../services/comments";
 import { CaptureItem, deleteItem, getItemById, ItemStatus, ItemType, updateItem } from "../services/items";
 import { ProjectMember, subscribeToProjectMembers } from "../services/projects";
+import { copyImageToClipboard, shareImage } from "../services/share";
 import { canAssignItems, canComment, canDeleteItem, canEditItem, getProjectRole, ProjectRole } from "../services/roles";
 
 function formatDate(ts: any) {
@@ -79,7 +80,7 @@ export default function ItemDetailScreen() {
   const [editCategory, setEditCategory] = useState("");
   const [editStatus, setEditStatus] = useState<ItemStatus>("new");
   const [editTags, setEditTags] = useState("");
-  const [editAssignedTo, setEditAssignedTo] = useState<string | null>(null);
+  const [editAssignedTo, setEditAssignedTo] = useState<string>("");
   const [editAssignedToName, setEditAssignedToName] = useState<string>("");
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentText, setCommentText] = useState("");
@@ -91,8 +92,21 @@ export default function ItemDetailScreen() {
   const lastSendTimeRef = useRef<number>(0);
   const recentCommentTimestampsRef = useRef<Record<string, number[]>>({});
   const hasInitiallyScrolledRef = useRef(false);
+  const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState(false);
+  const isImageActionLoading = copyLoading || shareLoading;
   const isDark = theme === "dark";
   const styles = themedStyles(isDark);
+
+  useEffect(() => {
+    return () => {
+      if (copyFeedbackTimeoutRef.current) {
+        clearTimeout(copyFeedbackTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const AUTO_SCROLL_THRESHOLD = 80;
 
@@ -131,7 +145,7 @@ export default function ItemDetailScreen() {
           setEditCategory(data.category || "");
           setEditStatus(data.status);
           setEditTags(data.tags?.join(", ") || "");
-          setEditAssignedTo(data.assignedTo || null);
+          setEditAssignedTo(data.assignedTo || "");
           setEditAssignedToName(data.assignedToName || "");
           if (data.projectId) {
             unsubscribeMembers = subscribeToProjectMembers(data.projectId, (m) => setMembers(m));
@@ -190,7 +204,7 @@ export default function ItemDetailScreen() {
           .map((t) => t.trim())
           .filter(Boolean),
         assignedTo: editAssignedTo || undefined,
-        assignedToName: editAssignedToName || undefined,
+        assignedToName: editAssignedTo ? editAssignedToName : undefined,
       };
       await updateItem(itemId, updates);
       setItem({ ...item, ...updates });
@@ -211,7 +225,7 @@ export default function ItemDetailScreen() {
     setEditCategory(item.category || "");
     setEditStatus(item.status);
     setEditTags(item.tags?.join(", ") || "");
-    setEditAssignedTo(item.assignedTo || null);
+    setEditAssignedTo(item.assignedTo || "");
     setEditAssignedToName(item.assignedToName || "");
     setEditing(false);
   };
@@ -287,7 +301,8 @@ export default function ItemDetailScreen() {
       scrollToBottomIfNearEnd(true);
     } catch (error) {
       console.log("Create comment error", error);
-      Alert.alert("Fejl", "Kunne ikke sende kommentaren. Prøv igen.");
+      const message = error instanceof Error ? error.message : "Kunne ikke sende kommentaren. Prøv igen.";
+      Alert.alert("Fejl", message);
     } finally {
       setSubmittingComment(false);
     }
@@ -316,6 +331,39 @@ export default function ItemDetailScreen() {
     if (comment.authorName) return comment.authorName;
     if (comment.authorEmail) return comment.authorEmail.split("@")[0];
     return "Ukendt";
+  };
+
+  const handleCopyImage = async () => {
+    if (!item?.mediaUrl || isImageActionLoading) return;
+    setCopyLoading(true);
+    try {
+      await copyImageToClipboard(item.mediaUrl);
+      setCopyFeedback(true);
+      if (copyFeedbackTimeoutRef.current) {
+        clearTimeout(copyFeedbackTimeoutRef.current);
+      }
+      copyFeedbackTimeoutRef.current = setTimeout(() => {
+        setCopyFeedback(false);
+      }, 1500);
+    } catch (error) {
+      console.log("Copy image error", error);
+      Alert.alert("Fejl", "Kunne ikke kopiere billedet. Tjek din forbindelse.");
+    } finally {
+      setCopyLoading(false);
+    }
+  };
+
+  const handleShareImage = async () => {
+    if (!item?.mediaUrl || isImageActionLoading) return;
+    setShareLoading(true);
+    try {
+      await shareImage(item.mediaUrl, item.title, item.content);
+    } catch (error) {
+      console.log("Share image error", error);
+      Alert.alert("Fejl", "Kunne ikke dele billedet. Tjek din forbindelse.");
+    } finally {
+      setShareLoading(false);
+    }
   };
 
   if (loading) {
@@ -356,6 +404,44 @@ export default function ItemDetailScreen() {
             style={styles.image}
             contentFit="cover"
           />
+          <View style={styles.imageActionsRow}>
+            <TouchableOpacity
+              style={[
+                styles.imageActionButton,
+                styles.buttonSecondary,
+                copyLoading && styles.buttonDisabled,
+              ]}
+              onPress={handleCopyImage}
+              disabled={isImageActionLoading}
+            >
+              {copyLoading ? (
+                <ActivityIndicator
+                  size="small"
+                  color={isDark ? "#e2e8f0" : "#0f172a"}
+                />
+              ) : (
+                <Text style={styles.imageActionButtonText}>Kopiér foto</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.imageActionButton,
+                styles.buttonPrimary,
+                shareLoading && styles.buttonDisabled,
+              ]}
+              onPress={handleShareImage}
+              disabled={isImageActionLoading}
+            >
+              {shareLoading ? (
+                <ActivityIndicator size="small" color="#0f172a" />
+              ) : (
+                <Text style={styles.imageActionButtonPrimaryText}>Del foto</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+          {copyFeedback ? (
+            <Text style={styles.copyFeedbackText}>Billede kopieret</Text>
+          ) : null}
           <TouchableOpacity
             style={styles.removeImageInlineButton}
             onPress={() => {
@@ -571,8 +657,8 @@ export default function ItemDetailScreen() {
                   editAssignedTo === option.id && styles.assigneeChipActive,
                 ]}
                 onPress={() => {
-                  setEditAssignedTo(option.id || null);
-                  setEditAssignedToName(option.label);
+                  setEditAssignedTo(option.id);
+                  setEditAssignedToName(option.id ? option.label : "");
                 }}
               >
                 <Text
@@ -747,6 +833,33 @@ const themedStyles = (isDark: boolean) =>
     },
     removeImageInlineText: {
       color: "#f87171",
+      fontWeight: "600",
+    },
+    imageActionsRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 12,
+    },
+    imageActionButton: {
+      flex: 1,
+      borderRadius: 12,
+      padding: 14,
+      alignItems: "center",
+    },
+    imageActionButtonText: {
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      fontWeight: "700",
+      fontSize: 15,
+    },
+    imageActionButtonPrimaryText: {
+      color: "#0f172a",
+      fontWeight: "700",
+      fontSize: 15,
+    },
+    copyFeedbackText: {
+      marginTop: 8,
+      fontSize: 14,
+      color: "#34d399",
       fontWeight: "600",
     },
     contentCard: {

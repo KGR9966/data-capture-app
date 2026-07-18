@@ -63,7 +63,14 @@ async function translateWithGoogle(
 
     const json = (await response.json()) as GoogleTranslateResponse;
     if (!response.ok || json.error) {
-      console.log("Google translate error", json.error?.message);
+      console.error("[translateWithGoogle] API error:", {
+        status: response.status,
+        error: json.error,
+        targetLang,
+        sourceLang,
+        textLength: text.length,
+        hasApiKey: !!GOOGLE_API_KEY,
+      });
       return null;
     }
 
@@ -103,8 +110,15 @@ async function translateWithMyMemory(
     const response = await fetch(url);
     const json = (await response.json()) as MyMemoryResponse;
 
-    if (!response.ok || json.responseStatus !== 200) {
-      console.log("MyMemory translate error", json);
+    if (!response.ok || String(json.responseStatus) !== "200") {
+      console.error("[translateWithMyMemory] API error:", {
+        status: response.status,
+        responseStatus: json.responseStatus,
+        responseDetails: (json as { responseDetails?: string }).responseDetails,
+        targetLang,
+        sourceLang,
+        textLength: text.length,
+      });
       return null;
     }
 
@@ -131,6 +145,12 @@ export async function translateText(
   const myMemoryResult = await translateWithMyMemory(text, targetLang, sourceLang);
   if (myMemoryResult) return myMemoryResult;
 
+  console.error("[translateText] Both translation providers failed", {
+    targetLang,
+    sourceLang,
+    textLength: text.length,
+    hasGoogleApiKey: !!GOOGLE_API_KEY,
+  });
   throw new Error("Oversættelse kunne ikke gennemføres. Tjek netværk og API-nøgle.");
 }
 

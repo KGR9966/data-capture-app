@@ -148,7 +148,7 @@ export default function VoiceCaptureModal({
   const [copiedOriginal, setCopiedOriginal] = useState(false);
   const [copiedTranslated, setCopiedTranslated] = useState(false);
 
-  const [assignedTo, setAssignedTo] = useState<string | null>(null);
+  const [assignedTo, setAssignedTo] = useState<string>("");
   const [assignedToName, setAssignedToName] = useState<string>("");
 
   const autoSaveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -205,7 +205,7 @@ export default function VoiceCaptureModal({
         setOcrTargetLang("da");
         setCopiedOriginal(false);
         setCopiedTranslated(false);
-        setAssignedTo(null);
+        setAssignedTo("");
         setAssignedToName("");
         setAutoSave(true);
         editedRef.current = false;
@@ -264,7 +264,7 @@ export default function VoiceCaptureModal({
         category || suggestCategory({ title: finalTitle, content: finalContent, type: itemType }),
       mediaUrl: mediaUrl || undefined,
       assignedTo: assignedTo || undefined,
-      assignedToName: assignedToName || undefined,
+      assignedToName: assignedTo ? assignedToName : undefined,
     });
     setIsProcessing(false);
     onClose();
@@ -783,8 +783,8 @@ export default function VoiceCaptureModal({
                           assignedTo === option.id && styles.assigneeChipActive,
                         ]}
                         onPress={() => {
-                          setAssignedTo(option.id || null);
-                          setAssignedToName(option.label);
+                          setAssignedTo(option.id);
+                          setAssignedToName(option.id ? option.label : "");
                         }}
                       >
                         <Text

@@ -65,6 +65,10 @@
       "expo-mlkit-ocr",
       "expo-image",
       [
+        "react-native-share",
+        {}
+      ],
+      [
         "expo-build-properties",
         {
           "ios": {
