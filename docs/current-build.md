@@ -7,18 +7,18 @@
 
 | Felt | Værdi |
 |---|---|
-| **Build-ID** | `e823cf07-aa97-421e-88ed-98e86b33c70f` (Android), `0323bbbb-bee5-4fb0-a040-2cfb4f34bf64` (iOS) |
+| **Build-ID** | `648a6ba2-2ece-41c5-8238-79361432d44f` (Android), `0d155824-6521-41f2-b3de-5d839374a182` (iOS) |
 | **Platform** | Android + iOS preview build |
 | **Distribution** | Internal (EAS) |
 | **EAS Dashboard** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds |
-| **Android EAS build-side** | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/e823cf07-aa97-421e-88ed-98e86b33c70f) |
-| **Android direkte download (APK)** | [Download Android APK](https://expo.dev/artifacts/eas/zU0_U6eQG5Q3OKmvaG3X7GS64ucfVCm03vXyDNpXMa0.apk) |
-| **iOS EAS build-side** | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/0323bbbb-bee5-4fb0-a040-2cfb4f34bf64) |
-| **iOS direkte download (IPA)** | [Download iOS IPA](https://expo.dev/artifacts/eas/Psrqp4nWJUYnQHjxn7G_pn70JSOiQK6PiM9slWVmays.ipa) |
+| **Android EAS build-side** | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/648a6ba2-2ece-41c5-8238-79361432d44f) |
+| **Android direkte download (APK)** | *Afventer færdiggørelse af build* |
+| **iOS EAS build-side** | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/0d155824-6521-41f2-b3de-5d839374a182) |
+| **iOS direkte download (IPA)** | *Afventer færdiggørelse af build* |
 | **QR-kode** | Scan QR-koden på de respektive EAS build-sider via linksene ovenfor. |
 | **Fokus i dette build** | B+C quick wins og Context Lists: del tekst/oversættelser, avanceret søgning, stemmekommandoer, nyt "Lister"-modul med status-synkronisering |
-| **Git snapshot** | `f85bda8` (`v2026.07.18-rc2`) |
-| **Forrige build** | `376a3067-cabb-4afe-b49c-e70467177a93` / `6c3c014c-5f0d-42ca-91b5-3e1b259aff9e` |
+| **Git snapshot** | `2be7604` (`v2026.07.18-rc3`) |
+| **Forrige build** | `e823cf07-aa97-421e-88ed-98e86b33c70f` / `0323bbbb-bee5-4fb0-a040-2cfb4f34bf64` |
 
 ## Hurtigstart – når QR-koden er forsvundet
 
@@ -45,8 +45,8 @@
 1. Åbn Safari (iOS) eller Chrome (Android) på enheden.
 2. Gå til EAS Dashboard: https://expo.dev/accounts/kgradm/projects/data-capture-app/builds
 3. Find det ønskede build:
-   - Android: `e823cf07-aa97-421e-88ed-98e86b33c70f`
-   - iOS: `0323bbbb-bee5-4fb0-a040-2cfb4f34bf64`
+   - Android: `648a6ba2-2ece-41c5-8238-79361432d44f`
+   - iOS: `0d155824-6521-41f2-b3de-5d839374a182`
 4. Tryk installationslinket og scan QR-koden på siden, eller følg anvisningen.
 5. Åbn appen og accepter tilladelser.
 
@@ -62,6 +62,11 @@
   - Afkrydsning synkroniserer automatisk kildens item-status til `done`.
   - Del liste som tekst og dyb-link (`datacapture://open-list?id=...`).
   - Nye Firestore-regler for `checklists` og `checklists/{id}/items` er klar til manuelt deploy.
+
+### Rettet i rc3 (det aktuelle build)
+
+- **Sager kunne ikke redigeres**: `app/item.tsx` henter nu projektdata (`ownerId` + `roles`) før rettighedstjekket, så ejer/admin/editor igen kan redigere sager.
+- **VoiceCaptureModal rolle-beregning**: Henter projektdata og bruger den aktuelle brugers uid, så tildelingsmuligheder vises korrekt.
 
 ## Kendte begrænsninger
 
