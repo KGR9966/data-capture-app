@@ -6,7 +6,6 @@ import {
   doc,
   getDocs,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
 } from "@react-native-firebase/firestore";
@@ -33,6 +32,16 @@ function commentsCollection(itemId: string) {
 
 function stripUndefined(obj: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+}
+
+function getCommentTimestamp(comment: Comment): number {
+  const ts = comment.createdAt;
+  if (!ts) return 0;
+  if (typeof ts.toMillis === "function") return ts.toMillis();
+  if (typeof ts.toDate === "function") return ts.toDate().getTime();
+  if (typeof ts === "number") return ts;
+  const parsed = new Date(ts).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 export async function createComment(
@@ -110,14 +119,16 @@ export function subscribeToComments(
   itemId: string,
   callback: (comments: Comment[]) => void
 ) {
-  const q = query(commentsCollection(itemId), orderBy("createdAt", "asc"));
+  const q = query(commentsCollection(itemId));
   return onSnapshot(
     q,
     (snapshot) => {
-      const comments = snapshot.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<Comment, "id">),
-      }));
+      const comments = snapshot.docs
+        .map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<Comment, "id">),
+        }))
+        .sort((a, b) => getCommentTimestamp(a) - getCommentTimestamp(b));
       callback(comments);
     },
     (error) => {
