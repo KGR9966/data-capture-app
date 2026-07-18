@@ -1,8 +1,14 @@
 # CHECKLIST-001 – Aktionslister fra søgning
 
-> Backlog-case: Brugeren ønsker at kunne omdanne søgeresultater til en vedligeholdelig checkliste med flueben, deduplikering, sortering, deling via e-mail/SMS, og mulighed for at markere status tilbage på den enkelte sag.
+> Backlog-case: Brugeren ønsker at kunne omdanne søgeresultater til en vedligeholdelig checkliste med flueben, deduplikering, sortering, deling via e-mail/SMS, og automatisk markering af status tilbage på den enkelte sag.
 > Dato: 2026-07-15
 > Status: `proposed` (afventer PO-prioritering)
+> PO-afklaringer:
+>   - Personligt OG projektorienteret: værktøjet skal fungere som "din bedste ven i hverdagen" til at fange informationer, data og opgaver.
+>   - Automatisk status-tilbagekobling er nødvendigt, så overblikket ikke ødelægges af manglende manuel opdatering.
+>   - Listepunkter skal ALTID knyttes til en sag. Nye punkter oprettes som en ny sag, så den dynamiske søgning fanger dem.
+>   - AI skal være så smart/automatisk som muligt, men fejlsikkert — "virker hver gang".
+>   - Deadlines og påmindelser ønskes; notifikationer ved nye matches i dynamiske lister anses for for støjende.
 
 ---
 
@@ -39,13 +45,13 @@ Alternativ: Integrer det som en "Opret liste"-knap på søgeresultatet, men vis 
 2. På søgeresultatskærmen tilføjes knap: **"Opret aktionsliste"**.
 3. Bruger vælger, hvilke felter der skal blive til listepunkter:
    - Item-titel
-   - OCR-tekst / oversat tekst
+   - OCR-tekst / oversat tekst (kan splitte et item op i flere listepunkter)
    - Kategori
    - Ansvarlig
-   - Egen tekst (bruger kan tilføje noter)
+   - Bruger-noter (tilføjet på listepunktet, ikke fritstående punkt)
 4. Appen genererer en navngivet liste.
 5. Bruger kan redigere, afkrydse, sortere, filtrere og dele listen.
-6. Når et punkt afkrydses, kan appen automatisk opdatere den tilknyttede sag (f.eks. sætte `status: done`, tilføje kommentar, eller arkivere).
+6. Når et punkt afkrydses, opdateres den tilknyttede sag automatisk (f.eks. `status: done`, arkiveret, eller kommentar "Udført via liste [navn]").
 
 ---
 
@@ -58,6 +64,7 @@ Alternativ: Integrer det som en "Opret liste"-knap på søgeresultatet, men vis 
 | **Handlingsforslag** | Forslår, hvad næste skridt er for hvert punkt (f.eks. "Kontakt ansvarlig", "Bestil vare"). | Hurtigere eksekvering |
 | **Prioritering** | Anbefaler rækkefølge baseret på deadline, ansvarlig, alder, kompleksitet. | Bedre fokus |
 | **Smart afkrydsning** | Genkender når en sag er løst baseret på nye kommentarer eller statusændringer. | Mindre manuel vedligeholdelse |
+| **Fail-safe AI** | AI-forslag vises altid som forslag, aldrig som tvingende. Bruger kan ignorere eller acceptere. Ved tvivl vælger AI det sikre (behold punktet). | "Virker hver gang" |
 | **Opsummering til deling** | Genererer en kort e-mail/SMS-tekst: "3 af 7 punkter tilbage. Højeste prioritet: ..." | Professionel kommunikation |
 | **Stemme-tilføjelse** | Bruger kan tilføje punkter til listen med stemme. | Hurtig input |
 
@@ -90,17 +97,19 @@ Alternativ: Integrer det som en "Opret liste"-knap på søgeresultatet, men vis 
    - Del direkte til anden projektmedlem i appen.
 
 8. **Status-synkronisering til sag**  
-   Når et listepunkt afkrydses, kan bruger vælge handling:
+   Når et listepunkt afkrydses, sker tilbagekoblingen automatisk (efter PO-afklaring). Konkret:
    - Markér item som `done` / `archived`.
    - Tilføj kommentar med "Udført via aktionsliste [listename]".
-   - Skift ansvarlig.
-   - Ingen tilbagekobling (kun visuel i listen).
+   - Ved dubletter med flere kildesager gives bruger mulighed for at vælge, hvilken(e) der markeres som udført (default: alle).
+   - Bruger kan slå auto-tilbagekobling fra per liste.
 
 9. **Offline-støtte**  
    Listen skal kunne redigeres offline og synkronisere når netværket er tilbage.
 
 10. **Notifikationer**  
-    Påmindelse om åbne punkter med deadline, eller når en dynamisk liste får nye matches.
+    - Påmindelse om åbne punkter med deadline (aktiveret per punkt/liste).  
+    - **Nej til notifikationer ved nye matches** i dynamiske lister (for støjende).  
+    - Nye matches markeres visuelt i listen ved næste åbning.
 
 ---
 
