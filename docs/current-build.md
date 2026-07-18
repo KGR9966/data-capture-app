@@ -7,18 +7,18 @@
 
 | Felt | Værdi |
 |---|---|
-| **Build-ID** | `376a3067-cabb-4afe-b49c-e70467177a93` (Android), `6c3c014c-5f0d-42ca-91b5-3e1b259aff9e` (iOS) |
+| **Build-ID** | `e823cf07-aa97-421e-88ed-98e86b33c70f` (Android), `0323bbbb-bee5-4fb0-a040-2cfb4f34bf64` (iOS) |
 | **Platform** | Android + iOS preview build |
 | **Distribution** | Internal (EAS) |
 | **EAS Dashboard** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds |
-| **Android EAS build-side** | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/376a3067-cabb-4afe-b49c-e70467177a93) |
-| **Android direkte download (APK)** | [Download Android APK](https://expo.dev/artifacts/eas/okTC0nIyfcUxLISxZF6p7sQbLSo4zKQGNyqH8aBgBxY.apk) |
-| **iOS EAS build-side** | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/6c3c014c-5f0d-42ca-91b5-3e1b259aff9e) |
-| **iOS direkte download (IPA)** | [Download iOS IPA](https://expo.dev/artifacts/eas/PSgKl5r-E8f7JfZvxJpdBSG45XV8Oh7g8OWn2zX48Ds.ipa) |
+| **Android EAS build-side** | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/e823cf07-aa97-421e-88ed-98e86b33c70f) |
+| **Android direkte download (APK)** | *Afventer færdiggørelse af build* |
+| **iOS EAS build-side** | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/0323bbbb-bee5-4fb0-a040-2cfb4f34bf64) |
+| **iOS direkte download (IPA)** | *Afventer færdiggørelse af build* |
 | **QR-kode** | Scan QR-koden på de respektive EAS build-sider via linksene ovenfor. |
-| **Fokus i dette build** | CHAT-001 rettelser (kommentar-afsendelse, "Ingen ansvarlig" redigering) + COPY-001 del/kopiér foto + ny Google Translate API-nøgle |
-| **Git snapshot** | `ad34f80` (`v2026.07.15-rc1`) |
-| **Forrige build** | `fab85114-d346-4406-8eba-0fa5f9e1b8f1` / `bc7a5b59-aca6-4195-92b3-f4c22ce05e91` |
+| **Fokus i dette build** | B+C quick wins og Context Lists: del tekst/oversættelser, avanceret søgning, stemmekommandoer, nyt "Lister"-modul med status-synkronisering |
+| **Git snapshot** | `f85bda8` (`v2026.07.18-rc2`) |
+| **Forrige build** | `376a3067-cabb-4afe-b49c-e70467177a93` / `6c3c014c-5f0d-42ca-91b5-3e1b259aff9e` |
 
 ## Hurtigstart – når QR-koden er forsvundet
 
@@ -38,36 +38,37 @@
 |---|---|---|---|
 | iPhone 13 | iPhone 13 | Installeret | Bruges til test |
 | iPhone 17 | iPhone 17 | Installeret | Bruges til test |
-| iPad | iPad | Afventer installation | Skal installeres |
+| iPad | iPad | Installeret | Bruges til test |
 
 ## Installationsinstruktion per enhed
 
 1. Åbn Safari (iOS) eller Chrome (Android) på enheden.
 2. Gå til EAS Dashboard: https://expo.dev/accounts/kgradm/projects/data-capture-app/builds
 3. Find det ønskede build:
-   - Android: `376a3067-cabb-4afe-b49c-e70467177a93`
-   - iOS: `6c3c014c-5f0d-42ca-91b5-3e1b259aff9e`
+   - Android: `e823cf07-aa97-421e-88ed-98e86b33c70f`
+   - iOS: `0323bbbb-bee5-4fb0-a040-2cfb4f34bf64`
 4. Tryk installationslinket og scan QR-koden på siden, eller følg anvisningen.
 5. Åbn appen og accepter tilladelser.
 
-## Ændringsoversigt (CHAT-001 + COPY-001)
+## Ændringsoversigt (B+C – quick wins + Context Lists MVP)
 
-- Ny chat/kommentartråd under hver sag (item) med real-time opdateringer.
-- Roller håndhæves: `viewer` kan ikke skrive kommentarer; `editor`, `admin` og `owner` kan.
-- Forfattere kan slette egne kommentarer; `admin`/`owner` kan slette alle kommentarer i projektet.
-- Kaskade-sletning: kommentarer slettes automatisk, når en sag slettes.
-- `comment` → `note` omdøbning i item-typer, labels og kategori-forslag.
-- Client-side throttling: maks 1 send pr. 2 sekunder og maks 10 kommentarer pr. minut pr. item.
-- **Rettet i denne RC**: kommentarer kan nu sendes (undefined-værdier fjernes før Firestore-skriv); "Ingen ansvarlig"-knap virker i redigeringstilstand.
-- **COPY-001**: knapperne "Kopiér foto" og "Del foto" vises under foto på item-detail.
-- **Oversættelse**: ny Google Translate API-nøgle bundet i EAS build (den gamle returnerede 403).
+- **B1 – Del tekst og oversættelser**: Del/kopiér sagens tekst og eventuel oversættelse fra item-detail og VoiceCaptureModal.
+- **B2 – Avanceret søgning**: Nyt søgesprog med `*vand*` for helt ord, `"frase"` for nøjagtig sætning, `-negation`, `OR` og simple filtre (`type:`, `kategori:`, `status:`, `ansvarlig:`, `projekt:`, `has:photo`).
+- **B3 – Stemmekommandoer**: Punktum, komma, ny linje, slet sidste ord, fortryd, gem, annuller. Stemmeoptagelse viser redigerbar preview og gemmer ikke automatisk.
+- **C – Context Lists MVP**:
+  - Nyt "Lister"-fane med alle brugerens lister.
+  - Opret liste direkte fra søgeresultater med "Opret aktionsliste".
+  - Deduplikering ved oprettelse og alfabetisk sortering af åbne punkter; færdige samles nederst.
+  - Afkrydsning synkroniserer automatisk kildens item-status til `done`.
+  - Del liste som tekst og dyb-link (`datacapture://open-list?id=...`).
+  - Nye Firestore-regler for `checklists` og `checklists/{id}/items` er klar til manuelt deploy.
 
 ## Kendte begrænsninger
 
 - Push-notifikationer ved nye kommentarer er ikke inkluderet i v1.
 - Redigering af egne kommentarer er ikke inkluderet i v1; brugere kan slette og oprette ny.
 - Server-side rate limiting er ikke implementeret i v1; client-side throttling kan omgås af en manipuleret klient.
-- **Firestore Security Rules er deployet** manuelt 2026-07-15; automatisk CLI-deploy (AUTO-001) er stadig åben.
+- Opdaterede Firestore Security Rules (inkl. `checklists`) er klar, men ikke deployet endnu – deployes manuelt lige så snart build er godkendt.
 
 ## Når der kommer nyt build
 
