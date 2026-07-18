@@ -18,7 +18,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { Comment, createComment, deleteComment, subscribeToComments } from "../services/comments";
 import { CaptureItem, deleteItem, getItemById, ItemStatus, ItemType, updateItem } from "../services/items";
-import { ProjectMember, subscribeToProjectMembers } from "../services/projects";
+import { getProjectById, Project, ProjectMember, subscribeToProjectMembers } from "../services/projects";
 import { copyImageToClipboard, shareImage, shareText } from "../services/share";
 import { canAssignItems, canComment, canDeleteItem, canEditItem, getProjectRole, ProjectRole } from "../services/roles";
 import { copyToClipboard } from "../services/deeplinks";
@@ -71,6 +71,7 @@ export default function ItemDetailScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const [item, setItem] = useState<CaptureItem | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -112,8 +113,8 @@ export default function ItemDetailScreen() {
 
   const AUTO_SCROLL_THRESHOLD = 80;
 
-  const projectRole: ProjectRole | null = item?.projectId
-    ? getProjectRole({ id: item.projectId, ownerId: "" }, user?.uid, members)
+  const projectRole: ProjectRole | null = project
+    ? getProjectRole(project, user?.uid, members)
     : null;
 
   const assignmentOptions = useMemo(() => {
@@ -138,7 +139,7 @@ export default function ItemDetailScreen() {
     let unsubscribeMembers: (() => void) | undefined;
     let unsubscribeComments: (() => void) | undefined;
     getItemById(itemId)
-      .then((data) => {
+      .then(async (data) => {
         setItem(data);
         if (data) {
           setEditType(data.type);
@@ -150,6 +151,12 @@ export default function ItemDetailScreen() {
           setEditAssignedTo(data.assignedTo || "");
           setEditAssignedToName(data.assignedToName || "");
           if (data.projectId) {
+            try {
+              const projectData = await getProjectById(data.projectId);
+              setProject(projectData);
+            } catch (err) {
+              console.log("Load project error", err);
+            }
             unsubscribeMembers = subscribeToProjectMembers(data.projectId, (m) => setMembers(m));
             unsubscribeComments = subscribeToComments(data.projectId, itemId, (c) => setComments(c));
           }

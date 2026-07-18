@@ -14,6 +14,7 @@ import {
 } from "react-native";
 
 import { Image } from "expo-image";
+import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { useVoiceRecognition } from "../hooks/useVoiceRecognition";
 import { suggestCategory } from "../services/categories";
@@ -26,7 +27,7 @@ import {
   uploadImage,
 } from "../services/media";
 import { extractTextFromImage } from "../services/ocr";
-import { ProjectMember, subscribeToProjectMembers } from "../services/projects";
+import { getProjectById, Project, ProjectMember, subscribeToProjectMembers } from "../services/projects";
 import { canAssignOthers, canAssignItems, getProjectRole, ProjectRole } from "../services/roles";
 import { getLanguageLabel, SUPPORTED_LANGUAGES, translateText } from "../services/translation";
 import { processVoiceCommands } from "../services/voiceCommands";
@@ -127,6 +128,7 @@ export default function VoiceCaptureModal({
   onSave,
 }: VoiceCaptureModalProps) {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const isDark = theme === "dark";
   const styles = themedStyles(isDark);
 
@@ -235,10 +237,21 @@ export default function VoiceCaptureModal({
   }, [visible, resetTranscript]);
 
   const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [project, setProject] = useState<Project | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
-    return subscribeToProjectMembers(projectId, (data) => setMembers(data));
+    let mounted = true;
+    getProjectById(projectId)
+      .then((p) => {
+        if (mounted) setProject(p);
+      })
+      .catch((err) => console.log("Load project error", err));
+    const unsubscribe = subscribeToProjectMembers(projectId, (data) => setMembers(data));
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, [projectId]);
 
   const assignmentOptions = useMemo(() => {
@@ -256,8 +269,8 @@ export default function VoiceCaptureModal({
     return options;
   }, [members]);
 
-  const projectRole: ProjectRole | null = projectId
-    ? getProjectRole({ id: projectId, ownerId: "" }, null, members)
+  const projectRole: ProjectRole | null = project
+    ? getProjectRole(project, user?.uid, members)
     : null;
 
 
