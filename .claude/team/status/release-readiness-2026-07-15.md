@@ -31,6 +31,7 @@ metadata:
 | 3 | Native prebuild validates | [x] | `npx expo prebuild --no-install` gennemført uden fejl for Android; plugin `react-native-share` konfigureret korrekt. |
 | 4 | TypeScript / lint passes | [x] | `npx tsc --noEmit` ✅, `npx expo lint` ✅, `node scripts/release-gate.js` ✅. |
 | 5 | Runtime smoke tests pass | [ ] | Automatiske gates bestået. Fysiske enheds-smoke-tests afventer nyt build eller lokal dev-client. |
+| 5a | 360° midtvejsaudit gennemført | [x] | Fire specialiserede audits udført: process, arkitektur, sikkerhed/App Store, UX/produkt. Master-rapport og skabelon oprettet. |
 | 6 | Firestore rules deployed and smoke-tested | [ ] | `team-status.md` angiver manuelt deployet og publishet 2026-07-15. Ingen smoke-test-rapport set. `firestore.rules` / `firebase.json` til automatisk CLI-deploy findes ikke i repoet endnu (AUTO-001 åben). |
 | 7 | PO approval for build obtained | [ ] | Afventer PO-go efter runtime smoke-test resultat.
 | 8 | Build profile selected | [x] | `preview` anbefales til intern test (internal distribution, Android APK + iOS). Afventer PO-go. |
@@ -102,7 +103,8 @@ eas build --profile preview --platform ios
 
 1. **Runtime smoke-test:** Afventer resultat fra lokal/physical-device smoke-test af kommentar-afsendelse, "Ingen ansvarlig" redigering, COPY-001 del/kopiér foto og oversættelse.
 2. **Firestore rules smoke-test:** Reglerne er deployet, men der er ingen dokumenteret smoke-test efter deploy. Anbefalet: opret projekt, opret item, opret kommentar, slet item.
-3. **PO-go:** Ingen build må køres før PO-go ifølge SOP §2.1.
+3. **360° audit P0-fund:** Firestore catch-all regel, Google Translate API-nøgle i bundle, manglende privacy policy og Firebase config i git er kritiske blockere for produktionsrelease — skal adresseres, men blokkerer ikke nødvendigvis et preview build til intern test. PO bør godkende, at preview build køres nu, mens P0 actions påbegyndes parallelt.
+4. **PO-go:** Ingen build må køres før PO-go ifølge SOP §2.1.
 
 ---
 
@@ -114,4 +116,5 @@ Koden er committed, tagged, og alle automatiske gates er grønne. Men følgende 
 
 - Modtag runtime smoke-test resultat (undervejs).
 - Smoke-test Firestore Security Rules på en fysisk enhed eller emulator.
+- PO afgør, om P0 audit-fund skal rettes før preview build, eller om preview build køres nu som intern test mens P0 actions påbegyndes.
 - Få PO-go til build.
