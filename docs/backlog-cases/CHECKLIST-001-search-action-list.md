@@ -144,6 +144,30 @@ Overvejelse: Hvis mange brugere laver mange lister, bør `checklists` være en t
 
 ---
 
+## Arkitekturelle forberedelser til GEOFENCE-001
+
+For at GEOFENCE-001 (lokationstriggere) kan bygges ovenpå uden refaktorering af CHECKLIST-001, bør følgende beslutninger tages allerede i designfasen:
+
+1. **Stable, unikke liste-identifikatorer**  
+   Hver checkliste skal have et varigt `id`, der kan bruges i deep links: `datacapture://open-list?id=<checklistId>`. Navn-baserede links (`name=...`) kan ændre sig; id-baserede links er robuste over for omdøbning.
+
+2. **Separat `personalContext` underlag**  
+   Sted-metadata (adresse, koordinater, radius, trigger-type) gemmes i en separat undercollection eller et separat map, som IKKE deles med andre brugere. Dette sikrer, at deling af en liste ikke lækker hjemmeadresse eller arbejdsplacering.
+
+3. **Deep-link handler i app-routeren**  
+   `expo-router` skal kunne håndtere `datacapture://open-list?id=...` og videresende til Context Lists-fanen med korrekt liste åben. Dette implementeres i CHECKLIST-001, selvom geofencing først kommer senere.
+
+4. **Login-tolerant deep-link**  
+   Hvis appen åbnes fra kold start via deep link og brugeren ikke er logget ind, gemmes mållisten midlertidigt. Efter login/anonymt login vises listen. Dette er afgørende for geofencing, hvor brugeren ikke selv åbner appen.
+
+5. **Fane-struktur der tillader eksterne åbninger**  
+   Context Lists-fanen skal kunne sættes som startdestination fra et deep link uden at ødelægge navigation stack eller tab-state.
+
+6. **Ingen antagelse om manuel åbning**  
+   Liste-siden skal kunne initialiseres uden forudgående søgning — dvs. direkte fra id — og stadig vise alle relevante metadata (navn, punkter, status, kildesager).
+
+---
+
 ## Tekniske afhængigheder
 
 - `react-native-share` (allerede installeret via COPY-001) til deling.
