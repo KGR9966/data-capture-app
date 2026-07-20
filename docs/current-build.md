@@ -12,13 +12,13 @@
 | **Distribution** | Internal (EAS) |
 | **EAS Dashboard** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds |
 | **Android EAS build-side** | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/648a6ba2-2ece-41c5-8238-79361432d44f) |
-| **Android direkte download (APK)** | *Afventer færdiggørelse af build* |
+| **Android direkte download (APK)** | [Download Android APK](https://expo.dev/artifacts/eas/jnCyTDJCSGU2UFgqE4OjKx2-BqBgf8_ztHL4nscQCug.apk) |
 | **iOS EAS build-side** | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/0d155824-6521-41f2-b3de-5d839374a182) |
-| **iOS direkte download (IPA)** | *Afventer færdiggørelse af build* |
+| **iOS direkte download (IPA)** | [Download iOS IPA](https://expo.dev/artifacts/eas/phfp8ZnZtK0ZYdxFqFN-3eM5fHxdQ6bavissHctYfns.ipa) |
 | **QR-kode** | Scan QR-koden på de respektive EAS build-sider via linksene ovenfor. |
 | **Fokus i dette build** | B+C quick wins og Context Lists: del tekst/oversættelser, avanceret søgning, stemmekommandoer, nyt "Lister"-modul med status-synkronisering |
 | **Git snapshot** | `2be7604` (`v2026.07.18-rc3`) |
-| **Forrige build** | `e823cf07-aa97-421e-88ed-98e86b33c70f` / `0323bbbb-bee5-4fb0-a040-2cfb4f34bf64` |
+| **Forrige build** | ~~`e823cf07-aa97-421e-88ed-98e86b33c70f` / `0323bbbb-bee5-4fb0-a040-2cfb4f34bf64`~~ **Forældet** |
 
 ## Hurtigstart – når QR-koden er forsvundet
 
@@ -74,6 +74,7 @@
 - Redigering af egne kommentarer er ikke inkluderet i v1; brugere kan slette og oprette ny.
 - Server-side rate limiting er ikke implementeret i v1; client-side throttling kan omgås af en manipuleret klient.
 - Opdaterede Firestore Security Rules (inkl. `checklists`) er klar, men ikke deployet endnu – deployes manuelt lige så snart build er godkendt.
+- **Dette build (rc3) er midlertidigt og afventer PO-godkendelse før videre test.** rc2 er markeret forældet pga. kritisk fejl ved redigering og projektoprettelse.
 
 ## Når der kommer nyt build
 
