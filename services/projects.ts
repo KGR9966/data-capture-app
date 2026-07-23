@@ -13,6 +13,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from "@react-native-firebase/firestore";
 
 import { db } from "./firebase";
@@ -41,34 +42,54 @@ const projectsCollection = collection(db, "projects");
 const membersSubcollection = (projectId: string) =>
   collection(doc(db, "projects", projectId), "members");
 
+export function isDuplicateProjectName(
+  name: string,
+  ownedProjects: Project[]
+): boolean {
+  const normalized = name.trim().toLowerCase();
+  return ownedProjects.some(
+    (p) => p.name.trim().toLowerCase() === normalized
+  );
+}
+
 export async function createProject(
   name: string,
   ownerId: string,
   ownerEmail?: string,
   description?: string
 ): Promise<Project> {
-  const projectRef = await addDoc(projectsCollection, {
+  const memberDocId = ownerEmail || ownerId;
+  const projectRef = doc(projectsCollection);
+  const memberRef = doc(membersSubcollection(projectRef.id), memberDocId);
+
+  const batch = writeBatch(db);
+
+  batch.set(projectRef, {
     name,
     description: description || "",
     ownerId,
     memberEmails: ownerEmail ? [ownerEmail] : [],
-    roles: ownerEmail ? { [ownerId]: "owner" } : {},
+    roles: { [ownerId]: "owner" },
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
 
-  await setDoc(doc(membersSubcollection(projectRef.id), ownerEmail || ownerId), {
+  batch.set(memberRef, {
     userId: ownerId,
     email: ownerEmail || "",
     role: "owner",
     joinedAt: serverTimestamp(),
   });
 
+  await batch.commit();
+
   return {
     id: projectRef.id,
     name,
     description,
     ownerId,
+    memberEmails: ownerEmail ? [ownerEmail] : [],
+    roles: { [ownerId]: "owner" },
   };
 }
 

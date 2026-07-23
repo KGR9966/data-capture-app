@@ -25,6 +25,7 @@ import {
 import {
   addProjectMemberByEmail,
   createProject,
+  isDuplicateProjectName,
   Project,
   ProjectMember,
   removeProjectMember,
@@ -58,6 +59,7 @@ export default function ProjectsScreen() {
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const [inviteProjectId, setInviteProjectId] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -106,11 +108,21 @@ export default function ProjectsScreen() {
   );
 
   const handleCreateProject = async () => {
-    if (!user?.uid || !newProjectName.trim()) return;
+    if (!user?.uid || !newProjectName.trim() || creating) return;
+
+    const trimmedName = newProjectName.trim();
+
+    if (isDuplicateProjectName(trimmedName, ownedProjects)) {
+      setCreateError("Der findes allerede et projekt med dette navn.");
+      return;
+    }
+
     setCreating(true);
+    setCreateError(null);
+
     try {
       const project = await createProject(
-        newProjectName.trim(),
+        trimmedName,
         user.uid,
         user.email || undefined,
         newProjectDescription.trim()
@@ -121,8 +133,8 @@ export default function ProjectsScreen() {
       setNewProjectDescription("");
       router.push("/(tabs)/board");
     } catch (error) {
-      console.log("Create project error", error);
-      Alert.alert("Fejl", "Kunne ikke oprette projektet.");
+      console.error("Create project error", error);
+      setCreateError("Kunne ikke oprette projektet. Prøv igen.");
     } finally {
       setCreating(false);
     }
@@ -270,7 +282,12 @@ export default function ProjectsScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.addButton}
-            onPress={() => setModalVisible(true)}
+            onPress={() => {
+              setCreateError(null);
+              setNewProjectName("");
+              setNewProjectDescription("");
+              setModalVisible(true);
+            }}
           >
             <Text style={styles.addButtonText}>+ Nyt</Text>
           </TouchableOpacity>
@@ -337,10 +354,16 @@ export default function ProjectsScreen() {
                 placeholder="Projektnavn"
                 placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
                 value={newProjectName}
-                onChangeText={setNewProjectName}
+                onChangeText={(text) => {
+                  setNewProjectName(text);
+                  if (createError) setCreateError(null);
+                }}
                 autoFocus
                 returnKeyType="next"
               />
+              {createError ? (
+                <Text style={styles.errorText}>{createError}</Text>
+              ) : null}
               <TextInput
                 style={[styles.input, styles.textArea]}
                 placeholder="Beskrivelse (valgfrit)"
@@ -869,5 +892,11 @@ const themedStyles = (isDark: boolean) =>
     },
     buttonDisabled: {
       opacity: 0.5,
+    },
+    errorText: {
+      color: "#ef4444",
+      fontSize: 14,
+      marginTop: -4,
+      marginBottom: 12,
     },
   });

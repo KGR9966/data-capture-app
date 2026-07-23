@@ -16,10 +16,19 @@ service cloud.firestore {
 
     // Projekter
     match /projects/{projectId} {
-      allow read: if isAuthenticated()
-                   && (resource.data.ownerId == getUserId()
-                       || getUserId() in resource.data.members
-                       || getUserId() in resource.data.roles);
+      function projectData() {
+        return resource.data;
+      }
+
+      function isProjectReader() {
+        return isAuthenticated()
+               && (projectData().ownerId == getUserId()
+                   || getUserId() in projectData().roles
+                   || (request.auth.token.email != null
+                       && request.auth.token.email in projectData().memberEmails));
+      }
+
+      allow read: if isProjectReader();
 
       allow create: if isAuthenticated() && request.resource.data.ownerId == getUserId();
 
@@ -29,6 +38,44 @@ service cloud.firestore {
                              && request.resource.data.roles.get(getUserId(), null) in ["owner", "admin"]));
 
       allow delete: if isAuthenticated() && resource.data.ownerId == getUserId();
+    }
+
+    // Projekt-medlemmer
+    match /projects/{projectId}/members/{memberId} {
+      // Bemærk: Brug getAfter() i stedet for get() her, fordi medlemsdokumentet
+      // ofte oprettes i samme batched write som projekt-dokumentet. getAfter()
+      // ser projektets tilstand efter batchen er anvendt, mens get() ser den
+      // nuværende tilstand før batchen.
+      function projectData() {
+        return getAfter(/databases/$(database)/documents/projects/$(projectId)).data;
+      }
+
+      function isProjectReader() {
+        return isAuthenticated()
+               && (projectData().ownerId == getUserId()
+                   || getUserId() in projectData().roles
+                   || (request.auth.token.email != null
+                       && request.auth.token.email in projectData().memberEmails));
+      }
+
+      function isProjectOwnerOrAdmin() {
+        return isAuthenticated()
+               && (projectData().ownerId == getUserId()
+                   || (getUserId() in projectData().roles
+                       && projectData().roles.get(getUserId(), null) in ["owner", "admin"]));
+      }
+
+      allow read: if isProjectReader();
+
+      allow create: if isProjectOwnerOrAdmin()
+                     && request.resource.data.keys().hasAll(["role"])
+                     && request.resource.data.role in ["owner", "admin", "editor", "viewer"];
+
+      allow update: if isProjectOwnerOrAdmin()
+                     && request.resource.data.keys().hasAll(["role"])
+                     && request.resource.data.role in ["owner", "admin", "editor", "viewer"];
+
+      allow delete: if isProjectOwnerOrAdmin();
     }
 
     // Sager / items
