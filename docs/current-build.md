@@ -7,10 +7,12 @@
 
 | Felt | Værdi |
 |---|---|
-| **Build-ID** | *(i gang — opdateres når EAS-build er færdigt)* |
+| **Build-ID** | `7490b239-74d7-4feb-af44-a25d9281e856` (Android), `6fc715f8-d442-4f23-a5ea-5742c29fbf3d` (iOS) |
 | **Platform** | Android + iOS preview build |
 | **Distribution** | Internal (EAS) |
 | **EAS Dashboard** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds |
+| **Android EAS build-side** | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/7490b239-74d7-4feb-af44-a25d9281e856) |
+| **iOS EAS build-side** | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/6fc715f8-d442-4f23-a5ea-5742c29fbf3d) |
 | **Git snapshot** | `6042b91` (`v2026.07.15-build1-us006`) |
 | **Fokus i dette build** | US-006: Ret kritisk projektoprettelsesfejl og forhindr dubletter |
 | **Forrige build** | ~~`0d155824-6521-41f2-b3de-5d839374a182` / `648a6ba2-2ece-41c5-8238-79361432d44f`~~ **Forældet** |
@@ -53,8 +55,9 @@ Dette build indeholder kun rettelsen af den kritiske projektoprettelsesfejl:
 ## Installationsinstruktion per enhed
 
 1. Åbn Safari (iOS) eller Chrome (Android) på enheden.
-2. Gå til EAS Dashboard: https://expo.dev/accounts/kgradm/projects/data-capture-app/builds
-3. Find det nyeste build med snapshot `6042b91`.
+2. Gå til det relevante build:
+   - Android: `7490b239-74d7-4feb-af44-a25d9281e856`
+   - iOS: `6fc715f8-d442-4f23-a5ea-5742c29fbf3d`
 4. Tryk installationslinket og scan QR-koden på siden, eller følg anvisningen.
 5. Åbn appen og accepter tilladelser.
 
