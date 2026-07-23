@@ -1,5 +1,6 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,7 +17,13 @@ import {
   Checklist,
   deleteChecklist,
   subscribeToChecklists,
+  subscribeToChecklistItems,
 } from "../../services/checklists";
+
+interface ItemCounts {
+  open: number;
+  completed: number;
+}
 
 function formatDate(ts: any) {
   if (!ts) return "";
@@ -28,24 +35,60 @@ function formatDate(ts: any) {
   });
 }
 
+function formatTime(ts: any) {
+  if (!ts) return "";
+  const date = typeof ts.toDate === "function" ? ts.toDate() : new Date(ts);
+  return date.toLocaleTimeString("da-DK", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function ChecklistsScreen() {
   const { user } = useAuth();
   const { theme } = useTheme();
   const router = useRouter();
   const [checklists, setChecklists] = useState<Checklist[]>([]);
+  const [itemCounts, setItemCounts] = useState<Record<string, ItemCounts>>({});
   const [loading, setLoading] = useState(true);
+  const checklistsRef = useRef(checklists);
+
+  useEffect(() => {
+    checklistsRef.current = checklists;
+  }, [checklists]);
 
   const isDark = theme === "dark";
   const styles = themedStyles(isDark);
+  const checklistIds = checklists.map((c) => c.id).join(",");
 
   useEffect(() => {
     if (!user?.uid) return;
-    const unsubscribe = subscribeToChecklists(user.uid, (data) => {
+
+    const unsubscribeChecklists = subscribeToChecklists(user.uid, (data) => {
       setChecklists(data);
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    return () => unsubscribeChecklists();
   }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid || checklistsRef.current.length === 0) return;
+    const unsubscribes: (() => void)[] = [];
+
+    for (const checklist of checklistsRef.current) {
+      const unsubscribe = subscribeToChecklistItems(checklist.id, (items) => {
+        const open = items.filter((i) => !i.isCompleted).length;
+        const completed = items.filter((i) => i.isCompleted).length;
+        setItemCounts((prev) => ({ ...prev, [checklist.id]: { open, completed } }));
+      });
+      unsubscribes.push(unsubscribe);
+    }
+
+    return () => {
+      unsubscribes.forEach((u) => u());
+    };
+  }, [checklistIds, user?.uid]);
 
   const handleDelete = (checklist: Checklist) => {
     Alert.alert("Slet liste", `Er du sikker på du vil slette "${checklist.name}"?`, [
@@ -68,10 +111,17 @@ export default function ChecklistsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.header}>Aktionslister</Text>
-        <Text style={styles.subtitle}>
-          Opret lister fra Søg-fanen
-        </Text>
+        <View>
+          <Text style={styles.header}>Lister</Text>
+          <Text style={styles.subtitle}>Dine gemte lister og dynamiske søgninger</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => router.push("/search")}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="add" size={24} color="#0f172a" />
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -82,9 +132,9 @@ export default function ChecklistsScreen() {
         />
       ) : checklists.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>Ingen aktionslister endnu</Text>
+          <Text style={styles.emptyTitle}>Ingen lister endnu</Text>
           <Text style={styles.emptySubtitle}>
-            Gå til Søg-fanen, søg efter noget, og tryk “Opret aktionsliste”.
+            Gå til Søg-fanen, søg efter noget, og tryk “Opret liste”.
           </Text>
         </View>
       ) : (
@@ -101,6 +151,30 @@ export default function ChecklistsScreen() {
                 <Text style={styles.checklistName} numberOfLines={1}>
                   {item.name}
                 </Text>
+                <View style={styles.badgeRow}>
+                  {item.hasNewMatches ? (
+                    <View style={styles.newBadge}>
+                      <Text style={styles.newBadgeText}>Nyt</Text>
+                    </View>
+                  ) : null}
+                  {item.isDynamic ? (
+                    <View style={styles.dynamicBadge}>
+                      <Text style={styles.dynamicBadgeText}>Dynamisk</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+              <Text style={styles.checklistMeta}>
+                {itemCounts[item.id]?.open ?? 0} åbne ·{" "}
+                {itemCounts[item.id]?.completed ?? 0} udførte · Opdateret{" "}
+                {formatDate(item.updatedAt)} {formatTime(item.updatedAt)}
+              </Text>
+              <View style={styles.cardFooter}>
+                <Text style={styles.cardFooterText}>
+                  {item.isDynamic
+                    ? "Synkroniseres automatisk fra søgning"
+                    : "Manuel liste"}
+                </Text>
                 <TouchableOpacity
                   onPress={() => handleDelete(item)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -108,9 +182,6 @@ export default function ChecklistsScreen() {
                   <Text style={styles.deleteButton}>🗑</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={styles.checklistMeta}>
-                {formatDate(item.updatedAt)} · {item.isDynamic ? "Dynamisk" : "Manuel"}
-              </Text>
             </TouchableOpacity>
           )}
         />
@@ -128,6 +199,9 @@ const themedStyles = (isDark: boolean) =>
       paddingHorizontal: 16,
     },
     headerRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
       marginBottom: 16,
     },
     header: {
@@ -139,6 +213,14 @@ const themedStyles = (isDark: boolean) =>
       fontSize: 14,
       color: isDark ? "#94a3b8" : "#64748b",
       marginTop: 2,
+    },
+    addButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: "#38bdf8",
+      justifyContent: "center",
+      alignItems: "center",
     },
     list: {
       paddingBottom: 24,
@@ -170,7 +252,7 @@ const themedStyles = (isDark: boolean) =>
     cardHeader: {
       flexDirection: "row",
       justifyContent: "space-between",
-      alignItems: "center",
+      alignItems: "flex-start",
       gap: 10,
     },
     checklistName: {
@@ -179,10 +261,46 @@ const themedStyles = (isDark: boolean) =>
       fontWeight: "600",
       color: isDark ? "#f8fafc" : "#0f172a",
     },
+    badgeRow: {
+      flexDirection: "row",
+      gap: 6,
+    },
+    dynamicBadge: {
+      backgroundColor: "#34d399",
+      borderRadius: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    dynamicBadgeText: {
+      fontSize: 10,
+      fontWeight: "700",
+      color: "#0f172a",
+    },
+    newBadge: {
+      backgroundColor: "#f87171",
+      borderRadius: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    newBadgeText: {
+      fontSize: 10,
+      fontWeight: "700",
+      color: "#0f172a",
+    },
     checklistMeta: {
       fontSize: 12,
       color: isDark ? "#94a3b8" : "#64748b",
-      marginTop: 4,
+      marginTop: 6,
+    },
+    cardFooter: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 10,
+    },
+    cardFooterText: {
+      fontSize: 11,
+      color: isDark ? "#64748b" : "#94a3b8",
     },
     deleteButton: {
       fontSize: 16,

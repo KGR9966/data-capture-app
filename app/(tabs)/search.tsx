@@ -4,7 +4,10 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
+  ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -14,7 +17,11 @@ import {
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useVoiceRecognition } from "../../hooks/useVoiceRecognition";
-import { createChecklistFromItems } from "../../services/checklists";
+import {
+  ChecklistSortBy,
+  createDynamicChecklistFromSearch,
+  SourceField,
+} from "../../services/checklists";
 import { CaptureItem, subscribeToItems } from "../../services/items";
 import { subscribeToProjects } from "../../services/projects";
 import { searchItems } from "../../services/search";
@@ -22,12 +29,18 @@ import { searchItems } from "../../services/search";
 const ITEM_TYPE_LABELS: Record<string, string> = {
   idea: "Idé",
   observation: "Observation",
-  bug: "Bug",
+  bug: "Fejl",
   note: "Notat",
   comment: "Notat",
   photo: "Foto",
   voice: "Stemme",
   other: "Andet",
+};
+
+const SORT_LABELS: Record<ChecklistSortBy, string> = {
+  alphabetical: "Alfabetisk",
+  date: "Dato",
+  priority: "Prioritet",
 };
 
 function formatDate(ts: any) {
@@ -72,6 +85,15 @@ export default function SearchScreen() {
   const [loading, setLoading] = useState(true);
   const [voiceActive, setVoiceActive] = useState(false);
   const [creatingChecklist, setCreatingChecklist] = useState(false);
+  const [configVisible, setConfigVisible] = useState(false);
+  const [listName, setListName] = useState("");
+  const [sourceFields, setSourceFields] = useState<Record<SourceField, boolean>>({
+    content: true,
+    title: false,
+    category: false,
+  });
+  const [sortBy, setSortBy] = useState<ChecklistSortBy>("alphabetical");
+  const [syncStatus, setSyncStatus] = useState(true);
   const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearMaxDurationTimer = () => {
@@ -142,16 +164,46 @@ export default function SearchScreen() {
     return searchItems(allItems, query);
   }, [query, allItems]);
 
-  const handleCreateChecklist = async () => {
+  const openConfigModal = () => {
     if (results.length === 0) return;
-    const name = `Søgning: ${query.trim() || "alle resultater"}`;
+    setListName(`Søgning: ${query.trim() || "alle resultater"}`);
+    setConfigVisible(true);
+  };
+
+  const closeConfigModal = () => {
+    setConfigVisible(false);
+  };
+
+  const toggleSourceField = (field: SourceField) => {
+    setSourceFields((prev) => ({ ...prev, [field]: !prev[field] }));
+  };
+
+  const handleCreateChecklist = async () => {
+    const selectedFields = (Object.keys(sourceFields) as SourceField[]).filter(
+      (f) => sourceFields[f]
+    );
+    if (selectedFields.length === 0) {
+      Alert.alert("Vælg felter", "Vælg mindst ét kildefelt til punkterne.");
+      return;
+    }
+
     setCreatingChecklist(true);
     try {
-      const { checklist } = await createChecklistFromItems(name, results);
+      const { checklist } = await createDynamicChecklistFromSearch(
+        listName.trim() || `Søgning: ${query.trim() || "alle resultater"}`,
+        query.trim(),
+        results,
+        {
+          sourceFields: selectedFields,
+          sortBy,
+          syncStatusToSource: syncStatus,
+        }
+      );
+      setConfigVisible(false);
       router.push(`/checklist?id=${checklist.id}` as any);
     } catch (error) {
       console.log("Create checklist error", error);
-      Alert.alert("Fejl", "Kunne ikke oprette aktionslisten.");
+      Alert.alert("Fejl", "Kunne ikke oprette den dynamiske liste.");
     } finally {
       setCreatingChecklist(false);
     }
@@ -211,11 +263,11 @@ export default function SearchScreen() {
         {results.length > 0 ? (
           <TouchableOpacity
             style={[styles.createListButton, creatingChecklist && styles.buttonDisabled]}
-            onPress={handleCreateChecklist}
+            onPress={openConfigModal}
             disabled={creatingChecklist}
           >
             <Text style={styles.createListButtonText}>
-              {creatingChecklist ? "Opretter..." : "Opret aktionsliste"}
+              {creatingChecklist ? "Opretter..." : "Opret liste"}
             </Text>
           </TouchableOpacity>
         ) : null}
@@ -271,6 +323,102 @@ export default function SearchScreen() {
           </TouchableOpacity>
         )}
       />
+
+      <Modal
+        visible={configVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeConfigModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.modalTitle}>Opret dynamisk liste</Text>
+
+              <Text style={styles.modalLabel}>Listens navn</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={listName}
+                onChangeText={setListName}
+                placeholder="Navn på listen"
+                placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+              />
+
+              <Text style={styles.modalLabel}>Felter til punkter</Text>
+              {(["content", "title", "category"] as SourceField[]).map((field) => (
+                <TouchableOpacity
+                  key={field}
+                  style={styles.optionRow}
+                  onPress={() => toggleSourceField(field)}
+                >
+                  <Text style={styles.optionText}>
+                    {sourceFields[field] ? "☑ " : "☐ "}
+                    {field === "content"
+                      ? "Beskrivelse / noter"
+                      : field === "title"
+                      ? "Titel"
+                      : "Kategori"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+
+              <Text style={styles.modalLabel}>Sortering</Text>
+              <View style={styles.sortRow}>
+                {(["alphabetical", "date", "priority"] as ChecklistSortBy[]).map((sort) => (
+                  <TouchableOpacity
+                    key={sort}
+                    style={[
+                      styles.sortButton,
+                      sortBy === sort && styles.sortButtonActive,
+                    ]}
+                    onPress={() => setSortBy(sort)}
+                  >
+                    <Text
+                      style={[
+                        styles.sortButtonText,
+                        sortBy === sort && styles.sortButtonTextActive,
+                      ]}
+                    >
+                      {SORT_LABELS[sort]}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.optionRow}>
+                <Text style={styles.optionText}>Status-synk til kildesag</Text>
+                <Switch
+                  value={syncStatus}
+                  onValueChange={setSyncStatus}
+                  thumbColor={syncStatus ? "#38bdf8" : isDark ? "#94a3b8" : "#64748b"}
+                  trackColor={{ false: "#475569", true: "#0ea5e9" }}
+                />
+              </View>
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.modalButtonSecondary}
+                  onPress={closeConfigModal}
+                >
+                  <Text style={styles.modalButtonSecondaryText}>Annuller</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modalButtonPrimary,
+                    creatingChecklist && styles.buttonDisabled,
+                  ]}
+                  onPress={handleCreateChecklist}
+                  disabled={creatingChecklist}
+                >
+                  <Text style={styles.modalButtonPrimaryText}>
+                    {creatingChecklist ? "Opretter..." : "Opret"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -436,5 +584,102 @@ const themedStyles = (isDark: boolean) =>
       fontSize: 11,
       fontWeight: "700",
       color: isDark ? "#e2e8f0" : "#0f172a",
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "flex-end",
+    },
+    modalContent: {
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      padding: 20,
+      maxHeight: "85%",
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: "700",
+      color: isDark ? "#f8fafc" : "#0f172a",
+      marginBottom: 16,
+    },
+    modalLabel: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: isDark ? "#94a3b8" : "#64748b",
+      marginTop: 12,
+      marginBottom: 8,
+    },
+    modalInput: {
+      backgroundColor: isDark ? "#0f172a" : "#f1f5f9",
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 15,
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    optionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingVertical: 10,
+    },
+    optionText: {
+      fontSize: 15,
+      color: isDark ? "#e2e8f0" : "#0f172a",
+    },
+    sortRow: {
+      flexDirection: "row",
+      gap: 8,
+      marginTop: 4,
+    },
+    sortButton: {
+      flex: 1,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: isDark ? "#0f172a" : "#f1f5f9",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    sortButtonActive: {
+      backgroundColor: "#38bdf8",
+      borderColor: "#38bdf8",
+    },
+    sortButtonText: {
+      fontSize: 13,
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      fontWeight: "600",
+    },
+    sortButtonTextActive: {
+      color: "#0f172a",
+    },
+    modalButtons: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 12,
+      marginTop: 20,
+    },
+    modalButtonPrimary: {
+      backgroundColor: "#38bdf8",
+      borderRadius: 10,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+    },
+    modalButtonPrimaryText: {
+      color: "#0f172a",
+      fontWeight: "700",
+      fontSize: 15,
+    },
+    modalButtonSecondary: {
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    modalButtonSecondaryText: {
+      color: isDark ? "#94a3b8" : "#64748b",
+      fontSize: 15,
+      fontWeight: "600",
     },
   });

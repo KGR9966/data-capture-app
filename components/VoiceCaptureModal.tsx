@@ -1,46 +1,37 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 
-import { Image } from "expo-image";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { useVoiceRecognition } from "../hooks/useVoiceRecognition";
-import { suggestCategory } from "../services/categories";
 import { copyToClipboard } from "../services/deeplinks";
-import { ItemType } from "../services/items";
-import { shareText } from "../services/share";
+import type { ItemType } from "../services/items";
 import {
   pickImage,
   takePhoto,
   uploadImage,
 } from "../services/media";
-import { extractTextFromImage } from "../services/ocr";
-import { getProjectById, Project, ProjectMember, subscribeToProjectMembers } from "../services/projects";
-import { canAssignOthers, canAssignItems, getProjectRole, ProjectRole } from "../services/roles";
-import { getLanguageLabel, SUPPORTED_LANGUAGES, translateText } from "../services/translation";
+import {
+  getProjectById,
+  Project,
+  ProjectMember,
+  subscribeToProjectMembers,
+} from "../services/projects";
+import { getProjectRole, ProjectRole } from "../services/roles";
+import { shareText } from "../services/share";
 import { processVoiceCommands } from "../services/voiceCommands";
-
-const ITEM_TYPE_LABELS: Record<ItemType, string> = {
-  idea: "Idé",
-  observation: "Observation",
-  bug: "Bug",
-  note: "Notat",
-  photo: "Foto",
-  voice: "Stemme",
-  other: "Andet",
-};
+import CreateItemForm, { deriveTitle } from "./CreateItemForm";
 
 const VOICE_COMMANDS: Record<string, { itemType: ItemType; category: string }> = {
   idé: { itemType: "idea", category: "Idé" },
@@ -66,7 +57,10 @@ function parseVoiceCommand(text: string) {
   const separator = "(?:\\s*[.,]?\\s+|\\s*[.,]\\s*|\\s+$|\\b(?=\\s))";
 
   const knownMatch = trimmed.match(
-    new RegExp(`^\\s*(idé|ide|idea|bug|fejl|observation|observer|observeret|notat|bemærkning|kommentar|spørgsmål)${separator}`, "i")
+    new RegExp(
+      `^\\s*(idé|ide|idea|bug|fejl|observation|observer|observeret|notat|bemærkning|kommentar|spørgsmål)${separator}`,
+      "i"
+    )
   );
 
   if (knownMatch) {
@@ -82,7 +76,10 @@ function parseVoiceCommand(text: string) {
   }
 
   const customMatch = trimmed.match(
-    new RegExp(`^\\s*([a-zæøåéA-ZÆØÅÉ0-9][a-zæøåéA-ZÆØÅÉ0-9 ]{0,24})${separator}`, "i")
+    new RegExp(
+      `^\\s*([a-zæøåéA-ZÆØÅÉ0-9][a-zæøåéA-ZÆØÅÉ0-9 ]{0,24})${separator}`,
+      "i"
+    )
   );
   if (customMatch && customMatch[1].trim().length >= 2) {
     const category = normalizeCategoryName(customMatch[1]);
@@ -96,15 +93,27 @@ function parseVoiceCommand(text: string) {
   return { cleanedText: trimmed, itemType: null as ItemType | null, category: "" };
 }
 
-const ITEM_TYPE_COLORS: Record<ItemType, string> = {
-  idea: "#38bdf8",
-  observation: "#a78bfa",
-  bug: "#f87171",
-  note: "#fbbf24",
-  photo: "#34d399",
-  voice: "#fb923c",
-  other: "#94a3b8",
-};
+function removeLastSentenceOrWord(text: string): string {
+  const trimmed = text.trim();
+  // Remove the last sentence if it ends with sentence punctuation.
+  const sentenceMatch = trimmed.match(/^(.*)([.!?;:])\s*[^.!?;:]*$/s);
+  if (sentenceMatch) {
+    const prefix = sentenceMatch[1].trim();
+    return prefix ? `${prefix}${sentenceMatch[2]}` : "";
+  }
+  // Fallback: remove last word.
+  const lastSpace = trimmed.lastIndexOf(" ");
+  if (lastSpace <= 0) return "";
+  return trimmed.slice(0, lastSpace).trim();
+}
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+    .toString()
+    .padStart(2, "0");
+  const s = (seconds % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
 
 interface VoiceCaptureModalProps {
   visible: boolean;
@@ -138,22 +147,55 @@ export default function VoiceCaptureModal({
   const [category, setCategory] = useState("");
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaUri, setMediaUri] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [recognizingText, setRecognizingText] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [ocrOriginal, setOcrOriginal] = useState("");
-  const [ocrTranslated, setOcrTranslated] = useState("");
-  const [ocrSourceLang, setOcrSourceLang] = useState("auto");
-  const [ocrTargetLang, setOcrTargetLang] = useState("da");
-  const [translating, setTranslating] = useState(false);
-  const [copiedOriginal, setCopiedOriginal] = useState(false);
-  const [copiedTranslated, setCopiedTranslated] = useState(false);
-
   const [assignedTo, setAssignedTo] = useState<string>("");
   const [assignedToName, setAssignedToName] = useState<string>("");
+  const [autoSaveOnSilence, setAutoSaveOnSilence] = useState(true);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [clearedOriginalText, setClearedOriginalText] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [typeLockedByVoice, setTypeLockedByVoice] = useState(false);
 
-  const editedRef = useRef(false);
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [project, setProject] = useState<Project | null>(null);
+
+  const intentionalStopRef = useRef(false);
+  const savePendingRef = useRef(false);
   const stopPendingRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const saveHandlerRef = useRef<(closeAfterSave: boolean) => Promise<void>>(
+    async () => {}
+  );
+  const contentRef = useRef(content);
+  const autoSaveOnSilenceRef = useRef(autoSaveOnSilence);
+
+  useEffect(() => {
+    contentRef.current = content;
+  }, [content]);
+
+  useEffect(() => {
+    autoSaveOnSilenceRef.current = autoSaveOnSilence;
+  }, [autoSaveOnSilence]);
+
+  const resetForm = useCallback(() => {
+    setItemType("other");
+    setTitle("");
+    setContent("");
+    setCategory("");
+    setMediaUrl(null);
+    setMediaUri(null);
+    setAssignedTo("");
+    setAssignedToName("");
+    setClearedOriginalText("");
+    setRecordingDuration(0);
+    setTypeLockedByVoice(false);
+    savePendingRef.current = false;
+    stopPendingRef.current = false;
+    intentionalStopRef.current = false;
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
 
   const {
     transcript,
@@ -163,7 +205,10 @@ export default function VoiceCaptureModal({
     resetTranscript,
   } = useVoiceRecognition({
     locale: "da-DK",
+    autoStopMs: autoSaveOnSilence ? 5000 : 60 * 60 * 1000,
     onResult: (text, isFinal) => {
+      if (stopPendingRef.current) return;
+
       const commands = processVoiceCommands(text);
 
       if (commands.shouldCancel) {
@@ -171,73 +216,133 @@ export default function VoiceCaptureModal({
         onClose();
         return;
       }
+
       if (commands.shouldClear) {
+        const currentContent = contentRef.current.trim();
+        if (currentContent) {
+          setClearedOriginalText(currentContent);
+        }
         resetTranscript();
         setContent("");
         return;
       }
 
-      let processedText = commands.text;
-      if (stopPendingRef.current) {
-        // ignorer videre input efter stop-kommando indtil optagelse slutter
-        processedText = content;
+      if (commands.shouldUndo) {
+        const currentContent = contentRef.current.trim();
+        if (currentContent) {
+          const nextContent = removeLastSentenceOrWord(currentContent);
+          setContent(nextContent);
+        }
+        return;
       }
 
-      const parsed = parseVoiceCommand(processedText);
+      const parsed = parseVoiceCommand(commands.text);
       setContent(parsed.cleanedText);
 
       if (commands.shouldStop && !stopPendingRef.current) {
         stopPendingRef.current = true;
+        intentionalStopRef.current = true;
+        savePendingRef.current = true;
         stopRecording();
         return;
       }
 
       if (isFinal) {
         stopPendingRef.current = false;
-        if (parsed.itemType) setItemType(parsed.itemType);
-        const suggested = parsed.category
-          ? parsed.category
-          : suggestCategory({
-              title: title || parsed.cleanedText.split(" ").slice(0, 5).join(" "),
-              content: parsed.cleanedText,
-              type: parsed.itemType || itemType,
-            });
-        setCategory(suggested);
+        if (parsed.itemType) {
+          setItemType(parsed.itemType);
+          setTypeLockedByVoice(true);
+        }
+        if (parsed.category) {
+          setCategory(parsed.category);
+        }
+      }
+    },
+    onEnd: (reason) => {
+      if (reason === "silence" && autoSaveOnSilenceRef.current) {
+        saveHandlerRef.current(false);
+        return;
+      }
+      if (savePendingRef.current) {
+        savePendingRef.current = false;
+        saveHandlerRef.current(true);
+        return;
+      }
+      if (reason === "error") {
+        Alert.alert(
+          "Optagelse afbrudt",
+          "Optagelsen stoppede uventet. Du kan gemme det nuværende indhold, starte en ny optagelse eller lukke.",
+          [
+            { text: "Start ny optagelse", onPress: () => startRecording() },
+            { text: "Gem", onPress: () => {
+              intentionalStopRef.current = false;
+              savePendingRef.current = false;
+              handleSaveInternal(true);
+            }},
+            { text: "Luk", style: "cancel" },
+          ]
+        );
       }
     },
     onError: (message) => {
+       
       console.log("Voice error", message);
     },
   });
 
+  const handleSaveInternal = async (closeAfterSave: boolean) => {
+    const finalContent = content.trim() || transcript.trim();
+    const finalTitle = title.trim() || deriveTitle(finalContent);
+    if (!finalContent && !finalTitle && !mediaUrl) {
+      if (closeAfterSave) {
+        onClose();
+      } else {
+        resetForm();
+        resetTranscript();
+      }
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      await onSave({
+        type: itemType,
+        title: finalTitle,
+        content: finalContent,
+        category,
+        mediaUrl: mediaUrl || undefined,
+        assignedTo: assignedTo || undefined,
+        assignedToName: assignedTo ? assignedToName : undefined,
+      });
+      if (closeAfterSave) {
+        onClose();
+      } else {
+        resetForm();
+        resetTranscript();
+      }
+    } catch (error) {
+      console.log("Voice save error", error);
+      Alert.alert("Fejl", "Kunne ikke gemme optagelsen.");
+    } finally {
+      setIsProcessing(false);
+      savePendingRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    saveHandlerRef.current = handleSaveInternal;
+  }, [handleSaveInternal]);
+
   useEffect(() => {
     if (visible) {
       const timeout = setTimeout(() => {
-        setItemType("other");
-        setTitle("");
-        setContent("");
-        setCategory("");
-        setMediaUrl(null);
-        setMediaUri(null);
-        setOcrOriginal("");
-        setOcrTranslated("");
-        setOcrSourceLang("auto");
-        setOcrTargetLang("da");
-        setCopiedOriginal(false);
-        setCopiedTranslated(false);
-        setAssignedTo("");
-        setAssignedToName("");
-        editedRef.current = false;
-        stopPendingRef.current = false;
+        resetForm();
         resetTranscript();
       }, 0);
       return () => clearTimeout(timeout);
     }
     return undefined;
-  }, [visible, resetTranscript]);
-
-  const [members, setMembers] = useState<ProjectMember[]>([]);
-  const [project, setProject] = useState<Project | null>(null);
+  }, [visible, resetForm, resetTranscript]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -246,6 +351,7 @@ export default function VoiceCaptureModal({
       .then((p) => {
         if (mounted) setProject(p);
       })
+       
       .catch((err) => console.log("Load project error", err));
     const unsubscribe = subscribeToProjectMembers(projectId, (data) => setMembers(data));
     return () => {
@@ -254,185 +360,143 @@ export default function VoiceCaptureModal({
     };
   }, [projectId]);
 
-  const assignmentOptions = useMemo(() => {
-    const options: { id: string; label: string }[] = [
-      { id: "", label: "Ingen ansvarlig" },
-    ];
-    members.forEach((m) => {
-      if (m.userId) {
-        options.push({
-          id: m.userId,
-          label: m.displayName || m.email || m.userId,
-        });
+  useEffect(() => {
+    if (!isRecording) {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
       }
-    });
-    return options;
-  }, [members]);
+      return;
+    }
+    timerRef.current = setInterval(() => {
+      setRecordingDuration((d) => d + 1);
+    }, 1000);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [isRecording]);
 
   const projectRole: ProjectRole | null = project
     ? getProjectRole(project, user?.uid, members)
     : null;
 
-
-  const handleSaveInternal = useCallback(() => {
-    const finalContent = content.trim() || transcript.trim();
-    const finalTitle =
-      title.trim() || finalContent.split(" ").slice(0, 6).join(" ");
-    if (!finalTitle && !finalContent) return;
-
-    setIsProcessing(true);
-    onSave({
-      type: itemType,
-      title: finalTitle,
-      content: finalContent,
-      category:
-        category || suggestCategory({ title: finalTitle, content: finalContent, type: itemType }),
-      mediaUrl: mediaUrl || undefined,
-      assignedTo: assignedTo || undefined,
-      assignedToName: assignedTo ? assignedToName : undefined,
-    });
-    setIsProcessing(false);
-    onClose();
-  }, [
-    content,
-    transcript,
-    title,
-    itemType,
-    category,
-    mediaUrl,
-    assignedTo,
-    assignedToName,
-    onSave,
-    onClose,
-  ]);
-
   const handleToggleRecording = () => {
     if (isRecording) {
+      intentionalStopRef.current = true;
       stopRecording();
     } else {
-      editedRef.current = false;
+      intentionalStopRef.current = false;
+      savePendingRef.current = false;
       stopPendingRef.current = false;
+      setClearedOriginalText("");
       resetTranscript();
+      setRecordingDuration(0);
       startRecording();
     }
   };
 
   const handleTakePhoto = async () => {
     if (!projectId) return;
-    setUploading(true);
     try {
       const asset = await takePhoto();
       if (!asset?.uri) return;
       setMediaUri(asset.uri);
-      const url = await uploadImage(
-        asset,
-        `projects/${projectId}/items/${Date.now()}.jpg`
-      );
+      const url = await uploadImage(asset, `projects/${projectId}/items/${Date.now()}.jpg`);
       setMediaUrl(url);
     } catch (error) {
+       
       console.log("Voice modal take photo error", error);
-    } finally {
-      setUploading(false);
+      Alert.alert("Fejl", "Kunne ikke tage eller uploade billedet.");
     }
   };
 
   const handlePickImage = async () => {
     if (!projectId) return;
-    setUploading(true);
     try {
       const asset = await pickImage();
       if (!asset?.uri) return;
       setMediaUri(asset.uri);
-      const url = await uploadImage(
-        asset,
-        `projects/${projectId}/items/${Date.now()}.jpg`
-      );
+      const url = await uploadImage(asset, `projects/${projectId}/items/${Date.now()}.jpg`);
       setMediaUrl(url);
     } catch (error) {
+       
       console.log("Voice modal pick image error", error);
-    } finally {
-      setUploading(false);
+      Alert.alert("Fejl", "Kunne ikke vælge eller uploade billedet.");
     }
   };
 
   const handleRemoveImage = () => {
     setMediaUrl(null);
     setMediaUri(null);
-    setOcrOriginal("");
-    setOcrTranslated("");
-    setCopiedOriginal(false);
-    setCopiedTranslated(false);
   };
 
-  const handleReadTextFromImage = async () => {
-    if (!mediaUri) return;
-    setRecognizingText(true);
+  const handleCopyCleared = async () => {
+    await copyToClipboard(clearedOriginalText);
+  };
+
+  const handleShareCleared = async () => {
     try {
-      const text = await extractTextFromImage(mediaUri);
-      if (text) {
-        setContent((prev) => (prev ? `${prev}\n\n${text}` : text));
-        setOcrOriginal(text);
-        setOcrTranslated("");
-        setCopiedOriginal(false);
-        setCopiedTranslated(false);
-        const newCategory =
-          category ||
-          suggestCategory({
-            title: title || text,
-            content: text,
-            type: itemType,
-          });
-        setCategory(newCategory);
-      } else {
-        Alert.alert("Ingen tekst", "Billedet indeholdt ingen genkendelig tekst.");
-      }
+      await shareText(clearedOriginalText, "Fjernet tekst", "Fjernet tekst fra Data Capture");
     } catch (error) {
-      console.log("Voice modal OCR error", error);
-      Alert.alert("Fejl", "Kunne ikke læse tekst fra billedet.");
-    } finally {
-      setRecognizingText(false);
-    }
-  };
-
-  const handleTranslateOcr = async () => {
-    if (!ocrOriginal.trim()) return;
-    setTranslating(true);
-    try {
-      const translated = await translateText(ocrOriginal, ocrTargetLang, ocrSourceLang);
-      setOcrTranslated(translated);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Oversættelse fejlede";
-      Alert.alert("Oversættelse", message);
-    } finally {
-      setTranslating(false);
-    }
-  };
-
-  const handleUseTranslated = () => {
-    if (ocrTranslated) {
-      setContent(ocrTranslated);
-    }
-  };
-
-  const handleUseOriginal = () => {
-    if (ocrOriginal) {
-      setContent(ocrOriginal);
+       
+      console.log("Share cleared text error", error);
     }
   };
 
   const handleSave = () => {
-    editedRef.current = true;
-    stopPendingRef.current = false;
-    handleSaveInternal();
+    intentionalStopRef.current = false;
+    savePendingRef.current = false;
+    handleSaveInternal(true);
   };
 
+  const recordControls = (
+    <View style={styles.recordSection}>
+      <TouchableOpacity
+        style={[styles.recordButton, isRecording && styles.recordButtonActive]}
+        onPress={handleToggleRecording}
+      >
+        <Text style={styles.recordButtonText}>
+          {isRecording ? "⏹ Stop optagelse" : "🎙 Start optagelse"}
+        </Text>
+      </TouchableOpacity>
+
+      {isRecording ? (
+        <Text style={styles.timerText}>{formatDuration(recordingDuration)}</Text>
+      ) : null}
+
+      <View style={styles.autoSaveRow}>
+        <Text style={styles.autoSaveLabel}>Auto-gem efter stilhed</Text>
+        <Switch
+          value={autoSaveOnSilence}
+          onValueChange={setAutoSaveOnSilence}
+          trackColor={{ false: isDark ? "#475569" : "#cbd5e1", true: "#38bdf8" }}
+          thumbColor={autoSaveOnSilence ? "#0f172a" : isDark ? "#94a3b8" : "#f1f5f9"}
+        />
+      </View>
+
+      {clearedOriginalText ? (
+        <View style={styles.clearedBox}>
+          <View style={styles.clearedHeader}>
+            <Text style={styles.clearedLabel}>Fjernet originaltekst</Text>
+            <View style={styles.clearedActions}>
+              <TouchableOpacity onPress={handleCopyCleared} hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}>
+                <Text style={styles.clearedActionText}>Kopiér</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleShareCleared} hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}>
+                <Text style={styles.clearedActionText}>Del</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.overlay}
@@ -441,411 +505,39 @@ export default function VoiceCaptureModal({
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.content}>
-            <Text style={styles.header}>🎤 Hurtig optagelse</Text>
-            <Text style={styles.subtitle}>
-              Tal en observation, bug eller idé op. Teksten konverteres
-              automatisk.
-            </Text>
-
-            <View style={styles.rowBetween}>
-              <Text style={styles.toggleLabel}>
-                Sig punktum, komma, skift, slet sidste ord, fortryd eller gem
-              </Text>
-            </View>
-
-            <View style={styles.typeRow}>
-              {(
-                ["other", "observation", "bug", "idea", "note"] as ItemType[]
-              ).map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  style={[
-                    styles.typeChip,
-                    itemType === type && {
-                      backgroundColor: ITEM_TYPE_COLORS[type],
-                    },
-                  ]}
-                  onPress={() => setItemType(type)}
-                >
-                  <Text
-                    style={[
-                      styles.typeChipText,
-                      itemType === type && { color: "#0f172a" },
-                    ]}
-                  >
-                    {ITEM_TYPE_LABELS[type]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.recordButton,
-                isRecording && styles.recordButtonActive,
-              ]}
-              onPress={handleToggleRecording}
-            >
-              <Text style={styles.recordButtonText}>
-                {isRecording ? "⏹ Stop optagelse" : "🎙 Start optagelse"}
-              </Text>
-            </TouchableOpacity>
-
-            {isRecording ? (
-              <ActivityIndicator
-                size="small"
-                color="#f87171"
-                style={styles.recordingIndicator}
-              />
-            ) : null}
-
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Din tekst vises her..."
-              placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-              value={content}
-              onChangeText={(text) => {
-                editedRef.current = true;
-                setContent(text);
-              }}
-              multiline
-              numberOfLines={5}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Titel (valgfrit)"
-              placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-              value={title}
-              onChangeText={(text) => {
-                editedRef.current = true;
-                setTitle(text);
-              }}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Kategori"
-              placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-              value={category}
-              onChangeText={(text) => {
-                editedRef.current = true;
-                setCategory(text);
-              }}
-            />
-
-            {mediaUrl ? (
-              <View style={styles.imagePreviewContainer}>
-                <Image
-                  source={{ uri: mediaUrl }}
-                  style={styles.imagePreview}
-                  contentFit="cover"
-                />
-                <View style={styles.imagePreviewActions}>
-                  <TouchableOpacity
-                    style={styles.removeImageButton}
-                    onPress={handleRemoveImage}
-                  >
-                    <Text style={styles.removeImageText}>Fjern foto</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.readTextButton,
-                      recognizingText && styles.buttonDisabled,
-                    ]}
-                    onPress={handleReadTextFromImage}
-                    disabled={recognizingText}
-                  >
-                    <Text style={styles.readTextButtonText}>
-                      {recognizingText ? "Læser tekst..." : "🔍 Læs tekst"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.imageButtonRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.imagePickerButton,
-                    styles.imagePickerButtonHalf,
-                    uploading && styles.buttonDisabled,
-                  ]}
-                  onPress={handlePickImage}
-                  disabled={uploading || !projectId}
-                >
-                  <Text style={styles.imagePickerText}>
-                    {uploading ? "Uploader..." : "📁 Album"}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.imagePickerButton,
-                    styles.imagePickerButtonHalf,
-                    uploading && styles.buttonDisabled,
-                  ]}
-                  onPress={handleTakePhoto}
-                  disabled={uploading || !projectId}
-                >
-                  <Text style={styles.imagePickerText}>
-                    {uploading ? "Uploader..." : "📷 Kamera"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {ocrOriginal ? (
-              <View style={styles.ocrBox}>
-                <Text style={styles.ocrLabel}>OCR-oversættelse</Text>
-                <View style={styles.ocrLangRow}>
-                  <View style={styles.ocrLangColumn}>
-                    <Text style={styles.ocrLangLabel}>Fra</Text>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      style={styles.ocrLangChips}
-                    >
-                      {SUPPORTED_LANGUAGES.map((lang) => (
-                        <TouchableOpacity
-                          key={`src-${lang.code}`}
-                          style={[
-                            styles.ocrLangChip,
-                            ocrSourceLang === lang.code && styles.ocrLangChipActive,
-                          ]}
-                          onPress={() => setOcrSourceLang(lang.code)}
-                        >
-                          <Text
-                            style={[
-                              styles.ocrLangChipText,
-                              ocrSourceLang === lang.code &&
-                                styles.ocrLangChipTextActive,
-                            ]}
-                          >
-                            {lang.label}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                  <View style={styles.ocrLangColumn}>
-                    <Text style={styles.ocrLangLabel}>Til</Text>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      style={styles.ocrLangChips}
-                    >
-                      {SUPPORTED_LANGUAGES.filter((lang) => lang.code !== "auto").map(
-                        (lang) => (
-                          <TouchableOpacity
-                            key={`tgt-${lang.code}`}
-                            style={[
-                              styles.ocrLangChip,
-                              ocrTargetLang === lang.code && styles.ocrLangChipActive,
-                            ]}
-                            onPress={() => setOcrTargetLang(lang.code)}
-                          >
-                            <Text
-                              style={[
-                                styles.ocrLangChipText,
-                                ocrTargetLang === lang.code &&
-                                  styles.ocrLangChipTextActive,
-                              ]}
-                            >
-                              {lang.label}
-                            </Text>
-                          </TouchableOpacity>
-                        )
-                      )}
-                    </ScrollView>
-                  </View>
-                </View>
-
-                <TouchableOpacity
-                  style={[
-                    styles.ocrTranslateButton,
-                    translating && styles.buttonDisabled,
-                  ]}
-                  onPress={handleTranslateOcr}
-                  disabled={translating}
-                >
-                  <Text style={styles.ocrTranslateButtonText}>
-                    {translating
-                      ? "Oversætter..."
-                      : `Oversæt til ${getLanguageLabel(ocrTargetLang)}`}
-                  </Text>
-                </TouchableOpacity>
-
-                <View style={styles.ocrTextHeader}>
-                  <Text style={styles.ocrLangLabel}>Original OCR-tekst</Text>
-                  <View style={styles.ocrActionLinks}>
-                    <TouchableOpacity
-                      onPress={async () => {
-                        await copyToClipboard(ocrOriginal);
-                        setCopiedOriginal(true);
-                        setTimeout(() => setCopiedOriginal(false), 1500);
-                      }}
-                      hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-                    >
-                      <Text style={[styles.ocrCopyLink, copiedOriginal && styles.ocrCopyLinkActive]}>
-                        {copiedOriginal ? "Kopieret!" : "Kopiér"}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={async () => {
-                        try {
-                          await shareText(ocrOriginal, "OCR-tekst", "OCR-tekst fra Data Capture");
-                        } catch (error) {
-                          console.log("Share OCR original error", error);
-                        }
-                      }}
-                      hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-                    >
-                      <Text style={styles.ocrCopyLink}>Del</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                <TextInput
-                  style={[styles.input, styles.textArea, styles.ocrOriginalInput]}
-                  value={ocrOriginal}
-                  editable={false}
-                  multiline
-                  numberOfLines={2}
-                  placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-                />
-
-                {ocrTranslated ? (
-                  <>
-                    <View style={styles.ocrTextHeader}>
-                      <Text style={styles.ocrLangLabel}>Oversat tekst</Text>
-                      <View style={styles.ocrActionLinks}>
-                        <TouchableOpacity
-                          onPress={async () => {
-                            await copyToClipboard(ocrTranslated);
-                            setCopiedTranslated(true);
-                            setTimeout(() => setCopiedTranslated(false), 1500);
-                          }}
-                          hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-                        >
-                          <Text style={[styles.ocrCopyLink, copiedTranslated && styles.ocrCopyLinkActive]}>
-                            {copiedTranslated ? "Kopieret!" : "Kopiér"}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={async () => {
-                            try {
-                              await shareText(
-                                ocrTranslated,
-                                "Oversat tekst",
-                                "Oversat tekst fra Data Capture"
-                              );
-                            } catch (error) {
-                              console.log("Share OCR translated error", error);
-                            }
-                          }}
-                          hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-                        >
-                          <Text style={styles.ocrCopyLink}>Del</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                    <TextInput
-                      style={[styles.input, styles.textArea, styles.ocrTranslatedInput]}
-                      value={ocrTranslated}
-                      onChangeText={setOcrTranslated}
-                      multiline
-                      numberOfLines={3}
-                      placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-                    />
-                  </>
-                ) : null}
-
-                <View style={styles.ocrActionRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.ocrActionButton,
-                      styles.ocrActionButtonSecondary,
-                    ]}
-                    onPress={handleUseOriginal}
-                  >
-                    <Text style={styles.ocrActionButtonSecondaryText}>
-                      Brug original
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.ocrActionButton,
-                      styles.ocrActionButtonPrimary,
-                      !ocrTranslated && styles.buttonDisabled,
-                    ]}
-                    onPress={handleUseTranslated}
-                    disabled={!ocrTranslated}
-                  >
-                    <Text style={styles.ocrActionButtonPrimaryText}>
-                      Brug oversat
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : null}
-
-            {canAssignItems(projectRole) && assignmentOptions.length > 1 ? (
-              <View style={styles.assigneeSection}>
-                <Text style={styles.assigneeLabel}>Ansvarlig</Text>
-                <View style={styles.assigneeChips}>
-                  {assignmentOptions
-                    .filter((option) => {
-                      if (option.id === "") return true;
-                      return canAssignOthers(projectRole);
-                    })
-                    .map((option) => (
-                      <TouchableOpacity
-                        key={option.id}
-                        style={[
-                          styles.assigneeChip,
-                          assignedTo === option.id && styles.assigneeChipActive,
-                        ]}
-                        onPress={() => {
-                          setAssignedTo(option.id);
-                          setAssignedToName(option.id ? option.label : "");
-                        }}
-                      >
-                        <Text
-                          style={[
-                            styles.assigneeChipText,
-                            assignedTo === option.id && styles.assigneeChipTextActive,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {option.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                </View>
-              </View>
-            ) : null}
-
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={[styles.button, styles.buttonSecondary]}
-                onPress={onClose}
-              >
-                <Text style={styles.buttonSecondaryText}>Annuller</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.button,
-                  styles.buttonPrimary,
-                  (!content.trim() || isProcessing) && styles.buttonDisabled,
-                ]}
-                onPress={handleSave}
-                disabled={!content.trim() || isProcessing}
-              >
-                <Text style={styles.buttonPrimaryText}>
-                  {isProcessing ? "Gemmer..." : "Gem"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <CreateItemForm
+            mode="voice"
+            header="Optag"
+            helpText="Sig punktum, komma, ny linje, skift, slet sidste ord, fortryd, slet alt eller gem."
+            topSlot={recordControls}
+            itemType={itemType}
+            onItemTypeChange={setItemType}
+            content={content}
+            onContentChange={setContent}
+            title={title}
+            onTitleChange={setTitle}
+            category={category}
+            onCategoryChange={setCategory}
+            mediaUrl={mediaUrl}
+            mediaUri={mediaUri || undefined}
+            onPickImage={handlePickImage}
+            onTakePhoto={handleTakePhoto}
+            onRemoveImage={handleRemoveImage}
+            assignedTo={assignedTo}
+            assignedToName={assignedToName}
+            onAssigneeChange={(id, name) => {
+              setAssignedTo(id);
+              setAssignedToName(name);
+            }}
+            members={members}
+            currentUser={user}
+            projectRole={projectRole}
+            onSave={handleSave}
+            onCancel={onClose}
+            isSaving={isProcessing}
+            defaultType="other"
+            typeLocked={typeLockedByVoice}
+          />
         </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
@@ -866,64 +558,15 @@ const themedStyles = (isDark: boolean) =>
       alignItems: "center",
       paddingVertical: 24,
     },
-    content: {
-      width: "100%",
-      maxWidth: 420,
-      backgroundColor: isDark ? "#1e293b" : "#ffffff",
-      borderRadius: 20,
-      padding: 24,
-    },
-    header: {
-      fontSize: 22,
-      fontWeight: "700",
-      color: isDark ? "#f8fafc" : "#0f172a",
-      marginBottom: 8,
-    },
-    subtitle: {
-      fontSize: 14,
-      color: isDark ? "#94a3b8" : "#64748b",
-      marginBottom: 16,
-    },
-    rowBetween: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 12,
-    },
-    toggleLabel: {
-      fontSize: 14,
-      color: isDark ? "#e2e8f0" : "#0f172a",
-      fontWeight: "600",
-    },
-    countdownText: {
-      fontSize: 12,
-      color: "#f87171",
-      marginBottom: 12,
-      textAlign: "center",
-    },
-    typeRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-      marginBottom: 16,
-    },
-    typeChip: {
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 8,
-      backgroundColor: isDark ? "#334155" : "#e2e8f0",
-    },
-    typeChipText: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: isDark ? "#e2e8f0" : "#0f172a",
+    recordSection: {
+      marginBottom: 4,
     },
     recordButton: {
       backgroundColor: "#f87171",
       borderRadius: 12,
       padding: 16,
       alignItems: "center",
-      marginBottom: 12,
+      marginBottom: 8,
     },
     recordButtonActive: {
       backgroundColor: "#991b1b",
@@ -933,242 +576,48 @@ const themedStyles = (isDark: boolean) =>
       fontSize: 16,
       fontWeight: "700",
     },
-    recordingIndicator: {
-      marginBottom: 12,
-    },
-    input: {
-      backgroundColor: isDark ? "#0f172a" : "#f1f5f9",
-      color: isDark ? "#e2e8f0" : "#0f172a",
-      borderRadius: 10,
-      padding: 12,
-      fontSize: 15,
-      borderWidth: 1,
-      borderColor: isDark ? "#334155" : "#cbd5e1",
-      marginBottom: 12,
-    },
-    textArea: {
-      height: 120,
-      textAlignVertical: "top",
-    },
-    buttonRow: {
-      flexDirection: "row",
-      justifyContent: "flex-end",
-      gap: 10,
-      marginTop: 8,
-    },
-    button: {
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderRadius: 8,
-    },
-    buttonPrimary: {
-      backgroundColor: "#38bdf8",
-    },
-    buttonPrimaryText: {
-      color: "#0f172a",
-      fontWeight: "600",
-    },
-    buttonSecondary: {
-      backgroundColor: isDark ? "#334155" : "#e2e8f0",
-    },
-    buttonSecondaryText: {
-      color: isDark ? "#e2e8f0" : "#0f172a",
-      fontWeight: "600",
-    },
-    buttonDisabled: {
-      opacity: 0.5,
-    },
-    imagePickerButton: {
-      backgroundColor: isDark ? "#334155" : "#e2e8f0",
-      borderRadius: 10,
-      padding: 12,
-      alignItems: "center",
-      marginBottom: 12,
-    },
-    imagePickerButtonHalf: {
-      flex: 1,
-    },
-    imageButtonRow: {
-      flexDirection: "row",
-      gap: 10,
-      marginBottom: 12,
-    },
-    imagePickerText: {
-      color: isDark ? "#e2e8f0" : "#0f172a",
-      fontWeight: "600",
-    },
-    imagePreviewContainer: {
-      marginBottom: 12,
-    },
-    imagePreview: {
-      width: "100%",
-      height: 160,
-      borderRadius: 10,
-      backgroundColor: isDark ? "#0f172a" : "#f1f5f9",
-    },
-    imagePreviewActions: {
-      flexDirection: "row",
-      gap: 16,
-      marginTop: 8,
-    },
-    removeImageButton: {
-      alignSelf: "flex-start",
-    },
-    removeImageText: {
+    timerText: {
+      fontSize: 14,
       color: "#f87171",
+      fontWeight: "700",
+      textAlign: "center",
+      marginBottom: 8,
+    },
+    autoSaveRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 8,
+    },
+    autoSaveLabel: {
+      fontSize: 14,
+      color: isDark ? "#e2e8f0" : "#0f172a",
       fontWeight: "600",
     },
-    readTextButton: {
-      alignSelf: "flex-start",
-    },
-    readTextButtonText: {
-      color: "#38bdf8",
-      fontWeight: "600",
-    },
-    ocrBox: {
+    clearedBox: {
       backgroundColor: isDark ? "#0f172a" : "#f1f5f9",
-      borderRadius: 12,
+      borderRadius: 10,
       padding: 12,
-      marginBottom: 12,
       borderWidth: 1,
       borderColor: isDark ? "#334155" : "#e2e8f0",
     },
-    ocrLabel: {
-      fontSize: 13,
-      fontWeight: "700",
-      color: isDark ? "#e2e8f0" : "#0f172a",
-      marginBottom: 10,
-    },
-    ocrLangRow: {
-      gap: 12,
-      marginBottom: 10,
-    },
-    ocrLangColumn: {
-      marginBottom: 6,
-    },
-    ocrLangLabel: {
-      fontSize: 11,
-      color: isDark ? "#94a3b8" : "#64748b",
-      marginBottom: 4,
-    },
-    ocrTextHeader: {
+    clearedHeader: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 2,
     },
-    ocrActionLinks: {
-      flexDirection: "row",
-      gap: 12,
-    },
-    ocrCopyLink: {
-      fontSize: 12,
-      color: "#38bdf8",
-      fontWeight: "600",
-    },
-    ocrCopyLinkActive: {
-      color: "#34d399",
-    },
-    ocrLangChips: {
-      flexDirection: "row",
-    },
-    ocrLangChip: {
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 6,
-      backgroundColor: isDark ? "#1e293b" : "#ffffff",
-      marginRight: 6,
-      borderWidth: 1,
-      borderColor: isDark ? "#334155" : "#e2e8f0",
-    },
-    ocrLangChipActive: {
-      backgroundColor: "#38bdf8",
-      borderColor: "#38bdf8",
-    },
-    ocrLangChipText: {
-      fontSize: 12,
-      fontWeight: "600",
-      color: isDark ? "#e2e8f0" : "#0f172a",
-    },
-    ocrLangChipTextActive: {
-      color: "#0f172a",
-    },
-    ocrTranslateButton: {
-      backgroundColor: "#38bdf8",
-      borderRadius: 8,
-      paddingVertical: 10,
-      alignItems: "center",
-      marginBottom: 10,
-    },
-    ocrTranslateButtonText: {
-      color: "#0f172a",
-      fontWeight: "600",
-    },
-    ocrTranslatedInput: {
-      backgroundColor: isDark ? "#1e293b" : "#ffffff",
-    },
-    ocrOriginalInput: {
-      backgroundColor: isDark ? "#1e293b" : "#ffffff",
-      color: isDark ? "#94a3b8" : "#64748b",
-    },
-    ocrActionRow: {
-      flexDirection: "row",
-      gap: 10,
-      marginTop: 4,
-    },
-    ocrActionButton: {
-      flex: 1,
-      borderRadius: 8,
-      paddingVertical: 10,
-      alignItems: "center",
-    },
-    ocrActionButtonPrimary: {
-      backgroundColor: "#38bdf8",
-    },
-    ocrActionButtonPrimaryText: {
-      color: "#0f172a",
-      fontWeight: "600",
-    },
-    ocrActionButtonSecondary: {
-      backgroundColor: isDark ? "#334155" : "#e2e8f0",
-    },
-    ocrActionButtonSecondaryText: {
-      color: isDark ? "#e2e8f0" : "#0f172a",
-      fontWeight: "600",
-    },
-    assigneeSection: {
-      marginBottom: 12,
-    },
-    assigneeLabel: {
+    clearedLabel: {
       fontSize: 12,
       fontWeight: "700",
       color: isDark ? "#94a3b8" : "#64748b",
-      marginBottom: 6,
     },
-    assigneeChips: {
+    clearedActions: {
       flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
+      gap: 12,
     },
-    assigneeChip: {
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 6,
-      backgroundColor: isDark ? "#334155" : "#e2e8f0",
-      borderWidth: 1,
-      borderColor: isDark ? "#334155" : "#e2e8f0",
-      maxWidth: 160,
-    },
-    assigneeChipActive: {
-      backgroundColor: "#38bdf8",
-      borderColor: "#38bdf8",
-    },
-    assigneeChipText: {
+    clearedActionText: {
       fontSize: 12,
+      color: "#38bdf8",
       fontWeight: "600",
-      color: isDark ? "#e2e8f0" : "#0f172a",
-    },
-    assigneeChipTextActive: {
-      color: "#0f172a",
     },
   });

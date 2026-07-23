@@ -6,7 +6,7 @@ import { CaptureItem, ItemStatus, ItemType } from "./items";
 const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   idea: "Idé",
   observation: "Observation",
-  bug: "Bug",
+  bug: "Fejl",
   note: "Notat",
   photo: "Foto",
   voice: "Stemme",
@@ -20,11 +20,20 @@ const STATUS_LABELS: Record<ItemStatus, string> = {
   archived: "Arkiveret",
 };
 
+export interface SearchTerm {
+  value: string;
+  exact: boolean;
+}
+
+export interface OrTerm extends SearchTerm {
+  isPhrase: boolean;
+}
+
 export interface SearchQuery {
-  required: string[]; // hele ord der skal findes (AND)
+  required: SearchTerm[]; // hele ord der skal findes (AND)
   phrases: string[]; // præcise sætninger
-  excluded: string[]; // ord/sætninger der ikke må findes
-  orGroups: string[][]; // grupper af alternativer (OR)
+  excluded: SearchTerm[]; // ord/sætninger der ikke må findes
+  orGroups: OrTerm[][]; // grupper af alternativer (OR)
   filters: SearchFilters;
   raw: string;
 }
@@ -203,7 +212,7 @@ export function parseSearchQuery(raw: string): SearchQuery {
     raw,
   };
 
-  let currentOrGroup: string[] = [];
+  let currentOrGroup: OrTerm[] = [];
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
@@ -245,17 +254,18 @@ export function parseSearchQuery(raw: string): SearchQuery {
 
     if (token.kind === "phrase") {
       if (currentOrGroup.length > 0) {
-        currentOrGroup.push(value);
+        currentOrGroup.push({ value, exact: false, isPhrase: true });
       } else {
         query.phrases.push(value);
       }
     } else if (token.kind === "exclude") {
-      query.excluded.push(value);
+      query.excluded.push({ value, exact: token.exact });
     } else if (token.kind === "word") {
+      const term: SearchTerm = { value, exact: token.exact };
       if (currentOrGroup.length > 0) {
-        currentOrGroup.push(value);
+        currentOrGroup.push({ value, exact: token.exact, isPhrase: false });
       } else {
-        query.required.push(value);
+        query.required.push(term);
       }
     }
   }
@@ -298,6 +308,21 @@ function containsPhrase(haystack: string, phrase: string): boolean {
   return haystack.toLowerCase().includes(phrase.toLowerCase());
 }
 
+function containsTerm(haystack: string, needle: string): boolean {
+  const normalizedHaystack = normalize(haystack);
+  const normalizedNeedle = normalize(needle);
+  if (!normalizedNeedle) return false;
+  return normalizedHaystack.includes(normalizedNeedle);
+}
+
+function termMatches(
+  haystack: string,
+  term: { value: string; exact: boolean }
+): boolean {
+  if (term.exact) return hasWholeWord(haystack, term.value);
+  return containsTerm(haystack, term.value);
+}
+
 function matchesFilters(item: CaptureItem, filters: SearchFilters): boolean {
   if (filters.type && item.type !== filters.type) return false;
   if (filters.category) {
@@ -325,10 +350,13 @@ export function matchItem(item: CaptureItem, query: SearchQuery): number {
 
   // Required words (AND)
   for (const word of query.required) {
-    if (hasWholeWord(text, word)) {
+    if (termMatches(text, word)) {
       score += 1;
-      // Bonus for title match
-      if (item.title && hasWholeWord(item.title, word)) score += 2;
+      // Bonus for title match; extra bonus for whole-word title match
+      if (item.title) {
+        if (termMatches(item.title, word)) score += 1;
+        if (hasWholeWord(item.title, word.value)) score += 1;
+      }
     } else {
       return 0;
     }
@@ -346,16 +374,20 @@ export function matchItem(item: CaptureItem, query: SearchQuery): number {
 
   // OR groups
   for (const group of query.orGroups) {
-    const matched = group.some(
-      (term) => hasWholeWord(text, term) || containsPhrase(text, term)
-    );
+    const matched = group.some((term) => {
+      if (term.isPhrase) return containsPhrase(text, term.value);
+      return termMatches(text, term);
+    });
     if (!matched) return 0;
     score += 1;
   }
 
   // Excluded terms
   for (const term of query.excluded) {
-    if (hasWholeWord(text, term) || containsPhrase(text, term)) {
+    const matched = term.exact
+      ? hasWholeWord(text, term.value)
+      : containsTerm(text, term.value) || containsPhrase(text, term.value);
+    if (matched) {
       return 0;
     }
   }

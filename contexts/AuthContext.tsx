@@ -19,7 +19,7 @@ interface LocalProfile {
   email?: string;
 }
 
-interface AuthUser {
+export interface AuthUser {
   uid: string;
   displayName: string | null;
   email: string | null;

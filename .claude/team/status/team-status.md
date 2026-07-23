@@ -307,6 +307,24 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 - [x] Testplan færdig og reviewet.
 - [x] PO besvarede 5 åbne spørgsmål fra testplan-fasen (foto/type, OS-timeout 2s, status altid ny, email-invitationer, spring rc3 over).
 - [x] Fase 6 (Kode) påbegyndt. PO-go til build (fase 9) kræves før EAS-build, jf. TASK-B-C-REDO-015.
+- [x] US-006 kode færdig.
+- [x] QA-verifikation (TASK-B-C-REDO-018) gennemført med GO.
+- [x] Audit-gate (TASK-B-C-REDO-019) gennemført med GO.
+- [x] PO-go til Build 1 givet.
+- [x] Build 1 færdig: Android `7490b239-74d7-4feb-af44-a25d9281e856`, iOS `6fc715f8-d442-4f23-a5ea-5742c29fbf3d`.
+- [x] Firestore-regler deployet til Firebase Console.
+- [x] PO acceptance test / smoke-test af Build 1.
+- [x] Build 1 accepteret med bemærkninger: stemmeoptagelse kendt udfordring (rettes i US-004/Build 2), slet-projekt lagt i backlog.
+- [x] PO-go givet til Build 2 (US-004 + US-005 samlet).
+- [x] Kodefase US-004 færdig.
+- [x] Kodefase US-005 færdig.
+- [x] QA-verifikation Build 2 — rettelser efter første NO-GO, ny QA review giver **GO**.
+- [x] Audit-gate Build 2 — **GO with conditions**.
+- [x] PO-go til Build 2 EAS-build givet.
+- [x] Build 2 EAS-build færdig:
+  - Android: `ef4584ac-51ed-4ab6-b01a-250decf2eecf` — https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/ef4584ac-51ed-4ab6-b01a-250decf2eecf
+  - iOS: `93baa590-75e4-4166-b560-d65d526fbbb4` — https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/93baa590-75e4-4166-b560-d65d526fbbb4
+- [ ] PO acceptance test Build 2.
 
 ---
 

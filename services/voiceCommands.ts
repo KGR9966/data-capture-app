@@ -5,7 +5,8 @@ export interface VoiceCommandResult {
   text: string;
   shouldStop: boolean; // optagelse bør stoppes ("gem"/"opret")
   shouldCancel: boolean; // optagelse bør annulleres ("annuller")
-  shouldClear: boolean; // ryd alt ("fortryd")
+  shouldClear: boolean; // ryd alt ("slet alt")
+  shouldUndo: boolean; // fjern sidste ord/sætning ("fortryd")
 }
 
 const PUNCTUATION_COMMANDS: Record<string, string> = {
@@ -45,7 +46,8 @@ const STOP_COMMANDS = new Set([
 ]);
 
 const CANCEL_COMMANDS = new Set(["annuller", "abort", "cancel", "luk"]);
-const CLEAR_COMMANDS = new Set(["fortryd", "undo", "ryd", "clear", "slet alt"]);
+const CLEAR_COMMANDS = new Set(["ryd", "clear", "slet alt"]);
+const UNDO_COMMANDS = new Set(["fortryd", "undo"]);
 const DELETE_LAST_WORD_COMMANDS = new Set([
   "slet sidste ord",
   "fjern sidste ord",
@@ -138,6 +140,7 @@ export function processVoiceCommands(input: string): VoiceCommandResult {
     shouldStop: false,
     shouldCancel: false,
     shouldClear: false,
+    shouldUndo: false,
   };
 
   const normalizedInput = normalizeCommand(input);
@@ -154,6 +157,12 @@ export function processVoiceCommands(input: string): VoiceCommandResult {
 
   if (CLEAR_COMMANDS.has(lastWord) || CLEAR_COMMANDS.has(lastTwoWords)) {
     result.shouldClear = true;
+    result.text = "";
+    return result;
+  }
+
+  if (UNDO_COMMANDS.has(lastWord) || UNDO_COMMANDS.has(lastTwoWords)) {
+    result.shouldUndo = true;
     result.text = "";
     return result;
   }

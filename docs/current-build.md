@@ -7,15 +7,34 @@
 
 | Felt | Værdi |
 |---|---|
-| **Build-ID** | `7490b239-74d7-4feb-af44-a25d9281e856` (Android), `6fc715f8-d442-4f23-a5ea-5742c29fbf3d` (iOS) |
+| **Build-ID** | `ef4584ac-51ed-4ab6-b01a-250decf2eecf` (Android), `93baa590-75e4-4166-b560-d65d526fbbb4` (iOS) |
 | **Platform** | Android + iOS preview build |
 | **Distribution** | Internal (EAS) |
 | **EAS Dashboard** | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds |
-| **Android EAS build-side** | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/7490b239-74d7-4feb-af44-a25d9281e856) |
-| **iOS EAS build-side** | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/6fc715f8-d442-4f23-a5ea-5742c29fbf3d) |
-| **Git snapshot** | `6042b91` (`v2026.07.15-build1-us006`) |
-| **Fokus i dette build** | US-006: Ret kritisk projektoprettelsesfejl og forhindr dubletter |
-| **Forrige build** | ~~`0d155824-6521-41f2-b3de-5d839374a182` / `648a6ba2-2ece-41c5-8238-79361432d44f`~~ **Forældet** |
+| **Android EAS build-side** | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/ef4584ac-51ed-4ab6-b01a-250decf2eecf) |
+| **iOS EAS build-side** | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/93baa590-75e4-4166-b560-d65d526fbbb4) |
+| **Git snapshot** | `937f79d` med udestående ændringer (Build 2 rettelser er endnu ikke commit'et) |
+| **Fokus i dette build** | US-004 + US-005: Stemme/oprettelsesredesign, dynamiske lister og søgeportal |
+| **Forrige build** | ~~`7490b239-74d7-4feb-af44-a25d9281e856` / `6fc715f8-d442-4f23-a5ea-5742c29fbf3d`~~ **Forældet** |
+
+## Build 2 – US-004 + US-005
+
+Dette build indeholder redesign af optagelse/oprettelse og dynamiske lister:
+
+- **Fælles `CreateItemForm`:** Ensartede felter og rækkefølge for manuel oprettelse og stemmeoptagelse.
+- **AI type-forslag:** Type foreslås automatisk ud fra titel/tekstindhold (bug, idé, observation, notat).
+- **Stemmekommandoer:** Gem, slet alt, fortryd (undo sidste sætning/ord), tegnsætning og kategori-præfix.
+- **OS-timeout håndtering:** Lang afbrydelse giver Alert med "Start ny optagelse", "Gem" og "Luk".
+- **Dynamiske lister:** Søgeportal med substring/fuzzy-søgning, smart syntaks og konfigurationsdialog.
+- **Live opdatering:** Dynamiske lister synkroniseres, når underliggende sager matcher/slipper søgningen.
+- **Status-synkronisering:** Afkrydsning sætter kildesag til `done`; fjernelse af afkrydsning gendanner forrige status.
+- **Deling og dybe links:** Liste-tekst og dyb link deles; rettighedstjek ved dyb link.
+
+### Kendte begrænsninger i Build 2
+
+- ESLint-warnings og package-version warning i pre-test-check er ikke blocker, men teknisk gæld.
+- Type-vs-foto-lås er afklaret og godkendt af PO (regel C): stemmekommando låser; manuelt chip-valg før foto låser ikke; foto skifter til `photo`; chip-valg efter foto låser.
+- Pre-existing secrets i `.env`, `google-services.json`, `GoogleService-Info.plist` bør håndteres før produktionsrelease.
 
 ## Build 1 – US-006
 
@@ -56,8 +75,8 @@ Dette build indeholder kun rettelsen af den kritiske projektoprettelsesfejl:
 
 1. Åbn Safari (iOS) eller Chrome (Android) på enheden.
 2. Gå til det relevante build:
-   - Android: `7490b239-74d7-4feb-af44-a25d9281e856`
-   - iOS: `6fc715f8-d442-4f23-a5ea-5742c29fbf3d`
+   - Android: `ef4584ac-51ed-4ab6-b01a-250decf2eecf`
+   - iOS: `93baa590-75e4-4166-b560-d65d526fbbb4`
 4. Tryk installationslinket og scan QR-koden på siden, eller følg anvisningen.
 5. Åbn appen og accepter tilladelser.
 

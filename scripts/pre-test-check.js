@@ -123,9 +123,11 @@ const routes = [
   "app/(tabs)/index.tsx",
   "app/(tabs)/board.tsx",
   "app/(tabs)/search.tsx",
+  "app/(tabs)/checklists.tsx",
   "app/(tabs)/settings.tsx",
   "app/index.tsx",
   "app/item.tsx",
+  "app/checklist.tsx",
 ];
 for (const route of routes) {
   const filePath = path.join(ROOT, route);

@@ -48,7 +48,7 @@ function currentTimestamp() {
 const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   idea: "Idé",
   observation: "Observation",
-  bug: "Bug",
+  bug: "Fejl",
   note: "Notat",
   photo: "Foto",
   voice: "Stemme",

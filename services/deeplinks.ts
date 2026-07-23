@@ -14,6 +14,14 @@ export function buildItemUrl(itemId: string): string {
   return `${APP_SCHEME}://item?itemId=${encodeURIComponent(itemId)}`;
 }
 
+export function buildChecklistUrl(checklistId: string): string {
+  return `${APP_SCHEME}://checklist?id=${encodeURIComponent(checklistId)}`;
+}
+
+export function buildOpenListUrl(checklistId: string): string {
+  return `${APP_SCHEME}://open-list?id=${encodeURIComponent(checklistId)}`;
+}
+
 export async function copyToClipboard(text: string): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const Clipboard = require("expo-clipboard");
