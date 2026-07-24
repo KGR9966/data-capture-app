@@ -9,6 +9,7 @@ import {
   Switch,
   Text,
   TouchableOpacity,
+  Vibration,
   View,
 } from "react-native";
 
@@ -30,82 +31,12 @@ import {
 } from "../services/projects";
 import { getProjectRole, ProjectRole } from "../services/roles";
 import { shareText } from "../services/share";
-import { processVoiceCommands } from "../services/voiceCommands";
-import CreateItemForm, { deriveTitle } from "./CreateItemForm";
-
-const VOICE_COMMANDS: Record<string, { itemType: ItemType; category: string }> = {
-  idé: { itemType: "idea", category: "Idé" },
-  ide: { itemType: "idea", category: "Idé" },
-  idea: { itemType: "idea", category: "Idé" },
-  bug: { itemType: "bug", category: "Fejl" },
-  fejl: { itemType: "bug", category: "Fejl" },
-  observation: { itemType: "observation", category: "Observation" },
-  observer: { itemType: "observation", category: "Observation" },
-  observeret: { itemType: "observation", category: "Observation" },
-  notat: { itemType: "note", category: "Notat" },
-  bemærkning: { itemType: "note", category: "Notat" },
-  kommentar: { itemType: "note", category: "Notat" },
-  spørgsmål: { itemType: "note", category: "Spørgsmål" },
-};
-
-function normalizeCategoryName(name: string): string {
-  return name.trim().replace(/^./, (c) => c.toUpperCase());
-}
-
-function parseVoiceCommand(text: string) {
-  const trimmed = text.trim();
-  const separator = "(?:\\s*[.,]?\\s+|\\s*[.,]\\s*|\\s+$|\\b(?=\\s))";
-
-  const knownMatch = trimmed.match(
-    new RegExp(
-      `^\\s*(idé|ide|idea|bug|fejl|observation|observer|observeret|notat|bemærkning|kommentar|spørgsmål)${separator}`,
-      "i"
-    )
-  );
-
-  if (knownMatch) {
-    const command = knownMatch[1].toLowerCase();
-    const mapping = VOICE_COMMANDS[command];
-    if (mapping) {
-      return {
-        cleanedText: trimmed.slice(knownMatch[0].length).trim(),
-        itemType: mapping.itemType,
-        category: mapping.category,
-      };
-    }
-  }
-
-  const customMatch = trimmed.match(
-    new RegExp(
-      `^\\s*([a-zæøåéA-ZÆØÅÉ0-9][a-zæøåéA-ZÆØÅÉ0-9 ]{0,24})${separator}`,
-      "i"
-    )
-  );
-  if (customMatch && customMatch[1].trim().length >= 2) {
-    const category = normalizeCategoryName(customMatch[1]);
-    return {
-      cleanedText: trimmed.slice(customMatch[0].length).trim(),
-      itemType: "other" as ItemType,
-      category,
-    };
-  }
-
-  return { cleanedText: trimmed, itemType: null as ItemType | null, category: "" };
-}
-
-function removeLastSentenceOrWord(text: string): string {
-  const trimmed = text.trim();
-  // Remove the last sentence if it ends with sentence punctuation.
-  const sentenceMatch = trimmed.match(/^(.*)([.!?;:])\s*[^.!?;:]*$/s);
-  if (sentenceMatch) {
-    const prefix = sentenceMatch[1].trim();
-    return prefix ? `${prefix}${sentenceMatch[2]}` : "";
-  }
-  // Fallback: remove last word.
-  const lastSpace = trimmed.lastIndexOf(" ");
-  if (lastSpace <= 0) return "";
-  return trimmed.slice(0, lastSpace).trim();
-}
+import {
+  parseVoiceInput,
+  removeLastWord,
+  type VoiceParseResult,
+} from "../services/voiceCommands";
+import CreateItemForm from "./CreateItemForm";
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -113,6 +44,12 @@ function formatDuration(seconds: number): string {
     .padStart(2, "0");
   const s = (seconds % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
+}
+
+function getTimerColor(seconds: number, isDark: boolean): string {
+  if (seconds >= 60) return "#ef4444"; // rød ved 60+ sek / OS-timeout
+  if (seconds >= 45) return "#f97316"; // orange advarsel
+  return isDark ? "#e2e8f0" : "#0f172a"; // neutral
 }
 
 interface VoiceCaptureModalProps {
@@ -154,6 +91,7 @@ export default function VoiceCaptureModal({
   const [clearedOriginalText, setClearedOriginalText] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [typeLockedByVoice, setTypeLockedByVoice] = useState(false);
+  const [saveFeedbackVisible, setSaveFeedbackVisible] = useState(false);
 
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [project, setProject] = useState<Project | null>(null);
@@ -165,16 +103,50 @@ export default function VoiceCaptureModal({
   const saveHandlerRef = useRef<(closeAfterSave: boolean) => Promise<void>>(
     async () => {}
   );
+  const onCloseRef = useRef(onClose);
+  const onSaveRef = useRef(onSave);
+
   const contentRef = useRef(content);
+  const titleRef = useRef(title);
+  const categoryRef = useRef(category);
+  const itemTypeRef = useRef(itemType);
   const autoSaveOnSilenceRef = useRef(autoSaveOnSilence);
+  const typeLockedByVoiceRef = useRef(typeLockedByVoice);
+  const manualTitleEditRef = useRef(false);
+  const manualCategoryEditRef = useRef(false);
+  const manualTypeEditRef = useRef(false);
 
   useEffect(() => {
     contentRef.current = content;
   }, [content]);
 
   useEffect(() => {
+    titleRef.current = title;
+  }, [title]);
+
+  useEffect(() => {
+    categoryRef.current = category;
+  }, [category]);
+
+  useEffect(() => {
+    itemTypeRef.current = itemType;
+  }, [itemType]);
+
+  useEffect(() => {
     autoSaveOnSilenceRef.current = autoSaveOnSilence;
   }, [autoSaveOnSilence]);
+
+  useEffect(() => {
+    typeLockedByVoiceRef.current = typeLockedByVoice;
+  }, [typeLockedByVoice]);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    onSaveRef.current = onSave;
+  }, [onSave]);
 
   const resetForm = useCallback(() => {
     setItemType("other");
@@ -188,14 +160,61 @@ export default function VoiceCaptureModal({
     setClearedOriginalText("");
     setRecordingDuration(0);
     setTypeLockedByVoice(false);
+    setSaveFeedbackVisible(false);
     savePendingRef.current = false;
     stopPendingRef.current = false;
     intentionalStopRef.current = false;
+    manualTitleEditRef.current = false;
+    manualCategoryEditRef.current = false;
+    manualTypeEditRef.current = false;
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
   }, []);
+
+  const playSavedFeedback = useCallback(() => {
+    try {
+      Vibration.vibrate(50);
+      setTimeout(() => {
+        try {
+          Vibration.vibrate(50);
+        } catch {
+          // ignore
+        }
+      }, 150);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const showSaveFeedbackAndClose = useCallback(() => {
+    playSavedFeedback();
+    setSaveFeedbackVisible(true);
+    setTimeout(() => {
+      setSaveFeedbackVisible(false);
+      onCloseRef.current();
+    }, 1200);
+  }, [playSavedFeedback]);
+
+  const applyParsedResult = useCallback(
+    (parsed: VoiceParseResult, { lockType = false }: { lockType?: boolean } = {}) => {
+      if (!manualTitleEditRef.current) {
+        setTitle(parsed.title);
+      }
+      setContent(parsed.content);
+      if (!manualCategoryEditRef.current) {
+        setCategory(parsed.category);
+      }
+      if (!manualTypeEditRef.current) {
+        setItemType(parsed.type);
+      }
+      if (lockType && parsed.type !== "other" && !manualTypeEditRef.current) {
+        setTypeLockedByVoice(true);
+      }
+    },
+    []
+  );
 
   const {
     transcript,
@@ -209,37 +228,53 @@ export default function VoiceCaptureModal({
     onResult: (text, isFinal) => {
       if (stopPendingRef.current) return;
 
-      const commands = processVoiceCommands(text);
+      const parsed = parseVoiceInput(text);
 
-      if (commands.shouldCancel) {
+      if (parsed.command === "cancel") {
         stopRecording();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
-      if (commands.shouldClear) {
-        const currentContent = contentRef.current.trim();
-        if (currentContent) {
-          setClearedOriginalText(currentContent);
+      if (parsed.command === "clear") {
+        const hadText = contentRef.current.trim() || titleRef.current.trim();
+        if (hadText) {
+          setClearedOriginalText(
+            [titleRef.current, contentRef.current].filter(Boolean).join("\n")
+          );
         }
         resetTranscript();
+        if (!manualTitleEditRef.current) {
+          setTitle("");
+        }
         setContent("");
-        return;
-      }
-
-      if (commands.shouldUndo) {
-        const currentContent = contentRef.current.trim();
-        if (currentContent) {
-          const nextContent = removeLastSentenceOrWord(currentContent);
-          setContent(nextContent);
+        if (!manualCategoryEditRef.current) {
+          setCategory("Andet");
+        }
+        if (!manualTypeEditRef.current) {
+          setItemType("other");
         }
         return;
       }
 
-      const parsed = parseVoiceCommand(commands.text);
-      setContent(parsed.cleanedText);
+      if (parsed.command === "undo") {
+        const currentContent = contentRef.current.trim();
+        if (currentContent) {
+          const lines = currentContent.split("\n");
+          lines.pop();
+          setContent(lines.join("\n"));
+        } else {
+          const currentTitle = titleRef.current.trim();
+          if (currentTitle) {
+            setTitle(removeLastWord(currentTitle));
+          }
+        }
+        resetTranscript();
+        return;
+      }
 
-      if (commands.shouldStop && !stopPendingRef.current) {
+      if (parsed.command === "save") {
+        applyParsedResult(parsed, { lockType: true });
         stopPendingRef.current = true;
         intentionalStopRef.current = true;
         savePendingRef.current = true;
@@ -247,20 +282,12 @@ export default function VoiceCaptureModal({
         return;
       }
 
-      if (isFinal) {
-        stopPendingRef.current = false;
-        if (parsed.itemType) {
-          setItemType(parsed.itemType);
-          setTypeLockedByVoice(true);
-        }
-        if (parsed.category) {
-          setCategory(parsed.category);
-        }
-      }
+      // Almindelig opdatering under optagelse.
+      applyParsedResult(parsed, { lockType: isFinal });
     },
     onEnd: (reason) => {
       if (reason === "silence" && autoSaveOnSilenceRef.current) {
-        saveHandlerRef.current(false);
+        saveHandlerRef.current(true);
         return;
       }
       if (savePendingRef.current) {
@@ -274,60 +301,65 @@ export default function VoiceCaptureModal({
           "Optagelsen stoppede uventet. Du kan gemme det nuværende indhold, starte en ny optagelse eller lukke.",
           [
             { text: "Start ny optagelse", onPress: () => startRecording() },
-            { text: "Gem", onPress: () => {
-              intentionalStopRef.current = false;
-              savePendingRef.current = false;
-              handleSaveInternal(true);
-            }},
+            {
+              text: "Gem",
+              onPress: () => {
+                intentionalStopRef.current = false;
+                savePendingRef.current = false;
+                saveHandlerRef.current(true);
+              },
+            },
             { text: "Luk", style: "cancel" },
           ]
         );
       }
     },
     onError: (message) => {
-       
       console.log("Voice error", message);
     },
   });
 
-  const handleSaveInternal = async (closeAfterSave: boolean) => {
-    const finalContent = content.trim() || transcript.trim();
-    const finalTitle = title.trim() || deriveTitle(finalContent);
-    if (!finalContent && !finalTitle && !mediaUrl) {
-      if (closeAfterSave) {
-        onClose();
-      } else {
-        resetForm();
-        resetTranscript();
+  const handleSaveInternal = useCallback(
+    async (closeAfterSave: boolean) => {
+      const finalContent = contentRef.current.trim() || transcript.trim();
+      const finalTitle = titleRef.current.trim();
+      if (!finalContent && !finalTitle && !mediaUrl) {
+        if (closeAfterSave) {
+          onCloseRef.current();
+        } else {
+          resetForm();
+          resetTranscript();
+        }
+        return;
       }
-      return;
-    }
 
-    setIsProcessing(true);
-    try {
-      await onSave({
-        type: itemType,
-        title: finalTitle,
-        content: finalContent,
-        category,
-        mediaUrl: mediaUrl || undefined,
-        assignedTo: assignedTo || undefined,
-        assignedToName: assignedTo ? assignedToName : undefined,
-      });
-      if (closeAfterSave) {
-        onClose();
-      } else {
-        resetForm();
-        resetTranscript();
+      setIsProcessing(true);
+      try {
+        await onSaveRef.current({
+          type: itemTypeRef.current,
+          title: finalTitle,
+          content: finalContent,
+          category: categoryRef.current,
+          mediaUrl: mediaUrl || undefined,
+          assignedTo: assignedTo || undefined,
+          assignedToName: assignedTo ? assignedToName : undefined,
+        });
+        if (closeAfterSave) {
+          showSaveFeedbackAndClose();
+        } else {
+          resetForm();
+          resetTranscript();
+        }
+      } catch (error) {
+        console.log("Voice save error", error);
+        Alert.alert("Fejl", "Kunne ikke gemme optagelsen.");
+      } finally {
+        setIsProcessing(false);
+        savePendingRef.current = false;
       }
-    } catch (error) {
-      console.log("Voice save error", error);
-      Alert.alert("Fejl", "Kunne ikke gemme optagelsen.");
-    } finally {
-      setIsProcessing(false);
-      savePendingRef.current = false;
-    }
-  };
+    },
+    [mediaUrl, assignedTo, assignedToName, resetForm, resetTranscript, showSaveFeedbackAndClose, transcript]
+  );
 
   useEffect(() => {
     saveHandlerRef.current = handleSaveInternal;
@@ -351,7 +383,6 @@ export default function VoiceCaptureModal({
       .then((p) => {
         if (mounted) setProject(p);
       })
-       
       .catch((err) => console.log("Load project error", err));
     const unsubscribe = subscribeToProjectMembers(projectId, (data) => setMembers(data));
     return () => {
@@ -407,7 +438,6 @@ export default function VoiceCaptureModal({
       const url = await uploadImage(asset, `projects/${projectId}/items/${Date.now()}.jpg`);
       setMediaUrl(url);
     } catch (error) {
-       
       console.log("Voice modal take photo error", error);
       Alert.alert("Fejl", "Kunne ikke tage eller uploade billedet.");
     }
@@ -422,7 +452,6 @@ export default function VoiceCaptureModal({
       const url = await uploadImage(asset, `projects/${projectId}/items/${Date.now()}.jpg`);
       setMediaUrl(url);
     } catch (error) {
-       
       console.log("Voice modal pick image error", error);
       Alert.alert("Fejl", "Kunne ikke vælge eller uploade billedet.");
     }
@@ -441,7 +470,6 @@ export default function VoiceCaptureModal({
     try {
       await shareText(clearedOriginalText, "Fjernet tekst", "Fjernet tekst fra Data Capture");
     } catch (error) {
-       
       console.log("Share cleared text error", error);
     }
   };
@@ -449,7 +477,29 @@ export default function VoiceCaptureModal({
   const handleSave = () => {
     intentionalStopRef.current = false;
     savePendingRef.current = false;
-    handleSaveInternal(true);
+    saveHandlerRef.current(true);
+  };
+
+  const handleTitleChange = (text: string) => {
+    if (text !== titleRef.current) {
+      manualTitleEditRef.current = true;
+    }
+    setTitle(text);
+  };
+
+  const handleCategoryChange = (text: string) => {
+    if (text !== categoryRef.current) {
+      manualCategoryEditRef.current = true;
+    }
+    setCategory(text);
+  };
+
+  const handleItemTypeChange = (type: ItemType) => {
+    if (type !== itemTypeRef.current) {
+      manualTypeEditRef.current = true;
+      setTypeLockedByVoice(false);
+    }
+    setItemType(type);
   };
 
   const recordControls = (
@@ -464,7 +514,14 @@ export default function VoiceCaptureModal({
       </TouchableOpacity>
 
       {isRecording ? (
-        <Text style={styles.timerText}>{formatDuration(recordingDuration)}</Text>
+        <Text
+          style={[
+            styles.timerText,
+            { color: getTimerColor(recordingDuration, isDark) },
+          ]}
+        >
+          {formatDuration(recordingDuration)}
+        </Text>
       ) : null}
 
       <View style={styles.autoSaveRow}>
@@ -508,16 +565,16 @@ export default function VoiceCaptureModal({
           <CreateItemForm
             mode="voice"
             header="Optag"
-            helpText="Sig punktum, komma, ny linje, skift, slet sidste ord, fortryd, slet alt eller gem."
+            helpText="Sig punktum, komma, ny linje, nyt afsnit, fortryd, slet alt eller gem."
             topSlot={recordControls}
             itemType={itemType}
-            onItemTypeChange={setItemType}
+            onItemTypeChange={handleItemTypeChange}
             content={content}
             onContentChange={setContent}
             title={title}
-            onTitleChange={setTitle}
+            onTitleChange={handleTitleChange}
             category={category}
-            onCategoryChange={setCategory}
+            onCategoryChange={handleCategoryChange}
             mediaUrl={mediaUrl}
             mediaUri={mediaUri || undefined}
             onPickImage={handlePickImage}
@@ -537,7 +594,17 @@ export default function VoiceCaptureModal({
             isSaving={isProcessing}
             defaultType="other"
             typeLocked={typeLockedByVoice}
+            autoSuggestCategory={false}
+            autoSuggestType={false}
           />
+
+          {saveFeedbackVisible ? (
+            <View style={styles.toastOverlay}>
+              <View style={styles.toastBox}>
+                <Text style={styles.toastText}>Sagen er gemt</Text>
+              </View>
+            </View>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
@@ -578,7 +645,6 @@ const themedStyles = (isDark: boolean) =>
     },
     timerText: {
       fontSize: 14,
-      color: "#f87171",
       fontWeight: "700",
       textAlign: "center",
       marginBottom: 8,
@@ -619,5 +685,31 @@ const themedStyles = (isDark: boolean) =>
       fontSize: 12,
       color: "#38bdf8",
       fontWeight: "600",
+    },
+    toastOverlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      justifyContent: "center",
+      alignItems: "center",
+      pointerEvents: "none",
+    },
+    toastBox: {
+      backgroundColor: "rgba(15, 23, 42, 0.9)",
+      borderRadius: 12,
+      paddingHorizontal: 24,
+      paddingVertical: 14,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 5,
+    },
+    toastText: {
+      color: "#ffffff",
+      fontSize: 16,
+      fontWeight: "700",
     },
   });

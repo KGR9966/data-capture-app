@@ -190,3 +190,24 @@ export async function unassignItemsFromMember(
   );
   return items.length;
 }
+
+/** Tjekker om der allerede findes en sag med samme titel i projektet.
+ *  Beregnet til senere brug ved validering før oprettelse/opdatering. */
+export async function isTitleDuplicate(
+  projectId: string,
+  title: string,
+  excludeItemId?: string
+): Promise<boolean> {
+  if (!title.trim()) return false;
+  const q = query(
+    itemsCollection,
+    where("projectId", "==", projectId),
+    where("title", "==", title.trim())
+  );
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) return false;
+  if (excludeItemId) {
+    return snapshot.docs.some((d) => d.id !== excludeItemId);
+  }
+  return true;
+}

@@ -84,6 +84,7 @@ export interface CreateItemFormProps {
   isSaving?: boolean;
   defaultType?: ItemType;
   autoSuggestCategory?: boolean;
+  autoSuggestType?: boolean;
   typeLocked?: boolean;
 }
 
@@ -123,6 +124,7 @@ export default function CreateItemForm({
   isSaving,
   defaultType = "other",
   autoSuggestCategory = true,
+  autoSuggestType = true,
   typeLocked: externalTypeLocked,
 }: CreateItemFormProps) {
   const { theme } = useTheme();
@@ -152,14 +154,15 @@ export default function CreateItemForm({
     hasPhotoRef.current = !!mediaUrl;
   }, [mediaUrl]);
 
-  // Auto-derive title from content when title is empty.
+  // Auto-derive title from content when title is empty (kun manuel oprettelse).
   useEffect(() => {
+    if (mode === "voice") return;
     if (title.trim()) return;
     const suggestion = deriveTitle(content);
     if (suggestion && suggestion !== title) {
       onTitleChange(suggestion);
     }
-  }, [content, title, onTitleChange]);
+  }, [content, mode, title, onTitleChange]);
 
   // Auto-suggest category when empty and there is text/type to base it on.
   useEffect(() => {
@@ -175,6 +178,7 @@ export default function CreateItemForm({
 
   // AI type suggestion: infer type from text unless the user has locked the type.
   useEffect(() => {
+    if (!autoSuggestType) return;
     if (itemType !== "other") return;
     if (userLockedTypeRef.current) return;
     const text = `${title} ${content}`.trim().toLowerCase();
@@ -194,7 +198,7 @@ export default function CreateItemForm({
     if (suggestedType) {
       onItemTypeChange(suggestedType);
     }
-  }, [content, itemType, onItemTypeChange, title]);
+  }, [autoSuggestType, content, itemType, onItemTypeChange, title]);
 
   // Auto-set type to photo when media is attached (unless user has locked it).
   useEffect(() => {
@@ -344,6 +348,10 @@ export default function CreateItemForm({
           </TouchableOpacity>
         ))}
       </View>
+
+      {mode === "manual" ? (
+        <Text style={styles.aiSuggestionHint}>Typen er et AI-forslag, indtil du trykker på en chip</Text>
+      ) : null}
 
       <TextInput
         style={[styles.input, styles.textArea]}
@@ -913,5 +921,12 @@ const themedStyles = (isDark: boolean) =>
     },
     assigneeChipTextActive: {
       color: "#0f172a",
+    },
+    aiSuggestionHint: {
+      fontSize: 12,
+      fontStyle: "italic",
+      color: isDark ? "#94a3b8" : "#64748b",
+      marginTop: -10,
+      marginBottom: 12,
     },
   });
