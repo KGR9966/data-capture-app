@@ -105,6 +105,14 @@ export default function VoiceCaptureModal({
   );
   const onCloseRef = useRef(onClose);
   const onSaveRef = useRef(onSave);
+  const startRecordingRef = useRef<() => Promise<void>>(async () => {});
+  const stopRecordingRef = useRef<() => void>(() => {});
+  const resetTranscriptRef = useRef<() => void>(() => {});
+  const handlePickImageRef = useRef<() => Promise<void>>(async () => {});
+  const handleTakePhotoRef = useRef<() => Promise<void>>(async () => {});
+  const applyParsedResultRef = useRef<
+    (parsed: VoiceParseResult, opts?: { lockType?: boolean }) => void
+  >(() => {});
 
   const contentRef = useRef(content);
   const titleRef = useRef(title);
@@ -112,9 +120,15 @@ export default function VoiceCaptureModal({
   const itemTypeRef = useRef(itemType);
   const autoSaveOnSilenceRef = useRef(autoSaveOnSilence);
   const typeLockedByVoiceRef = useRef(typeLockedByVoice);
+  const isRecordingRef = useRef(false);
   const manualTitleEditRef = useRef(false);
   const manualCategoryEditRef = useRef(false);
   const manualTypeEditRef = useRef(false);
+  const visibleRef = useRef(visible);
+
+  useEffect(() => {
+    visibleRef.current = visible;
+  }, [visible]);
 
   useEffect(() => {
     contentRef.current = content;
@@ -199,10 +213,38 @@ export default function VoiceCaptureModal({
 
   const applyParsedResult = useCallback(
     (parsed: VoiceParseResult, { lockType = false }: { lockType?: boolean } = {}) => {
-      if (!manualTitleEditRef.current) {
+      const currentTitle = titleRef.current.trim();
+      const hasTitle = !!currentTitle;
+      const hasParsedTitle = !!parsed.title.trim();
+
+      if (!manualTitleEditRef.current && hasParsedTitle && !hasTitle) {
+        // Første sætning bliver titel.
         setTitle(parsed.title);
       }
-      setContent(parsed.content);
+
+      // Alt efterfølgende input tilføjes som indhold, også hvis parseren ser det
+      // som en ny "titel" — når først titlen er etableret, er efterfølgende
+      // sætninger punkter.
+      const newContentParts: string[] = [];
+      if (hasTitle && hasParsedTitle) {
+        newContentParts.push(parsed.title);
+      }
+      if (parsed.content) {
+        newContentParts.push(parsed.content);
+      }
+
+      if (newContentParts.length > 0) {
+        const newContent = newContentParts.join("\n");
+        setContent((prev) => {
+          const trimmed = prev.trim();
+          return trimmed ? `${trimmed}\n${newContent}` : newContent;
+        });
+      } else if (!hasTitle && !hasParsedTitle) {
+        // Helt tom input — rydder indhold for at undgå at transcriptet lægges
+        // tilbage som indhold.
+        setContent("");
+      }
+
       if (!manualCategoryEditRef.current) {
         setCategory(parsed.category);
       }
@@ -216,8 +258,11 @@ export default function VoiceCaptureModal({
     []
   );
 
+  useEffect(() => {
+    applyParsedResultRef.current = applyParsedResult;
+  }, [applyParsedResult]);
+
   const {
-    transcript,
     isRecording,
     startRecording,
     stopRecording,
@@ -231,7 +276,7 @@ export default function VoiceCaptureModal({
       const parsed = parseVoiceInput(text);
 
       if (parsed.command === "cancel") {
-        stopRecording();
+        stopRecordingRef.current();
         onCloseRef.current();
         return;
       }
@@ -243,7 +288,7 @@ export default function VoiceCaptureModal({
             [titleRef.current, contentRef.current].filter(Boolean).join("\n")
           );
         }
-        resetTranscript();
+        resetTranscriptRef.current();
         if (!manualTitleEditRef.current) {
           setTitle("");
         }
@@ -269,21 +314,57 @@ export default function VoiceCaptureModal({
             setTitle(removeLastWord(currentTitle));
           }
         }
-        resetTranscript();
+        resetTranscriptRef.current();
         return;
       }
 
       if (parsed.command === "save") {
-        applyParsedResult(parsed, { lockType: true });
+        applyParsedResultRef.current(parsed, { lockType: true });
         stopPendingRef.current = true;
         intentionalStopRef.current = true;
         savePendingRef.current = true;
-        stopRecording();
+        stopRecordingRef.current();
+        return;
+      }
+
+      if (parsed.command === "openAlbum" || parsed.command === "openCamera") {
+        // Marker at vi har set en foto-kommando. Optagelsen stoppes, men vi
+        // sætter ikke savePending, så onEnd ikke trigger gem.
+        stopPendingRef.current = true;
+        intentionalStopRef.current = true;
+        stopRecordingRef.current();
+        resetTranscriptRef.current();
+
+        const isAlbum = parsed.command === "openAlbum";
+        // Fjern kommandoen fra eventuel titel-indhold.
+        applyParsedResultRef.current(parseVoiceInput(parsed.rawText), { lockType: isFinal });
+
+        setTimeout(() => {
+          (async () => {
+            try {
+              if (isAlbum) {
+                await handlePickImageRef.current();
+              } else {
+                await handleTakePhotoRef.current();
+              }
+            } catch (error) {
+              console.log("Voice photo command error", error);
+            }
+            // Nulstil flag og genstart optagelsen. Auto-gem timeren starter
+            // først nu, efter brugeren er tilbage i modalen.
+            stopPendingRef.current = false;
+            intentionalStopRef.current = false;
+            savePendingRef.current = false;
+            if (visibleRef.current && autoSaveOnSilenceRef.current) {
+              await startRecordingRef.current();
+            }
+          })();
+        }, 800);
         return;
       }
 
       // Almindelig opdatering under optagelse.
-      applyParsedResult(parsed, { lockType: isFinal });
+      applyParsedResultRef.current(parsed, { lockType: isFinal });
     },
     onEnd: (reason) => {
       if (reason === "silence" && autoSaveOnSilenceRef.current) {
@@ -319,11 +400,34 @@ export default function VoiceCaptureModal({
     },
   });
 
+  useEffect(() => {
+    startRecordingRef.current = startRecording;
+  }, [startRecording]);
+
+  useEffect(() => {
+    stopRecordingRef.current = stopRecording;
+  }, [stopRecording]);
+
+  useEffect(() => {
+    resetTranscriptRef.current = resetTranscript;
+  }, [resetTranscript]);
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
+
   const handleSaveInternal = useCallback(
     async (closeAfterSave: boolean) => {
-      const finalContent = contentRef.current.trim() || transcript.trim();
+      const finalContent = contentRef.current.trim();
       const finalTitle = titleRef.current.trim();
-      if (!finalContent && !finalTitle && !mediaUrl) {
+      const hasMedia = !!mediaUrl;
+
+      // Afvis tomme eller meningsløse sager medmindre der er foto.
+      const isMeaningful =
+        finalTitle.length >= 2 ||
+        finalContent.length >= 3 ||
+        hasMedia;
+      if (!isMeaningful) {
         if (closeAfterSave) {
           onCloseRef.current();
         } else {
@@ -333,12 +437,16 @@ export default function VoiceCaptureModal({
         return;
       }
 
+      // Hvis der ikke er indhold, men der er en titel, skal indholdet være tomt
+      // — ikke en kopi af titlen eller hele transcriptet.
+      const contentToSave = finalContent;
+
       setIsProcessing(true);
       try {
         await onSaveRef.current({
           type: itemTypeRef.current,
           title: finalTitle,
-          content: finalContent,
+          content: contentToSave,
           category: categoryRef.current,
           mediaUrl: mediaUrl || undefined,
           assignedTo: assignedTo || undefined,
@@ -358,7 +466,7 @@ export default function VoiceCaptureModal({
         savePendingRef.current = false;
       }
     },
-    [mediaUrl, assignedTo, assignedToName, resetForm, resetTranscript, showSaveFeedbackAndClose, transcript]
+    [mediaUrl, assignedTo, assignedToName, resetForm, resetTranscript, showSaveFeedbackAndClose]
   );
 
   useEffect(() => {
@@ -429,33 +537,71 @@ export default function VoiceCaptureModal({
     }
   };
 
-  const handleTakePhoto = async () => {
-    if (!projectId) return;
-    try {
-      const asset = await takePhoto();
-      if (!asset?.uri) return;
-      setMediaUri(asset.uri);
-      const url = await uploadImage(asset, `projects/${projectId}/items/${Date.now()}.jpg`);
-      setMediaUrl(url);
-    } catch (error) {
-      console.log("Voice modal take photo error", error);
-      Alert.alert("Fejl", "Kunne ikke tage eller uploade billedet.");
+  const runWithRecordingPaused = useCallback(async (action: () => Promise<void>) => {
+    const wasRecording = isRecordingRef.current;
+    if (wasRecording) {
+      // Stop optagelse mens foto-vælgeren er åben, så auto-gem ikke trigger.
+      intentionalStopRef.current = true;
+      stopPendingRef.current = true;
+      stopRecording();
     }
-  };
+    // Giv modulen tid til at standse helt, før picker åbnes.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    try {
+      await action();
+    } catch (error) {
+      console.log("Photo action error", error);
+    }
+    // Nulstil flag og genstart optagelsen, hvis brugeren stadig er i modalen.
+    if (wasRecording) {
+      intentionalStopRef.current = false;
+      stopPendingRef.current = false;
+      savePendingRef.current = false;
+      if (visibleRef.current && autoSaveOnSilenceRef.current) {
+        await startRecording();
+      }
+    }
+  }, [stopRecording, startRecording]);
 
-  const handlePickImage = async () => {
+  const handleTakePhoto = useCallback(async () => {
     if (!projectId) return;
-    try {
-      const asset = await pickImage();
-      if (!asset?.uri) return;
-      setMediaUri(asset.uri);
-      const url = await uploadImage(asset, `projects/${projectId}/items/${Date.now()}.jpg`);
-      setMediaUrl(url);
-    } catch (error) {
-      console.log("Voice modal pick image error", error);
-      Alert.alert("Fejl", "Kunne ikke vælge eller uploade billedet.");
-    }
-  };
+    await runWithRecordingPaused(async () => {
+      try {
+        const asset = await takePhoto();
+        if (!asset?.uri) return;
+        setMediaUri(asset.uri);
+        const url = await uploadImage(asset, `projects/${projectId}/items/${Date.now()}.jpg`);
+        setMediaUrl(url);
+      } catch (error) {
+        console.log("Voice modal take photo error", error);
+        Alert.alert("Fejl", "Kunne ikke tage eller uploade billedet.");
+      }
+    });
+  }, [projectId, runWithRecordingPaused]);
+
+  const handlePickImage = useCallback(async () => {
+    if (!projectId) return;
+    await runWithRecordingPaused(async () => {
+      try {
+        const asset = await pickImage();
+        if (!asset?.uri) return;
+        setMediaUri(asset.uri);
+        const url = await uploadImage(asset, `projects/${projectId}/items/${Date.now()}.jpg`);
+        setMediaUrl(url);
+      } catch (error) {
+        console.log("Voice modal pick image error", error);
+        Alert.alert("Fejl", "Kunne ikke vælge eller uploade billedet.");
+      }
+    });
+  }, [projectId, runWithRecordingPaused]);
+
+  useEffect(() => {
+    handlePickImageRef.current = handlePickImage;
+  }, [handlePickImage]);
+
+  useEffect(() => {
+    handleTakePhotoRef.current = handleTakePhoto;
+  }, [handleTakePhoto]);
 
   const handleRemoveImage = () => {
     setMediaUrl(null);
@@ -565,7 +711,7 @@ export default function VoiceCaptureModal({
           <CreateItemForm
             mode="voice"
             header="Optag"
-            helpText="Sig punktum, komma, ny linje, nyt afsnit, fortryd, slet alt eller gem."
+            helpText="Sig punktum, komma, ny linje, nyt afsnit, fortryd, slet alt, åbn album, åbn kamera eller gem."
             topSlot={recordControls}
             itemType={itemType}
             onItemTypeChange={handleItemTypeChange}

@@ -201,18 +201,21 @@ export default function CreateItemForm({
   }, [autoSuggestType, content, itemType, onItemTypeChange, title]);
 
   // Auto-set type to photo when media is attached (unless user has locked it).
+  // I voice-mode styrer stemmeparseren typen; foto skal ikke override.
   useEffect(() => {
+    if (mode === "voice") return;
     if (mediaUrl && itemType !== "photo" && !userLockedTypeRef.current) {
       onItemTypeChange("photo");
     }
-  }, [mediaUrl, itemType, onItemTypeChange]);
+  }, [mediaUrl, itemType, onItemTypeChange, mode]);
 
   // Revert to default type if photo is removed and type was auto-set.
   useEffect(() => {
+    if (mode === "voice") return;
     if (!mediaUrl && itemType === "photo" && !userLockedTypeRef.current) {
       onItemTypeChange(defaultType);
     }
-  }, [defaultType, itemType, mediaUrl, onItemTypeChange]);
+  }, [defaultType, itemType, mediaUrl, onItemTypeChange, mode]);
 
   const assignmentOptions = useMemo<AssignmentOption[]>(() => {
     const options: AssignmentOption[] = [{ id: "", label: "Ingen ansvarlig" }];
@@ -816,9 +819,13 @@ const themedStyles = (isDark: boolean) =>
       fontSize: 12,
       color: "#38bdf8",
       fontWeight: "600",
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
     },
     ocrCopyLinkActive: {
-      color: "#34d399",
+      color: "#0f172a",
+      backgroundColor: "#34d399",
     },
     ocrLangChips: {
       flexDirection: "row",

@@ -1,9 +1,39 @@
 # Team status: B+C redesign fase 2 — US-004, US-005, US-006
 
 **Dato:** 2026-07-15  
-**Planlagt af:** Flowagent  
-**Forudsætning:** PO har godkendt user stories US-004, US-005 og US-006, samt governance-justeringerne i `collaboration-structure.md` pkt A.  
-**Næste handling:** Fase 5 (Testplan) er i gang efter PO-godkendelse af fase 4.
+**Planlagt af:** Flowagent / Master Agent  
+**Seneste opdatering:** Build 2 PO-acceptance → **TOTAL NO-GO**. US-004 + US-005 kræver grundlæggende redesign. Governance-opdatering påkrævet.  
+**Forudsætning:** PO har godkendt redesign-plan og inddragelse af UX/UI Agent.  
+**Næste handling:** Fase 1 — governance-opdatering + post-mortem. Derefter Fase 2 — US-004 redesign (parser + modal). Derefter Fase 3 — US-005 fix (dynamisk liste-oprettelse).
+
+---
+
+## 0. Kendte beslutninger
+
+| # | Beslutning | Godkendt af |
+|---|---|---|
+| 1 | Build 2 frigives IKKE. Total NO-GO. | PO |
+| 2 | US-004 redesignes med overskrift-punktum-model. | PO |
+| 3 | US-005 dynamisk liste-oprettelse rettes før ny test. | PO |
+| 4 | UX/UI Agent inddrages officielt i teamet. | PO |
+| 5 | AI-kategori droppes; kategori = type-label. | PO |
+| 6 | Punktum fjernes fra titler. | PO |
+| 7 | Auto-gem lukker modal + toast + haptisk feedback. | PO |
+| 8 | Stemme-låst type kan ikke overskrives af foto. | PO |
+| 9 | Dynamisk liste kræver eksplicit projektvalg ved flere projekter. | PO |
+| 10 | PO skal fremover kun godkende brugerflow, forretningsregler, release GO/NO-GO og scope. Interne status/docs opdateres automatisk. | PO |
+
+## 0a. US-004 redesign — udviklingsbuilds
+
+| Platform | Build-ID | Installationslink |
+|---|---|---|
+| iOS | `717e8a54-bae4-4b88-b700-bffb406dfd4a` | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/717e8a54-bae4-4b88-b700-bffb406dfd4a) |
+| Android | `8dbd20f7-1ec2-48cf-abd6-2842a8276779` | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/8dbd20f7-1ec2-48cf-abd6-2842a8276779) |
+
+**Audit-gate:** GO med forbehold (se planfil og backlog).  
+**Næste skridt:** PO-acceptance på fysisk enhed.  
+**Forbehold at teste:** E7/E8 parser-output, duplikerede tegnsætningskommandoer, manglende gemt-lyd, sammensatte ord som type-nøgleord.
+| 10 | PO skal fremover kun godkende brugerflow, forretningsregler, release GO/NO-GO og scope. Interne status/docs opdateres automatisk. | PO |
 
 ---
 
@@ -324,7 +354,30 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 - [x] Build 2 EAS-build færdig:
   - Android: `ef4584ac-51ed-4ab6-b01a-250decf2eecf` — https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/ef4584ac-51ed-4ab6-b01a-250decf2eecf
   - iOS: `93baa590-75e4-4166-b560-d65d526fbbb4` — https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/93baa590-75e4-4166-b560-d65d526fbbb4
-- [ ] PO acceptance test Build 2.
+- [x] Build 2-rettelser commit'et og pushet til GitHub på branch `v2026.07.15-build2-us004-us005` (commit `3bb094c`):
+  https://github.com/KGR9966/data-capture-app/tree/v2026.07.15-build2-us004-us005
+- [x] PO acceptance test Build 2 → **TOTAL NO-GO** pga. US-004 voice/create oplevelse.
+
+## 8a. Build 2 NO-GO + US-004 hotfix-runde
+
+| # | Hændelse | Status |
+|---|---|---|
+| 1 | Build 2 PO-acceptance: **TOTAL NO-GO**. Post-mortem skrevet; governance opdateret med Rule 23: *agent må ikke love uden at handle*. | ✅ Afgjert |
+| 2 | Stemme-parser redesignet: 11 PO-godkendte eksempler (E1–E11) + E12 (linjeskift/tegnsætning). | ✅ Done |
+| 3 | Voice-kommandoer "Åbn album" / "Åbn kamera" tilføjet med synonymer, så foto kan tilføjes under optagelse. | ✅ Done |
+| 4 | Type-lås i voice-mode: foto ændrer ikke længere type fra voice til photo. | ✅ Done |
+| 5 | Auto-gem efter 5 sek. stilhed: vibration + toast + modal lukker. "Gem"-ord fjernes fra endelig tekst. | ✅ Done |
+| 6 | Manuel foto-knap bug (freeze/race med auto-gem) rettet via `runWithRecordingPaused`. | ✅ Done |
+| 7 | Titlen overskrives ikke længere efter foto; senere input appenderes som content. | ✅ Done |
+| 8 | Firestore-regler rettet: `subscribeToProjectMembers` læser nu med `get()` i stedet for `getAfter()`. | ✅ Deployet |
+| 9 | Parser-test `scripts/verify-voice-parser.ts` E1–E12: **alle 12 passed**. | ✅ Grøn |
+| 10 | Pre-test-check `scripts/pre-test-check.js`: **OK** (én advarsel: pakkeversions-tjek). | ✅ Grøn |
+| 11 | Ændringer klar til commit og ny hotfix-build. | ⏳ Afventer PO-go til build |
+
+**Næste skridt:**
+- Commit + push af hotfix-ændringer.
+- PO-go til ny EAS hotfix-build (ny build kræves, da `eas.json` ikke har EAS Update; JS-ændringer skal indbygges).
+- PO acceptance test af hotfix-build med forstærkede testcases.
 
 ---
 

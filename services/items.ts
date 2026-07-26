@@ -15,25 +15,15 @@ import {
 
 import { deleteAllCommentsForItem } from "./comments";
 import { db } from "./firebase";
+import {
+  ItemStatus,
+  ItemType,
+  normalizeItemType,
+  VALID_ITEM_TYPES,
+} from "./itemTypes";
 
-export type ItemType = "idea" | "observation" | "bug" | "note" | "photo" | "voice" | "other";
-export type ItemStatus = "new" | "in_progress" | "done" | "archived";
-
-const VALID_ITEM_TYPES: ItemType[] = [
-  "idea",
-  "observation",
-  "bug",
-  "note",
-  "photo",
-  "voice",
-  "other",
-];
-
-export function normalizeItemType(type: string | null | undefined): ItemType {
-  if (type === "comment") return "note";
-  if (VALID_ITEM_TYPES.includes(type as ItemType)) return type as ItemType;
-  return "other";
-}
+export type { ItemStatus, ItemType } from "./itemTypes";
+export { normalizeItemType, VALID_ITEM_TYPES };
 
 export interface CaptureItem {
   id: string;

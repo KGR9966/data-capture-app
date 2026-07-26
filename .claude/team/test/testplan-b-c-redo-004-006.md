@@ -253,8 +253,8 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | App har mikrofontilladelse. Bruger er på Board. Auto-gem er slået til (default). |
 | Trin | 1. Tryk "🎤 Optag". <br> 2. Sig: "Observationsnote fra byggepladsen." <br> 3. Vent 5 sekunder uden at tale. |
 | Forventet resultat | 1. Optagelsen stopper automatisk efter 5 sekunders stilhed. <br> 2. Sagen gemmes. <br> 3. Modalen forbliver åben med nulstillet formulær. <br> 4. Den gemte sag vises i Board. |
-| Faktisk resultat | |
-| Status | ⚪ |
+| Faktisk resultat | | Efter indtalese af beskeden og stilhed i 5 sek. stopper optagelsen og en ny optalese er klar (Annuller er aktiv og Gen er blået ud) Herefter kan man indtale en ny besked. Man skal trykke annuller for at komme ud af indtal vinduet hvilket virker forkert. Efter at have trykket Annuller kommer man tilbage til Board. de 2 oprettede sager.Øverst for den første sag står der Obersavation i en lilla boks og ved siden af Andet i alm tekst. Under den lillae boks står der Ob med store bogstaver med fed skrift. Nedeunder står der fra byggeplads. Når man trykker på sagen står der Obersavation i en grå boks og under den lillae boks står der Ob med store bogstaver med fed skrift. Under OB står der Kategori : Andet. I boksen under der står der fra byggeplads. Mine observationer: Det virker ikke som AI kan sætte korrekt tekst. Obersavation i Lilla boks i Board er fint nok men at der står andet ved siden af i alm. skrift og nedenunder Ob i fed skrift giver ingen mening. Jeg havde forventet en boks men Obersavation(Ok her) en overskrift med "Obersavationsnote fra byggepladsen. Efter de 5 sek. skal beskeden gemmes automatisk (hvad den gør men man ved det ikke og med nuværende design vil man opfatte det som noget gik galt og man skal gentage optagelsen) Der kunne være en kort popup med optagelsen er gemt. En knap der giver muligheden for at kunne komme tilbage  Der bør være en besked om at i dette vindue er det en ny optagelse som fx kunne stå i parentes ved siden af Optag (Ny) eller ligende løsning. Hvis man gentager samme optagelse bliver begge accepteret selv om det var en regl at der ikke må være identiske sager. Der er ingen steder nævnt noget om det er en "note"
+| Status | ⚪ | Not Passed.
 | Bemærkninger | Tjek at timeren nulstilles ved hvert nyt resultat-event. |
 
 ### TC-004.2: Auto-gem slået fra
@@ -267,8 +267,8 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | App har mikrofontilladelse. Auto-gem toggle findes. |
 | Trin | 1. Åbn "Optag". <br> 2. Slå auto-gem fra. <br> 3. Start optagelse. <br> 4. Sig en sætning og vent 10 sekunder uden at tale. |
 | Forventet resultat | 1. Optagelsen fortsætter efter 5 sekunder. <br> 2. Ingen auto-gem sker. <br> 3. Brugeren kan aktivt stoppe og gemme. |
-| Faktisk resultat | |
-| Status | ⚪ |
+| Faktisk resultat | | Optagelsen fortsætter efter 5 sek. Ingen auto-gem. Samme udfordring med teksten som forig testcase.
+| Status | ⚪ | Not Passed
 | Bemærkninger | |
 
 ### TC-004.3: Kontinuerlig tale stopper ikke optagelsen
@@ -281,9 +281,9 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | App har mikrofontilladelse. |
 | Trin | 1. Start optagelse. <br> 2. Tal kontinuerligt i 20–30 sekunder med korte pauser under 5 sekunder. |
 | Forventet resultat | 1. Optagelsen stopper ikke af sig selv under aktiv indtaling. <br> 2. Tekst tilføjes løbende. |
-| Faktisk resultat | |
+| Faktisk resultat | | Denne testcase er Passed
 | Status | ⚪ |
-| Bemærkninger | Test både i støjfri og let støjende miljø. |
+| Bemærkninger | Test både i støjfri og let støjende miljø. | Fejl: Auto-Gem er ikke defaul slået til men starter i samme state som sidste optagelse 
 
 ### TC-004.4: Kort OS-timeout genoptages automatisk
 | Felt | Værdi |
@@ -295,9 +295,9 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | App har mikrofontilladelse. |
 | Trin | 1. Start optagelse. <br> 2. Under optagelse: skift kortvarigt app (f.eks. swipe til hjemmeskærm i under 2 sekunder) eller simuler kort afbrydelse. <br> 3. Returnér til appen. |
 | Forventet resultat | 1. Optagelsen genstartes automatisk. <br> 2. Tidligere transcript bevares. <br> 3. Brugeren kan fortsætte indtaling. |
-| Faktisk resultat | |
+| Faktisk resultat | | Det har ikke været muligt at kunne komme væk i en ny app og tilbage på under 2 sek. Hvis jeg swiper så jeg har 2 vinduer og swiper tilbage til sagen kan jeg fortsætte optagelsen. Ved forsøg(mere end 2 sek.) og få beskeden "Optagelsen afbrudt) og valget mellem Start ny optagelse, Gem, Luk. Ved valg af ny optagelse er teksten bevaret hvilket er godt så man kan huske hvad der tidligere var sagt inden afbrydelsen. Når man taler igen slettes den gamle tekst og den starter
 | Status | ⚪ |
-| Bemærkninger | Kan være svær at trigge reproducerbart; dokumentér platform og OS-version. |
+| Bemærkninger | Kan være svær at trigge reproducerbart; dokumentér platform og OS-version. | Hvis jeg under optagelsen sige "opret" gemmes sagen. Hvis jeg siger Gem, gemmes sagen men den skriver også gem i Indhold hvilket er en fejl.
 
 ### TC-004.5: Lang OS-timeout informerer brugeren
 | Felt | Værdi |
@@ -309,7 +309,7 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | App har mikrofontilladelse. |
 | Trin | 1. Start optagelse. <br> 2. Forlad appen i 5+ sekunder (eller simuler lang afbrydelse). <br> 3. Returnér til appen. |
 | Forventet resultat | 1. En besked vises: "Optagelsen blev afbrudt. Vil du fortsætte, hvor du slap?" <br> 2. Brugeren kan vælge "Fortsæt" (ny optagelse, gammelt transcript bevaret) eller "Gem" (gem nuværende). |
-| Faktisk resultat | |
+| Faktisk resultat | |Passed
 | Status | ⚪ |
 | Bemærkninger | |
 
@@ -323,7 +323,7 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | Bruger er på Board. |
 | Trin | 1. Tryk "🎤 Optag" og notér felter og rækkefølge. <br> 2. Luk modal. <br> 3. Tryk "+ Tilføj" og notér felter og rækkefølge. |
 | Forventet resultat | 1. Begge modalen viser de samme felte felter i samme rækkefølge: Type-vælger, Tekst/beskrivelse, Titel, Kategori, Foto, OCR-oversættelse (kun ved foto), Ansvarlig (kun hvis rettigheder/medlemmer), Handlinger. <br> 2. Kun "Optag" viser optageknap, auto-gem toggle og hjælpetekst. |
-| Faktisk resultat | |
+| Faktisk resultat | | Kan ikke forstå testcasen. Skal omskrives.
 | Status | ⚪ |
 | Bemærkninger | Tag screenshots og sammenlign. |
 
@@ -337,7 +337,7 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | Bruger har lige oprettet en sag med tekst, foto, kategori og type. |
 | Trin | 1. Åbn "Optag". <br> 2. Luk uden at gemme. <br> 3. Åbn "+ Tilføj". <br> 4. Luk uden at gemme. <br> 5. Åbn "Optag" igen. |
 | Forventet resultat | 1. Begge modalen åbner med tomme felter: Type = default, Tekst = "", Titel = "", Kategori = "", Foto = ingen, OCR = skjult, Ansvarlig = "Ingen". |
-| Faktisk resultat | |
+| Faktisk resultat | | Kan ikke test. Testcase er uklar. Det er ikke en option at "lukke" Det er Annuller eller Gem. Testcase skal beriges.
 | Status | ⚪ |
 | Bemærkninger | Test specifikt at tidligere foto/OCR-tekst ikke ligger tilbage. |
 
@@ -351,8 +351,8 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | Bruger er på Board. |
 | Trin | 1. Åbn "+ Tilføj". <br> 2. Indtast tekst: "Knappen virker ikke, app crasher." |
 | Forventet resultat | 1. Type-vælgeren viser "Fejl" som AI-forslag (visuel indikation). <br> 2. Brugeren kan vælge en anden type. |
-| Faktisk resultat | |
-| Status | ⚪ |
+| Faktisk resultat | | Blå knap med Idé er aktiv.Tittel er K  Indhold viser teksten der blev indtastet   Kategroi er Idé
+| Status | ⚪ | Not Passed
 | Bemærkninger | Test også med "Jeg har en idé til ..." → Type = Idé. |
 
 ### TC-004.9: AI-forslag til Kategori
@@ -365,8 +365,8 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | Bruger er på Board. Projektet har eksisterende kategorier. |
 | Trin | 1. Åbn "+ Tilføj". <br> 2. Indtast tekst: "Silvan har ikke varen på lager." |
 | Forventet resultat | 1. Kategori-feltet foreslår "Silvan" eller lignende. <br> 2. Forslag markeres visuelt som AI-forslag. |
-| Faktisk resultat | |
-| Status | ⚪ |
+| Faktisk resultat | | Ide i grå boks.   Kategori Ide  Tittel S   
+| Status | ⚪ | Not Passed
 | Bemærkninger | Test at projekt-historik fylder dropdown med eksisterende kategorier. |
 
 ### TC-004.10: Bruger kan overskrive AI-forslag
@@ -379,8 +379,8 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | AI har foreslået Type og Kategori. |
 | Trin | 1. Åbn "+ Tilføj". <br> 2. Indtast tekst der foreslår "Fejl" / "Bug". <br> 3. Vælg manuelt Type = "Idé". <br> 4. Indtast manuelt Kategori = "Andet". <br> 5. Gem. |
 | Forventet resultat | 1. Sagen gemmes med Type = "Idé" og Kategori = "Andet". <br> 2. AI-forslag vises ikke længere som valgt. |
-| Faktisk resultat | |
-| Status | ⚪ |
+| Faktisk resultat | | Ved valg af + Tilføj virker AI ikke ved oprettelse og gen. Ved oprettelse kommer AI med noget tekst i Tittel men det virker den blot tager starten af sætningen med en begrænset antal karakter
+| Status | ⚪ | Not Passed
 | Bemærkninger | Verificer i Firestore at `type` og `category` stemmer overens med brugerens valg. |
 
 ### TC-004.11: Stemmekommando — gem
@@ -393,8 +393,8 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | App har mikrofontilladelse. |
 | Trin | 1. Åbn "Optag". <br> 2. Start optagelse. <br> 3. Sig: "Dette er en testnote punktum gem." |
 | Forventet resultat | 1. Optagelsen stopper. <br> 2. Sagen gemmes. <br> 3. Modalen lukker. <br> 4. Sagen vises i Board med tekst "Dette er en testnote." |
-| Faktisk resultat | |
-| Status | ⚪ |
+| Faktisk resultat | | teknikken virkede med tekst er forkert/mangelfuldt.  Type: Andet i grå boks   Tittel: Dette  Indhold : Gem  Kategori : Andet
+| Status | ⚪ |Not passed
 | Bemærkninger | Test også synonymer: "opret", "færdig", "ferdig". |
 
 ### TC-004.12: Stemmekommando — slet alt
@@ -407,8 +407,8 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | App har mikrofontilladelse. |
 | Trin | 1. Åbn "Optag". <br> 2. Start optagelse. <br> 3. Sig: "Første linje. Anden linje." <br> 4. Sig: "Slet alt." <br> 5. Tryk på evt. "Kopiér original"-knap. |
 | Forventet resultat | 1. Tekstfeltet ryddes. <br> 2. Original tekst gemmes og kan kopieres/deles. <br> 3. Brugeren kan fortsætte optagelse eller gemme tomt (hvis foto ikke er tilknyttet, skal "Gem" være disabled). |
-| Faktisk resultat | |
-| Status | ⚪ |
+| Faktisk resultat | | Kommando "slet alt" virker. Kopiér virker ikke når alt tekst er slettet.
+| Status | ⚪ | Not Passed
 | Bemærkninger | |
 
 ### TC-004.13: Stemmekommando — kategori
@@ -421,8 +421,8 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | App har mikrofontilladelse. |
 | Trin | 1. Åbn "Optag". <br> 2. Start optagelse. <br> 3. Sig: "Silvan punktum varen er udsolgt." |
 | Forventet resultat | 1. Kategori sættes til "Silvan". <br> 2. Ordet "Silvan" fjernes fra tekstfeltet. <br> 3. Tekstfeltet viser "varen er udsolgt." |
-| Faktisk resultat | |
-| Status | ⚪ |
+| Faktisk resultat | | Type
+| Status | ⚪ |Viser Type: Begge Passed
 | Bemærkninger | Test også kategori + type: "Fejl punktum knappen virker ikke." → Type = Fejl, Kategori = Fejl. |
 
 ### TC-004.14: Titel auto-udledes
@@ -435,8 +435,8 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | Bruger er på Board. |
 | Trin | 1. Åbn "+ Tilføj". <br> 2. Indtast tekst: "Dette er en lang beskrivelse af en observationsnote fra i går." <br> 3. Gem. |
 | Forventet resultat | 1. Titlen auto-udledes fra første linje / første 6 ord. <br> 2. Sagen gemmes med både titel og tekst. |
-| Faktisk resultat | |
-| Status | ⚪ |
+| Faktisk resultat | | Idé i blå knap   Tittel D   Indhold = indtastet tekst.  kategiri Idé
+| Status | ⚪ | Not Passed
 | Bemærkninger | Verificer at titel kan redigeres eksplicit uden at miste tekst. |
 
 ### TC-004.15: Gem kun hvis tekst eller foto er udfyldt
@@ -449,8 +449,8 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | Bruger er på Board. |
 | Trin | 1. Åbn "+ Tilføj". <br> 2. Lad alle felter være tomme. <br> 3. Se "Gem"-knappen. <br> 4. Indtast tekst. <br> 5. Slet tekst igen og tilføj foto. |
 | Forventet resultat | 1. "Gem" er disabled når både tekst og foto er tomme. <br> 2. "Gem" aktiveres ved tekst. <br> 3. "Gem" aktiveres ved foto. |
-| Faktisk resultat | |
-| Status | ⚪ |
+| Faktisk resultat | | 
+| Status | ⚪ | Passed
 | Bemærkninger | |
 
 ### TC-004.16: Levende timer
@@ -463,8 +463,8 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | App har mikrofontilladelse. |
 | Trin | 1. Åbn "Optag". <br> 2. Start optagelse. <br> 3. Hold øje med timeren. <br> 4. Fortsæt optagelse i 45+ sekunder. |
 | Forventet resultat | 1. Timeren vises som `00:23` og tæller op. <br> 2. Ved 45 sekunder skiftes farve til advarsel (orange). |
-| Faktisk resultat | |
-| Status | ⚪ |
+| Faktisk resultat | | Not Passed
+| Status | ⚪ | Timer fortsætter med rød tekst efter 45 sek.
 | Bemærkninger | |
 
 ### TC-004.17: Tegnsætning og formatering
@@ -477,8 +477,8 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | App har mikrofontilladelse. |
 | Trin | 1. Start optagelse. <br> 2. Sig: "Hej komma dette er en test punktum ny linje anden linje." |
 | Forventet resultat | 1. Tekstfeltet viser "Hej, dette er en test.\nanden linje" (eller tilsvarende). |
-| Faktisk resultat | |
-| Status | ⚪ |
+| Faktisk resultat | | viser Type : Andet i grå knap   Tittel Hej   Indhold: dette er en test. På næste linje står: Anden linje Kategori Andet
+| Status | ⚪ |Not Passed
 | Bemærkninger | Test også "slet sidste ord" og "fortryd". |
 
 ### TC-004.18: Type sættes automatisk til Foto ved foto
@@ -492,7 +492,7 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Trin | 1. Åbn "+ Tilføj". <br> 2. Vælg Type = "Idé". <br> 3. Tryk "Album" og vælg et billede. |
 | Forventet resultat | 1. Type ændres automatisk til "Foto" medmindre brugeren aktivt har låst et andet valg. <br> 2. Design siger: "medmindre brugeren allerede har valgt noget andet aktivt" — verificer præcis adfærd. |
 | Faktisk resultat | |
-| Status | ⚪ |
+| Status | ⚪ | Passed
 | Bemærkninger | Åbent spørgsmål: Skal foto altid tvinge Type = Foto, eller kun når Type stadig er default/AI-forslag? Dokumentér faktisk resultat. |
 
 ### TC-004.19: Manuel oprettelse bevarer samme felter og data
@@ -505,8 +505,8 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | Bruger er på Board. |
 | Trin | 1. Åbn "+ Tilføj". <br> 2. Vælg Type = "Observation". <br> 3. Indtast tekst og titel. <br> 4. Vælg Kategori = "Byggeplads". <br> 5. Tilknyt foto. <br> 6. Vælg Ansvarlig. <br> 7. Gem. |
 | Forventet resultat | 1. Sagen vises i Board med korrekt type-badge, titel, kategori, foto, ansvarlig. <br> 2. Item-detalje viser alle felter korrekt. |
-| Faktisk resultat | |
-| Status | ⚪ |
+| Faktisk resultat | | Kan ikke manuelt rette tittel og Kategori. Feltet tvinger teksten til System teksten
+| Status | ⚪ |Not Passed
 | Bemærkninger | |
 
 ### TC-004.20: Voice-oprettelse bevarer samme felter og data
@@ -519,8 +519,8 @@ Planen er designet til både **QA-verifikation** i simulator/dev-client og **PO 
 | Forudsætninger | App har mikrofontilladelse. |
 | Trin | 1. Åbn "Optag". <br> 2. Start optagelse. <br> 3. Sig: "Fejl punktum Vandrør utæt." <br> 4. Tilknyt foto. <br> 5. Sig: "gem". |
 | Forventet resultat | 1. Sagen vises i Board med type-badge "Fejl", titel, tekst, kategori, foto. <br> 2. Item-detalje viser alle felter korrekt. |
-| Faktisk resultat | |
-| Status | ⚪ |
+| Faktisk resultat | | 1-4 ok   5. ikke muligt. Type er Foto og ikke Fejl. Efter tilknytning af billede forsvinder Teksten i feltet  beskrivelse
+| Status | ⚪ | Not Passed
 | Bemærkninger | |
 
 ---

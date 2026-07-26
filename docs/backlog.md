@@ -85,7 +85,14 @@
    - Rettelser: kommentar-afsendelse og "Ingen ansvarlig" redigering virker i RC `v2026.07.15-rc1`.
 
 ### P2 – Samarbejde, søgning og eksekvering
-8. [x] **Forbedret søgning (SEARCH-001)** — implemented
+8. [ ] **PO-notifikationer for governance-gates (NOTIFY-PO-001)** — proposed
+   - Lokal push- eller in-app notifikation når Master Agent/QA/Audit har noget, PO skal godkende eller afklare.
+   - Eksempler: plan klar til godkendelse, EAS build færdig, QA-fund kræver afklaring, audit-gate afventer godkendelse.
+   - Bruger `expo-notifications` (allerede i projektet).
+   - Kræver PO-godkendte eksempler på hvad/when/hvordan før kode.
+   - Relateret til governance-reglerne G1–G6; designes sammen med workflow-agent roller.
+
+9. [x] **Forbedret søgning (SEARCH-001)** — implemented
    - Præcis ordsøgning: `*vand*` finder kun hele ordet, ikke "Vandkande".
    - Frasesøgning: `"vandkande med blomster"`.
    - Negation: `vand -kande`.
@@ -171,6 +178,30 @@ Testen går ud på at verificere, at appen kan registrere et Expo push-token og 
 ### Bemærkning
 - Push-notifikationer virker **ikke** i simulator.
 - Kræver netværk og at appen kører i en development build (ikke Expo Go).
+
+## Teknisk gæld / forbehold fra Build 2 redesign
+
+> Fund fra QA-gate på `fix/us004-voice-redesign`, 2026-07-15. Ikke blokerende for udviklingsbuild, men skal adresseres før endelig release.
+
+1. **Parser: E7/E8 — clear/undo returnerer stadig tekst i parser-output.**
+   - `parseVoiceInput` returnerer titel/indhold før clear/undo håndteres. End-state i UI er korrekt, men parseren er ikke selvforsynende ift. PO-eksemplerne.
+   - Prioritet: medium. Rettes før næste stemme-iteration.
+
+2. **Parser: Duplikerede tegnsætningskommandoer normaliseres ikke.**
+   - “punktum punktum” bliver ikke ét punktum.
+   - Prioritet: lav.
+
+3. **Gemt-lyd (`saved.mp3`) ikke implementeret.**
+   - Bruger vibration + toast som fallback. PO har accepteret dette for nu.
+   - Prioritet: lav. Tilføj lydfil senere hvis ønsket.
+
+4. **Ingen projekt-ejede parser unit-tests.**
+   - Planen krævede min. 20 eksempler; tests er kørte logisk men ikke commit'et i repoet.
+   - Prioritet: medium. Tilføj før næste stemme-releasen.
+
+5. **pre-test-check warning om package-kompatibilitet.**
+   - Ikke relateret til stemme-redesignet. Eksisterende teknisk gæld.
+   - Prioritet: lav.
 
 ## Compliance / Noter
 

@@ -117,8 +117,18 @@ if (fs.existsSync(deeplinkPath) && fs.readFileSync(deeplinkPath, "utf-8").includ
   log("Deep links", "FAIL", "Manglende eller forkert deeplinks helper");
 }
 
-// 6. Check that default exports exist on main routes
-console.log("\n🔍 6. Route default exports");
+// 6. Voice parser verification
+console.log("\n🔍 6. Voice parser verification");
+try {
+  run("npx tsx scripts/verify-voice-parser.ts", { stdio: "ignore" });
+  log("Voice parser", "OK");
+} catch (error) {
+  failures++;
+  log("Voice parser", "FAIL", "Parser-output afviger fra godkendte eksempler");
+}
+
+// 7. Check that default exports exist on main routes
+console.log("\n🔍 7. Route default exports");
 const routes = [
   "app/(tabs)/index.tsx",
   "app/(tabs)/board.tsx",
@@ -129,6 +139,7 @@ const routes = [
   "app/item.tsx",
   "app/checklist.tsx",
 ];
+
 for (const route of routes) {
   const filePath = path.join(ROOT, route);
   if (!fs.existsSync(filePath)) {

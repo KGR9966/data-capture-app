@@ -2,14 +2,21 @@
 // Omdanner talemæssige kommandoer til tegn og handlinger efter PO-godkendt
 // overskrift-punktum-model (US-004 redesign, juli 2026).
 
-import type { ItemType } from "./items";
+import type { ItemType } from "./itemTypes";
 
 export interface VoiceParseResult {
   title: string; // første sætning / overskrift
   content: string; // resten, med linjeskift
   type: ItemType; // ud fra nøgleord
   category: string; // dansk label for type
-  command: "save" | "cancel" | "clear" | "undo" | null;
+  command:
+    | "save"
+    | "cancel"
+    | "clear"
+    | "undo"
+    | "openAlbum"
+    | "openCamera"
+    | null;
   rawText: string; // rensede transcript efter kommando-fjernelse
 }
 
@@ -65,6 +72,13 @@ const STOP_COMMANDS = ["gem", "save", "opret", "færdig", "ferdig", "done"];
 const CLEAR_COMMANDS = ["slet alt"];
 const UNDO_COMMANDS = ["fortryd", "undo"];
 const CANCEL_COMMANDS = ["annuller", "abort", "cancel", "luk"];
+const OPEN_ALBUM_COMMANDS = ["aaben album", "aabn album", "vaelg foto", "album"];
+const OPEN_CAMERA_COMMANDS = [
+  "aaben kamera",
+  "aabn kamera",
+  "tag billede",
+  "kamera",
+];
 
 const PUNCTUATION_COMMANDS: Record<string, string> = {
   punktum: ".",
@@ -100,11 +114,16 @@ function stripDiacritics(str: string): string {
 /** Normaliser til små bogstaver uden accenter og med æøå → ae/oe/aa.
  *  Beholder mellemrum så sætningsnøgleord som "virker ikke" bevares. */
 export function normalizeCommand(str: string): string {
-  return stripDiacritics(str)
+  return str
     .toLowerCase()
     .replace(/[æ]/g, "ae")
     .replace(/[ø]/g, "oe")
     .replace(/[å]/g, "aa")
+    .replace(/[Æ]/g, "ae")
+    .replace(/[Ø]/g, "oe")
+    .replace(/[Å]/g, "aa")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9_\s]/g, "")
     .trim();
 }
@@ -132,6 +151,15 @@ function detectCommand(input: string): VoiceCommand {
   for (const cmd of UNDO_COMMANDS) {
     if (lastOne === cmd || lastTwo === cmd) return "undo";
   }
+
+  // Foto-kommandoer må forekomme hvor som helst i sætningen, ikke kun til sidst.
+  for (const cmd of OPEN_ALBUM_COMMANDS) {
+    if (normalized.includes(cmd)) return "openAlbum";
+  }
+  for (const cmd of OPEN_CAMERA_COMMANDS) {
+    if (normalized.includes(cmd)) return "openCamera";
+  }
+
   for (const cmd of STOP_COMMANDS) {
     if (lastOne === cmd || lastTwo === cmd) return "save";
   }
@@ -153,7 +181,39 @@ function removeCommandWords(input: string, command: VoiceCommand): string {
     cancel: CANCEL_COMMANDS,
     clear: CLEAR_COMMANDS,
     undo: UNDO_COMMANDS,
+    openAlbum: OPEN_ALBUM_COMMANDS,
+    openCamera: OPEN_CAMERA_COMMANDS,
   };
+
+  // For foto-kommandoer fjernes hele forekomsten fra teksten, ikke kun sidste token.
+  // Fjernelsen sker via ordbounds-tælling på normaliseret tekst, så accenter og
+  // store/små bogstaver i det originale input ignoreres.
+  if (command === "openAlbum" || command === "openCamera") {
+    const normalizedInput = normalizeCommand(input);
+    let matchedPhrase = "";
+    for (const cmd of lists[command]) {
+      if (normalizedInput.includes(cmd)) {
+        matchedPhrase = cmd;
+        break;
+      }
+    }
+    if (!matchedPhrase) return input;
+
+    const index = normalizedInput.indexOf(matchedPhrase);
+    const wordsBefore = normalizedInput
+      .slice(0, index)
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean).length;
+    const targetWordCount = matchedPhrase.split(/\s+/).length;
+    const originalWords = input.trim().split(/\s+/).filter(Boolean);
+    return [
+      ...originalWords.slice(0, wordsBefore),
+      ...originalWords.slice(wordsBefore + targetWordCount),
+    ]
+      .join(" ")
+      .trim();
+  }
 
   let matchedPhrase = "";
   for (const cmd of lists[command]) {
@@ -174,6 +234,20 @@ function removeCommandWords(input: string, command: VoiceCommand): string {
   if (originalWords.length < phraseWordCount) return "";
 
   return originalWords.slice(0, -phraseWordCount).join(" ").trim();
+}
+
+/** Kollaps gentagne identiske tegnsætningskommandoer til én forekomst. */
+function collapseRepeatedPunctuationCommands(input: string): string {
+  const allPunctuationCommands = Object.keys(PUNCTUATION_COMMANDS).sort(
+    (a, b) => b.length - a.length
+  );
+  let text = input;
+  for (const cmd of allPunctuationCommands) {
+    const escaped = escapeRegex(cmd);
+    const regex = new RegExp(`\\b${escaped}\\b(?:\\s+\\b${escaped}\\b)+`, "gi");
+    text = text.replace(regex, cmd);
+  }
+  return text;
 }
 
 function escapeRegex(str: string): string {
@@ -204,6 +278,9 @@ function convertPunctuationCommands(input: string): string {
 
   // Normaliser duplikerede tegnsætningskommandoer til ét tegn.
   text = text.replace(/([.!?,;:\-])\1+/g, "$1");
+  // Normaliser mellemrum omkring linjeskift, så "punktum ny linje punktum"
+  // bliver én linje adskilt af ét tegn, ikke to tomme linjer.
+  text = text.replace(/\n\s*\n\s*\n/g, "\n\n");
   // Maksimalt ét blankt afsnit.
   text = text.replace(/\n{3,}/g, "\n\n");
 
@@ -213,6 +290,10 @@ function convertPunctuationCommands(input: string): string {
 function applyPunctuationSpacing(text: string): string {
   return (
     text
+      // Flyt tegnsætning der står først på en ny linje tilbage til forrige linje.
+      .replace(/\n\s*([.!?:;,])/g, "$1\n")
+      // Fjern mellemrum i starten af en ny linje.
+      .replace(/\n +/g, "\n")
       // Sikr mellemrum efter tegnsætning (men ikke før linjeskift).
       .replace(/([.!?:;,])([^\s\n])/g, "$1 $2")
       // Fjern mellemrum før tegnsætning.
@@ -225,6 +306,7 @@ function applyPunctuationSpacing(text: string): string {
 
 function cleanText(input: string): string {
   let text = input;
+  text = collapseRepeatedPunctuationCommands(text);
   text = convertPunctuationCommands(text);
   text = applyPunctuationSpacing(text);
   return text;
@@ -313,21 +395,15 @@ function splitTitleContent(cleaned: string): { title: string; content: string } 
   const trimmed = cleaned.trim();
   if (!trimmed) return { title: "", content: "" };
 
-  // Hvis første ord er et type-nøgleord, betragtes det som overskrift, og
-  // resten som indhold – også uden eksplicit punktum (E3, E4, "Fejl ...").
-  const firstWord = trimmed.split(/\s+/)[0] || "";
-  if (firstWordIsTypeKeyword(firstWord)) {
-    const title = removeTrailingPunctuation(firstWord).trim();
-    let content = trimmed.slice(firstWord.length).trim().replace(/^[.!?:;,]\s*/, "").trim();
-    if (content) {
-      content = splitIntoSentences(content);
-    }
-    return { title, content };
-  }
-
-  // Find første sætningsafslutning.
+  // Find første sætningsafslutning eller afsnitsskift (nyt afsnit).
   const firstTerminator = /[.!?]/.exec(trimmed);
-  if (firstTerminator) {
+  const paragraphBreak = trimmed.indexOf("\n\n");
+
+  const splitAtTerminator =
+    firstTerminator &&
+    (paragraphBreak === -1 || firstTerminator.index + 1 <= paragraphBreak);
+
+  if (splitAtTerminator) {
     const splitIndex = firstTerminator.index + 1;
     const title = removeTrailingPunctuation(trimmed.slice(0, splitIndex)).trim();
     let content = trimmed.slice(splitIndex).trim();
@@ -339,23 +415,14 @@ function splitTitleContent(cleaned: string): { title: string; content: string } 
     return { title, content };
   }
 
-  // Fallback: første linjeskift eller første 8 ord.
-  const lineBreak = trimmed.indexOf("\n");
-  if (lineBreak > 0) {
+  if (paragraphBreak > 0) {
     return {
-      title: trimmed.slice(0, lineBreak).trim(),
-      content: trimmed.slice(lineBreak + 1).trim(),
+      title: trimmed.slice(0, paragraphBreak).trim(),
+      content: splitIntoSentences(trimmed.slice(paragraphBreak + 2).trim()),
     };
   }
 
-  const words = trimmed.split(/\s+/);
-  if (words.length > 8) {
-    return {
-      title: words.slice(0, 8).join(" "),
-      content: words.slice(8).join(" "),
-    };
-  }
-
+  // Regel V1: én sammenhængende sætning uden tegnsætning/pause bliver titel.
   return { title: trimmed, content: "" };
 }
 

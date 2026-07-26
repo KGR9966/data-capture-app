@@ -42,27 +42,30 @@ service cloud.firestore {
 
     // Projekt-medlemmer
     match /projects/{projectId}/members/{memberId} {
-      // Bemærk: Brug getAfter() i stedet for get() her, fordi medlemsdokumentet
-      // ofte oprettes i samme batched write som projekt-dokumentet. getAfter()
-      // ser projektets tilstand efter batchen er anvendt, mens get() ser den
-      // nuværende tilstand før batchen.
-      function projectData() {
+      // Ved læsning bruges get() på det eksisterende projekt.
+      // Ved create/update/delete bruges getAfter(), så reglerne virker i
+      // batched writes hvor projektet oprettes samtidig med medlemsdokumentet.
+      function projectDataForRead() {
+        return get(/databases/$(database)/documents/projects/$(projectId)).data;
+      }
+
+      function projectDataForWrite() {
         return getAfter(/databases/$(database)/documents/projects/$(projectId)).data;
       }
 
       function isProjectReader() {
         return isAuthenticated()
-               && (projectData().ownerId == getUserId()
-                   || getUserId() in projectData().roles
+               && (projectDataForRead().ownerId == getUserId()
+                   || getUserId() in projectDataForRead().roles
                    || (request.auth.token.email != null
-                       && request.auth.token.email in projectData().memberEmails));
+                       && request.auth.token.email in projectDataForRead().memberEmails));
       }
 
       function isProjectOwnerOrAdmin() {
         return isAuthenticated()
-               && (projectData().ownerId == getUserId()
-                   || (getUserId() in projectData().roles
-                       && projectData().roles.get(getUserId(), null) in ["owner", "admin"]));
+               && (projectDataForWrite().ownerId == getUserId()
+                   || (getUserId() in projectDataForWrite().roles
+                       && projectDataForWrite().roles.get(getUserId(), null) in ["owner", "admin"]));
       }
 
       allow read: if isProjectReader();
