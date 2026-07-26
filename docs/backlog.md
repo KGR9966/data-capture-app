@@ -67,6 +67,11 @@
 3. [x] **Test push-notifikationer på fysiske enheder**
    - Se detaljer under "Push-notifikationstest – hvad skal du gøre?" nedenfor.
 4. [ ] **Byg Android development build**
+5. [ ] **EAS Update konfiguration**
+   - Aktiver OTA JavaScript-opdateringer via `expo-updates` + `eas update`.
+   - Kræver `updates.url` + `runtimeVersion` strategi i `app.json`/`eas.json`.
+   - Separat opgave efter US-004 hotfix er accepteret; ikke blandet ind nu for at holde hotfix simpelt.
+   - Værdi: fremtidige små parser-/UI-rettelser kan pushes ud uden hel EAS build.
 
 ### P2 – Samarbejde og ansvarlighed (høj brugerværdi for dig som owner + kgr@trust.dk som editor)
 5. [x] **Rolle- og rettighedsmodel (RBAC)**
