@@ -372,12 +372,24 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 | 8 | Firestore-regler rettet: `subscribeToProjectMembers` læser nu med `get()` i stedet for `getAfter()`. | ✅ Deployet |
 | 9 | Parser-test `scripts/verify-voice-parser.ts` E1–E12: **alle 12 passed**. | ✅ Grøn |
 | 10 | Pre-test-check `scripts/pre-test-check.js`: **OK** (én advarsel: pakkeversions-tjek). | ✅ Grøn |
-| 11 | Ændringer klar til commit og ny hotfix-build. | ⏳ Afventer PO-go til build |
+| 11 | Ændringer klar til commit og ny hotfix-build. | ✅ PO-go givet |
+| 12 | EAS Update holdes ude af dette hotfix; lagt i backlog som separat P1-opgave efter acceptance. | ✅ Afgjort |
+| 13 | EAS hotfix-build startet: iOS + Android. | 🔄 Kører |
 
 **Næste skridt:**
-- Commit + push af hotfix-ændringer.
-- PO-go til ny EAS hotfix-build (ny build kræves, da `eas.json` ikke har EAS Update; JS-ændringer skal indbygges).
-- PO acceptance test af hotfix-build med forstærkede testcases.
+- [x] Commit + push af hotfix-ændringer.
+- [x] PO-go til ny EAS hotfix-build.
+- [x] EAS Update holdt ude; opgave i backlog.
+- [ ] Android build færdig.
+- [ ] PO installerer hotfix-build på fysisk enhed.
+- [ ] PO acceptance test af hotfix-build med `po-acceptance-us004-hotfix.md`.
+
+### Hotfix-build links
+
+| Platform | Build-ID | Status | Link |
+|---|---|---|---|
+| iOS | `f73688c5-39fb-4526-bce0-76323e393ab2` | ✅ Færdig | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/f73688c5-39fb-4526-bce0-76323e393ab2 |
+| Android | `a0f03466-8962-408b-860f-b1f173491ef7` | 🔄 Kører | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/a0f03466-8962-408b-860f-b1f173491ef7 |
 
 ---
 
