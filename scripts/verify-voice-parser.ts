@@ -61,6 +61,11 @@ const cases = [
     input: "Silvan punktum hammer ny linje komma sav punktum gem",
     expected: { title: "Silvan", content: "hammer,\nsav.", type: "other", command: "save" },
   },
+  {
+    id: "E13",
+    input: "Billede punktum smukt husgem",
+    expected: { title: "Billede", content: "smukt hus", type: "other", command: "save" },
+  },
 ];
 
 let failures = 0;

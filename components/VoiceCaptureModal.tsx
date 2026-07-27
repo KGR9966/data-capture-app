@@ -337,13 +337,22 @@ export default function VoiceCaptureModal({
             } catch (error) {
               console.log("Voice photo command error", error);
             }
-            // Nulstil flag og genstart optagelsen. Auto-gem timeren starter
-            // først nu, efter brugeren er tilbage i modalen.
+            // Nulstil flag og genstart optagelsen. Giv iOS tid til at
+            // genoprette lyd-sessionen efter kamera/fotoalbum.
             stopPendingRef.current = false;
             intentionalStopRef.current = false;
             savePendingRef.current = false;
             if (visibleRef.current && autoSaveOnSilenceRef.current) {
-              await startRecordingRef.current();
+              await new Promise((resolve) => setTimeout(resolve, 1200));
+              try {
+                await startRecordingRef.current();
+              } catch (restartError) {
+                console.log("Voice photo restart error", restartError);
+                Alert.alert(
+                  "Optagelse",
+                  "Kunne ikke genoptage stemmeoptagelsen automatisk. Tryk på knappen for at starte igen."
+                );
+              }
             }
           })();
         }, 800);

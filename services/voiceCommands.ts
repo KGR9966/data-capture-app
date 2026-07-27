@@ -428,8 +428,9 @@ function splitTitleContent(cleaned: string): { title: string; content: string } 
 
 /** Hovedparser: omdanner rå stemmeinput til struktureret resultat. */
 export function parseVoiceInput(input: string): VoiceParseResult {
-  const command = detectCommand(input);
-  const textAfterCommands = command ? removeCommandWords(input, command) : input;
+  const splitInput = splitGluedCommands(input);
+  const command = detectCommand(splitInput);
+  const textAfterCommands = command ? removeCommandWords(splitInput, command) : splitInput;
   const rawText = cleanText(textAfterCommands);
   const { title, content } = splitTitleContent(rawText);
   const type = inferType(rawText, title);
@@ -459,6 +460,78 @@ export function processVoiceCommands(input: string): VoiceCommandResult {
 
 export function postProcessTranscription(text: string): string {
   return applyPunctuationSpacing(text);
+}
+
+/**
+ * Del et ord op, hvis en kendt kommando er klistret sammen med det
+ * (f.eks. "oliepunktum" → ["olie", "punktum"] eller "husgem" → ["hus", "gem"]).
+ * Splitter kun kommandoer der sidder i enden af ordet, så danske ord som
+ * "gemmer" ikke ødelægges.
+ */
+function splitWordAtCommand(word: string, command: string): string[] | null {
+  const normalizedWord = normalizeCommand(word);
+  const normalizedCommand = normalizeCommand(command);
+  if (!normalizedCommand || normalizedCommand.length < 2) return null;
+  if (normalizedWord.length <= normalizedCommand.length) return null;
+
+  const index = normalizedWord.indexOf(normalizedCommand);
+  if (index === -1) return null;
+
+  // Kun del kommandoer der sidder i slutningen af ordet.
+  if (index + normalizedCommand.length !== normalizedWord.length) return null;
+
+  // Map normaliseret indeks tilbage til originalt tegn-indeks.
+  let originalIndex = 0;
+  let normalizedIndex = 0;
+  for (const char of word) {
+    if (normalizedIndex >= index) break;
+    normalizedIndex += normalizeCommand(char).length;
+    originalIndex += char.length;
+  }
+
+  let originalCommandEnd = originalIndex;
+  let normalizedCount = 0;
+  for (const char of word.slice(originalIndex)) {
+    if (normalizedCount >= normalizedCommand.length) break;
+    normalizedCount += normalizeCommand(char).length;
+    originalCommandEnd += char.length;
+  }
+
+  const before = word.slice(0, originalIndex);
+  const after = word.slice(originalCommandEnd);
+  const parts: string[] = [];
+  if (before.trim()) parts.push(before);
+  parts.push(command);
+  if (after.trim()) parts.push(after);
+  return parts.length > 1 ? parts : null;
+}
+
+/**
+ * Gennemløb hele inputtet og split klistrede kommandoer, så de behandles
+ * korrekt af parseren.
+ */
+function splitGluedCommands(input: string): string {
+  const commands = Array.from(
+    new Set([
+      ...Object.keys(PUNCTUATION_COMMANDS),
+      ...STOP_COMMANDS,
+      ...CANCEL_COMMANDS,
+      ...CLEAR_COMMANDS,
+      ...UNDO_COMMANDS,
+    ])
+  ).sort((a, b) => b.length - a.length);
+
+  const words = input.trim().split(/\s+/).filter(Boolean);
+  const result: string[] = [];
+  for (const word of words) {
+    let split: string[] | null = null;
+    for (const cmd of commands) {
+      split = splitWordAtCommand(word, cmd);
+      if (split) break;
+    }
+    result.push(...(split || [word]));
+  }
+  return result.join(" ");
 }
 
 /** Hjælpefunktion til fortryd: fjerner sidste ord fra en streng. */
