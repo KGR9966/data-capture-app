@@ -122,6 +122,7 @@ export default function VoiceCaptureModal({
   const typeLockedByVoiceRef = useRef(typeLockedByVoice);
   const isRecordingRef = useRef(false);
   const manualTitleEditRef = useRef(false);
+  const manualContentEditRef = useRef(false);
   const manualCategoryEditRef = useRef(false);
   const manualTypeEditRef = useRef(false);
   const visibleRef = useRef(visible);
@@ -179,6 +180,7 @@ export default function VoiceCaptureModal({
     stopPendingRef.current = false;
     intentionalStopRef.current = false;
     manualTitleEditRef.current = false;
+    manualContentEditRef.current = false;
     manualCategoryEditRef.current = false;
     manualTypeEditRef.current = false;
     if (timerRef.current) {
@@ -217,32 +219,17 @@ export default function VoiceCaptureModal({
       const hasTitle = !!currentTitle;
       const hasParsedTitle = !!parsed.title.trim();
 
+      // Første sætning bliver titel. Efterfølgende parsed titles ignoreres,
+      // medmindre brugeren manuelt har ryddet titlen.
       if (!manualTitleEditRef.current && hasParsedTitle && !hasTitle) {
-        // Første sætning bliver titel.
         setTitle(parsed.title);
       }
 
-      // Alt efterfølgende input tilføjes som indhold, også hvis parseren ser det
-      // som en ny "titel" — når først titlen er etableret, er efterfølgende
-      // sætninger punkter.
-      const newContentParts: string[] = [];
-      if (hasTitle && hasParsedTitle) {
-        newContentParts.push(parsed.title);
-      }
-      if (parsed.content) {
-        newContentParts.push(parsed.content);
-      }
-
-      if (newContentParts.length > 0) {
-        const newContent = newContentParts.join("\n");
-        setContent((prev) => {
-          const trimmed = prev.trim();
-          return trimmed ? `${trimmed}\n${newContent}` : newContent;
-        });
-      } else if (!hasTitle && !hasParsedTitle) {
-        // Helt tom input — rydder indhold for at undgå at transcriptet lægges
-        // tilbage som indhold.
-        setContent("");
+      // Parseren returnerer det fulde logiske indhold baseret på det
+      // akkumulerede transcript. Vi erstatter — ikke appender — for at undgå
+      // duplikering af tidligere segmenter.
+      if (!manualContentEditRef.current && parsed.content.trim()) {
+        setContent(parsed.content);
       }
 
       if (!manualCategoryEditRef.current) {
@@ -633,6 +620,13 @@ export default function VoiceCaptureModal({
     setTitle(text);
   };
 
+  const handleContentChange = (text: string) => {
+    if (text !== contentRef.current) {
+      manualContentEditRef.current = true;
+    }
+    setContent(text);
+  };
+
   const handleCategoryChange = (text: string) => {
     if (text !== categoryRef.current) {
       manualCategoryEditRef.current = true;
@@ -716,7 +710,7 @@ export default function VoiceCaptureModal({
             itemType={itemType}
             onItemTypeChange={handleItemTypeChange}
             content={content}
-            onContentChange={setContent}
+            onContentChange={handleContentChange}
             title={title}
             onTitleChange={handleTitleChange}
             category={category}
