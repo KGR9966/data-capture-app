@@ -377,7 +377,11 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 | 13 | EAS hotfix-build startet: iOS + Android. | ❌ Forkert: modalen duplicated content |
 | 14 | Ny rettelse: `VoiceCaptureModal` erstatter content i stedet for append. | ✅ Commit'et + pushet |
 | 15 | Lokal verifikation: TypeScript, lint, pre-test-check, E1–E12 parser — alt grønt. | ✅ Grøn |
-| 16 | Nye EAS builds startet efter rettelse. | 🔄 Kører |
+| 16 | Nye EAS builds startet efter rettelse. | ❌ Forkert: parser håndterede ikke klistrede kommandoer |
+| 17 | Parser rettet: splitter klistrede kommandoer som "oliepunktum" og "husgem". | ✅ Commit'et + pushet |
+| 18 | Voice foto-kommando: længere delay + fejlhåndtering ved genstart. | ✅ Commit'et + pushet |
+| 19 | Lokal verifikation: TypeScript, lint, pre-test-check, E1–E13 parser — grønt. | ✅ Grøn |
+| 20 | Nye EAS builds startet efter parser-rettelse. | 🔄 Kører |
 
 **Næste skridt:**
 - [x] Commit + push af hotfix-ændringer.
@@ -393,8 +397,10 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 |---|---|---|---|
 | iOS (gammel) | `f73688c5-39fb-4526-bce0-76323e393ab2` | ❌ Forældet | — |
 | Android (gammel) | `a0f03466-8962-408b-860f-b1f173491ef7` | ❌ Forældet | — |
-| iOS (ny) | `882f86a4-9512-4d56-9ed4-02ce7ac2075c` | ✅ Færdig | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/882f86a4-9512-4d56-9ed4-02ce7ac2075c |
-| Android (ny) | `8cb7cff2-6bb0-4c37-8724-f954658b791f` | ✅ Færdig | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/8cb7cff2-6bb0-4c37-8724-f954658b791f |
+| iOS (ny) | `882f86a4-9512-4d56-9ed4-02ce7ac2075c` | ❌ Forældet | — |
+| Android (ny) | `8cb7cff2-6bb0-4c37-8724-f954658b791f` | ❌ Forældet | — |
+| iOS (nyeste) | *(afventer)* | 🔄 Kører | *(kommer)* |
+| Android (nyeste) | *(afventer)* | 🔄 Kører | *(kommer)* |
 
 ---
 
