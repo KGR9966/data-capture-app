@@ -374,22 +374,27 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 | 10 | Pre-test-check `scripts/pre-test-check.js`: **OK** (én advarsel: pakkeversions-tjek). | ✅ Grøn |
 | 11 | Ændringer klar til commit og ny hotfix-build. | ✅ PO-go givet |
 | 12 | EAS Update holdes ude af dette hotfix; lagt i backlog som separat P1-opgave efter acceptance. | ✅ Afgjort |
-| 13 | EAS hotfix-build startet: iOS + Android. | 🔄 Kører |
+| 13 | EAS hotfix-build startet: iOS + Android. | ❌ Forkert: modalen duplicated content |
+| 14 | Ny rettelse: `VoiceCaptureModal` erstatter content i stedet for append. | ✅ Commit'et + pushet |
+| 15 | Lokal verifikation: TypeScript, lint, pre-test-check, E1–E12 parser — alt grønt. | ✅ Grøn |
+| 16 | Nye EAS builds startet efter rettelse. | 🔄 Kører |
 
 **Næste skridt:**
 - [x] Commit + push af hotfix-ændringer.
 - [x] PO-go til ny EAS hotfix-build.
 - [x] EAS Update holdt ude; opgave i backlog.
-- [x] Android build færdig.
+- [ ] Nye iOS/Android builds færdige.
 - [ ] PO installerer hotfix-build på fysisk enhed.
 - [ ] PO acceptance test af hotfix-build med `po-acceptance-us004-hotfix.md`.
 
-### Hotfix-build links
+### Hotfix-build links (forældede — nye kommer)
 
 | Platform | Build-ID | Status | Link |
 |---|---|---|---|
-| iOS | `f73688c5-39fb-4526-bce0-76323e393ab2` | ✅ Færdig | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/f73688c5-39fb-4526-bce0-76323e393ab2 |
-| Android | `a0f03466-8962-408b-860f-b1f173491ef7` | ✅ Færdig | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/a0f03466-8962-408b-860f-b1f173491ef7 |
+| iOS (gammel) | `f73688c5-39fb-4526-bce0-76323e393ab2` | ❌ Forældet | — |
+| Android (gammel) | `a0f03466-8962-408b-860f-b1f173491ef7` | ❌ Forældet | — |
+| iOS (ny) | *(afventer)* | 🔄 Kører | *(kommer)* |
+| Android (ny) | *(afventer)* | 🔄 Kører | *(kommer)* |
 
 ---
 
