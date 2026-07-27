@@ -383,7 +383,7 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 - [x] Commit + push af hotfix-ændringer.
 - [x] PO-go til ny EAS hotfix-build.
 - [x] EAS Update holdt ude; opgave i backlog.
-- [ ] Nye iOS/Android builds færdige.
+- [x] Nye iOS/Android builds færdige.
 - [ ] PO installerer hotfix-build på fysisk enhed.
 - [ ] PO acceptance test af hotfix-build med `po-acceptance-us004-hotfix.md`.
 
@@ -393,8 +393,8 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 |---|---|---|---|
 | iOS (gammel) | `f73688c5-39fb-4526-bce0-76323e393ab2` | ❌ Forældet | — |
 | Android (gammel) | `a0f03466-8962-408b-860f-b1f173491ef7` | ❌ Forældet | — |
-| iOS (ny) | *(afventer)* | 🔄 Kører | *(kommer)* |
-| Android (ny) | *(afventer)* | 🔄 Kører | *(kommer)* |
+| iOS (ny) | `882f86a4-9512-4d56-9ed4-02ce7ac2075c` | ✅ Færdig | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/882f86a4-9512-4d56-9ed4-02ce7ac2075c |
+| Android (ny) | `8cb7cff2-6bb0-4c37-8724-f954658b791f` | ✅ Færdig | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/8cb7cff2-6bb0-4c37-8724-f954658b791f |
 
 ---
 
