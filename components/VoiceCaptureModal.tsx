@@ -126,6 +126,8 @@ export default function VoiceCaptureModal({
   const manualCategoryEditRef = useRef(false);
   const manualTypeEditRef = useRef(false);
   const visibleRef = useRef(visible);
+  const lastParsedContentRef = useRef("");
+  const lastParsedTitleRef = useRef("");
 
   useEffect(() => {
     visibleRef.current = visible;
@@ -183,6 +185,8 @@ export default function VoiceCaptureModal({
     manualContentEditRef.current = false;
     manualCategoryEditRef.current = false;
     manualTypeEditRef.current = false;
+    lastParsedContentRef.current = "";
+    lastParsedTitleRef.current = "";
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -215,20 +219,32 @@ export default function VoiceCaptureModal({
 
   const applyParsedResult = useCallback(
     (parsed: VoiceParseResult, { lockType = false }: { lockType?: boolean } = {}) => {
-      const hasParsedTitle = !!parsed.title.trim();
+      const parsedTitle = parsed.title.trim();
+      const parsedContent = parsed.content.trim();
 
       // Titel følger parserens første sætning under optagelse, så delvise
       // transkriberinger (fx "Bygge" → "Byggeplads") erstattes med det
       // endelige ord. Brugerens manuelle redigering respekteres.
-      if (!manualTitleEditRef.current && hasParsedTitle) {
+      if (!manualTitleEditRef.current && parsedTitle) {
         setTitle(parsed.title);
+        lastParsedTitleRef.current = parsedTitle;
       }
 
-      // Parseren returnerer det fulde logiske indhold baseret på det
-      // akkumulerede transcript. Vi erstatter — ikke appender — for at undgå
-      // duplikering af tidligere segmenter.
-      if (!manualContentEditRef.current && parsed.content.trim()) {
-        setContent(parsed.content);
+      // Content: vi appender kun det nye, som parseren har tilføjet siden
+      // sidste opdatering. Det undgår både duplikering og overskrivning.
+      if (!manualContentEditRef.current && parsedContent) {
+        const previous = lastParsedContentRef.current;
+        const delta = parsedContent.startsWith(previous)
+          ? parsedContent.slice(previous.length).replace(/^\n/, "")
+          : parsedContent;
+
+        if (delta) {
+          setContent((prev) => {
+            const trimmed = prev.trim();
+            return trimmed ? `${trimmed}\n${delta}` : delta;
+          });
+        }
+        lastParsedContentRef.current = parsedContent;
       }
 
       if (!manualCategoryEditRef.current) {
@@ -279,6 +295,8 @@ export default function VoiceCaptureModal({
           setTitle("");
         }
         setContent("");
+        lastParsedContentRef.current = "";
+        lastParsedTitleRef.current = "";
         if (!manualCategoryEditRef.current) {
           setCategory("Andet");
         }
@@ -324,6 +342,10 @@ export default function VoiceCaptureModal({
         const isAlbum = parsed.command === "openAlbum";
         // Fjern kommandoen fra eventuel titel-indhold.
         applyParsedResultRef.current(parseVoiceInput(parsed.rawText), { lockType: isFinal });
+
+        // Husk det parsed indhold, så optagelsen efter foto kan fortsætte
+        // appende uden at duplikere eller overskrive.
+        lastParsedContentRef.current = contentRef.current.trim();
 
         setTimeout(() => {
           (async () => {
