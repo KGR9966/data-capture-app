@@ -390,13 +390,14 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 | 26 | Nye EAS builds startet efter titel- og layout-rettelser. | ❌ Forældet |
 | 27 | E11 rettet: titel fryses, så ny tekst efter foto går til content. | ✅ Commit'et + pushet |
 | 28 | Lokal verifikation: TypeScript, lint, parser E1–E13, pre-test-check grønt. | ✅ Grøn |
-| 29 | Nye EAS builds startet efter E11-rettelse. | 🔄 Kører |
+| 29 | Nye EAS builds startet efter E11-rettelse. | ✅ Færdige |
+| 30 | Firestore ryddet: 457 items + 59 projects slettet (inkl. subcollections). | ✅ Done |
 
 **Næste skridt:**
 - [x] Commit + push af hotfix-ændringer.
 - [x] PO-go til ny EAS hotfix-build.
 - [x] EAS Update holdt ude; opgave i backlog.
-- [ ] Nye iOS/Android builds færdige.
+- [x] Nye iOS/Android builds færdige.
 - [ ] PO installerer hotfix-build på fysisk enhed.
 - [ ] PO acceptance test af hotfix-build med `po-acceptance-us004-hotfix.md`.
 
@@ -412,8 +413,11 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 | Android (nyeste) | `27ff65e4-b46d-4806-a873-88206de8b4fb` | ❌ Forældet | — |
 | iOS (super-nuværende) | `539fa596-63a4-4fdb-bb3f-5b6c3c814eb1` | ❌ Forældet | — |
 | Android (super-nuværende) | `4d7ded64-6118-46c7-98bb-0d137fc8ab8f` | ❌ Forældet | — |
-| iOS (final) | *(afventer)* | 🔄 Kører | *(kommer)* |
-| Android (final) | *(afventer)* | 🔄 Kører | *(kommer)* |
+| iOS (preview) | `f60352d4-bb68-4136-824c-23b11055a308` | ✅ Færdig | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/f60352d4-bb68-4136-824c-23b11055a308) |
+| Android (preview) | `5a068110-3978-4315-b416-5e067029d7ac` | ✅ Færdig | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/5a068110-3978-4315-b416-5e067029d7ac) |
+| iOS (final v2) | `15cdb9cf-efe6-4ec7-bd65-9c33b58cfb44` | ❌ Forældet (development client) | — |
+| iOS (final v1) | `ba760c35-a98e-4ef3-bdfd-f01e75f7ca1e` | ❌ Forældet | — |
+| Android (final) | `64dff434-7baa-4794-b151-24fdcdad2ff8` | ❌ Forældet | — |
 
 ---
 

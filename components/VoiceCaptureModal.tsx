@@ -126,8 +126,9 @@ export default function VoiceCaptureModal({
   const manualCategoryEditRef = useRef(false);
   const manualTypeEditRef = useRef(false);
   const visibleRef = useRef(visible);
-  const lastParsedContentRef = useRef("");
-  const lastParsedTitleRef = useRef("");
+  const titleFrozenRef = useRef(false);
+  const photoTitleBaselineRef = useRef("");
+  const photoContentBaselineRef = useRef("");
 
   useEffect(() => {
     visibleRef.current = visible;
@@ -185,8 +186,9 @@ export default function VoiceCaptureModal({
     manualContentEditRef.current = false;
     manualCategoryEditRef.current = false;
     manualTypeEditRef.current = false;
-    lastParsedContentRef.current = "";
-    lastParsedTitleRef.current = "";
+    titleFrozenRef.current = false;
+    photoTitleBaselineRef.current = "";
+    photoContentBaselineRef.current = "";
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -221,58 +223,10 @@ export default function VoiceCaptureModal({
     (parsed: VoiceParseResult, { lockType = false }: { lockType?: boolean } = {}) => {
       const parsedTitle = parsed.title.trim();
       const parsedContent = parsed.content.trim();
+      const frozenTitle = titleRef.current.trim();
+      const rawText = parsed.rawText.trim();
 
-      // Når en titel allerede er etableret (manuelt eller fra tidligere
-      // input), skal efterfølgende tekst altid gå til content — aldrig til
-      // titel. Det forhindrer at "mere tekst" efter et foto pludselig bliver
-      // titel, fordi parseren ser det som en ny sætning.
-      const titleAlreadyEstablished =
-        manualTitleEditRef.current || !!titleRef.current.trim() || !!lastParsedTitleRef.current;
-
-      if (!manualTitleEditRef.current && parsedTitle) {
-        if (titleAlreadyEstablished) {
-          // Tidligere titel er etableret: ny tekst skrives til content.
-          const newContent = parsedContent
-            ? `${parsedTitle}\n${parsedContent}`
-            : parsedTitle;
-          if (newContent.trim()) {
-            const previous = lastParsedContentRef.current;
-            const delta = newContent.startsWith(previous)
-              ? newContent.slice(previous.length).replace(/^\n/, "")
-              : newContent;
-            if (delta) {
-              setContent((prev) => {
-                const trimmed = prev.trim();
-                return trimmed ? `${trimmed}\n${delta}` : delta;
-              });
-            }
-            lastParsedContentRef.current = newContent;
-          }
-        } else {
-          // Første sætning bliver titel.
-          setTitle(parsed.title);
-          lastParsedTitleRef.current = parsedTitle;
-          if (parsedContent) {
-            setContent(parsed.content);
-            lastParsedContentRef.current = parsedContent;
-          }
-        }
-      } else if (!manualContentEditRef.current && parsedContent) {
-        // Ingen titelændring, men nyt content: append delta.
-        const previous = lastParsedContentRef.current;
-        const delta = parsedContent.startsWith(previous)
-          ? parsedContent.slice(previous.length).replace(/^\n/, "")
-          : parsedContent;
-
-        if (delta) {
-          setContent((prev) => {
-            const trimmed = prev.trim();
-            return trimmed ? `${trimmed}\n${delta}` : delta;
-          });
-        }
-        lastParsedContentRef.current = parsedContent;
-      }
-
+      // Type og kategori håndteres uafhængigt af titel/content.
       if (!manualCategoryEditRef.current) {
         setCategory(parsed.category);
       }
@@ -281,6 +235,59 @@ export default function VoiceCaptureModal({
       }
       if (lockType && parsed.type !== "other" && !manualTypeEditRef.current) {
         setTypeLockedByVoice(true);
+      }
+
+      // Titel: opdater kun hvis den ikke allerede er låst (manuelt eller fryset).
+      let titleJustFrozen = false;
+      if (!manualTitleEditRef.current && parsedTitle) {
+        if (!titleFrozenRef.current) {
+          setTitle(parsed.title);
+          // Fryser titlen når der er indhold efter en sætningsafslutning,
+          // eller når brugeren aktivt afslutter med punktum/udråb/spørgsmål.
+          if (parsedContent || /[.!?]\s*$/.test(rawText)) {
+            titleFrozenRef.current = true;
+            titleJustFrozen = true;
+          }
+        }
+      }
+
+      // Content: erstatter altid det parsede indhold, så delvise
+      // transkriberinger ikke stablet oven på hinanden.
+      if (!manualContentEditRef.current) {
+        let newContent = "";
+
+        if (titleFrozenRef.current) {
+          // Titlen er fryset. Alt nyt tekst går til content.
+          // Brug rawText, så kommandoer som "komma" allerede er omdannet.
+          if (frozenTitle && rawText.toLowerCase().startsWith(frozenTitle.toLowerCase())) {
+            newContent = rawText.slice(frozenTitle.length).replace(/^[.!?]?\s*/, "").trim();
+          } else {
+            newContent = rawText;
+          }
+
+          // Hvis titlen lige er frosset og der er parsedContent, brug det
+          // (det er den første reelle content efter titlen).
+          if (titleJustFrozen && parsedContent) {
+            newContent = parsedContent;
+          }
+        } else {
+          // Før titlen fryses er der endnu intet content.
+          newContent = "";
+        }
+
+        // Hvis der er taget et foto undervejs, bevar alt tekst før fotoet
+        // og append det nye indhold efter det.
+        if (photoContentBaselineRef.current) {
+          newContent = newContent
+            ? `${photoContentBaselineRef.current}\n${newContent}`
+            : photoContentBaselineRef.current;
+        }
+
+        if (newContent) {
+          setContent(newContent);
+        } else if (!photoContentBaselineRef.current) {
+          setContent("");
+        }
       }
     },
     []
@@ -321,8 +328,9 @@ export default function VoiceCaptureModal({
           setTitle("");
         }
         setContent("");
-        lastParsedContentRef.current = "";
-        lastParsedTitleRef.current = "";
+        titleFrozenRef.current = false;
+        photoTitleBaselineRef.current = "";
+        photoContentBaselineRef.current = "";
         if (!manualCategoryEditRef.current) {
           setCategory("Andet");
         }
@@ -371,12 +379,14 @@ export default function VoiceCaptureModal({
         // efter foto lander i content.
         applyParsedResultRef.current(parseVoiceInput(parsed.rawText), { lockType: isFinal });
 
-        // Frys titlen: efterfølgende input skal altid gå til content.
+        // Sørg for at titlen er fryset efter foto, så ny tekst ikke
+        // bliver en ny titel.
         if (!manualTitleEditRef.current && titleRef.current.trim()) {
-          lastParsedTitleRef.current = titleRef.current.trim();
+          titleFrozenRef.current = true;
         }
-        // Husk det nuværende content som baseline for delta-appending.
-        lastParsedContentRef.current = contentRef.current.trim();
+        // Husk nuværende titel og content som baseline for det der kommer efter foto.
+        photoTitleBaselineRef.current = titleRef.current.trim();
+        photoContentBaselineRef.current = contentRef.current.trim();
 
         setTimeout(() => {
           (async () => {
