@@ -392,14 +392,21 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 | 28 | Lokal verifikation: TypeScript, lint, parser E1–E13, pre-test-check grønt. | ✅ Grøn |
 | 29 | Nye EAS builds startet efter E11-rettelse. | ✅ Færdige |
 | 30 | Firestore ryddet: 457 items + 59 projects slettet (inkl. subcollections). | ✅ Done |
+| 31 | Voice-modal redesign: content erstattes i stedet for delta-appending. | ✅ Commit'et + pushet |
+| 32 | Lokal simulation af delvise transkriberinger, foto-flow og komplet flow. | ✅ Grøn |
+| 33 | Nye preview builds færdige (iOS + Android preview v2). | ✅ Færdige |
+| 34 | PO-test på fysisk enhed: hovedrettelser godkendt. | ✅ Godkendt |
+| 35 | Små restpunkter registreret til næste pulje: "Åben"-tekst, Board projektnavn, knap-størrelser, Tilføj auto-title bug. | ✅ Dokumenteret |
 
 **Næste skridt:**
 - [x] Commit + push af hotfix-ændringer.
 - [x] PO-go til ny EAS hotfix-build.
 - [x] EAS Update holdt ude; opgave i backlog.
 - [x] Nye iOS/Android builds færdige.
-- [ ] PO installerer hotfix-build på fysisk enhed.
-- [ ] PO acceptance test af hotfix-build med `po-acceptance-us004-hotfix.md`.
+- [x] PO installerer hotfix-build på fysisk enhed.
+- [x] PO acceptance test af hotfix-build med `po-acceptance-us004-hotfix.md`.
+- [x] PO formelt godkender hotfix-runden som GO.
+- [ ] Næste pulje prioriteres (små restpunkter + evt. andet).
 
 ### Hotfix-build links (forældede — nye kommer)
 
@@ -413,8 +420,10 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 | Android (nyeste) | `27ff65e4-b46d-4806-a873-88206de8b4fb` | ❌ Forældet | — |
 | iOS (super-nuværende) | `539fa596-63a4-4fdb-bb3f-5b6c3c814eb1` | ❌ Forældet | — |
 | Android (super-nuværende) | `4d7ded64-6118-46c7-98bb-0d137fc8ab8f` | ❌ Forældet | — |
-| iOS (preview) | `f60352d4-bb68-4136-824c-23b11055a308` | ✅ Færdig | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/f60352d4-bb68-4136-824c-23b11055a308) |
-| Android (preview) | `5a068110-3978-4315-b416-5e067029d7ac` | ✅ Færdig | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/5a068110-3978-4315-b416-5e067029d7ac) |
+| iOS (preview v2) | `36614917-4d57-467e-9b13-219d2f5d5346` | ✅ Færdig | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/36614917-4d57-467e-9b13-219d2f5d5346) |
+| Android (preview v2) | `9ce2e19b-1c3d-4b97-95eb-12d992b70e6b` | ✅ Færdig | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/9ce2e19b-1c3d-4b97-95eb-12d992b70e6b) |
+| iOS (preview v1) | `f60352d4-bb68-4136-824c-23b11055a308` | ❌ Forældet | — |
+| Android (preview v1) | `5a068110-3978-4315-b416-5e067029d7ac` | ❌ Forældet | — |
 | iOS (final v2) | `15cdb9cf-efe6-4ec7-bd65-9c33b58cfb44` | ❌ Forældet (development client) | — |
 | iOS (final v1) | `ba760c35-a98e-4ef3-bdfd-f01e75f7ca1e` | ❌ Forældet | — |
 | Android (final) | `64dff434-7baa-4794-b151-24fdcdad2ff8` | ❌ Forældet | — |

@@ -140,6 +140,23 @@
    - Fase 2: AI-korrektur og kontekstbaseret opdeling af sammensatte ord.
    - Se detaljeret case: `docs/backlog-cases/VOICE-001-voice-input-improvements.md`.
 
+### P2.5 – US-004 hotfix restpunkter (næste pulje)
+11b. [ ] **Fjern "Åben"/"åbn"-tekst fra titel/content efter kamera/album-kommando**
+   - Parser/modal fjerner kommandoen, men residu kan stadig vises. Rettes så kamera/album-kommandoer forsvinder helt.
+   - Oprindeligt rapporteret under US-004 hotfix test, 2026-07-28.
+
+11c. [ ] **Board header: projektnavn vises kun delvist**
+   - Mindre UI-bug. Projektnavnet i Board-header skal vises fuldt eller afkortes pænt uden at skjule knapper.
+   - Relateret til tidligere header-layout justering.
+
+11d. [ ] **Board header: "Optag" og "+ Tilføj" knapper skal være lige store**
+   - Mindre UI-justering for visuel konsistens.
+
+11e. [ ] **Tilføj-flow: auto-titel fra beskrivelse forstyrrer manuel redigering**
+   - Når brugeren starter med at skrive i Beskrivelse først, genereres titlen automatisk fra første bogstav/første ord.
+   - Problemet: hvis beskrivelsen er "Due", bliver titlen "D". Hvis brugeren retter titlen, synkroniseres den tilbage med beskrivelsen, så man ikke kan rette titlen uafhængigt.
+   - Forventet adfærd: auto-titel må ikke overskrive en titel, som brugeren aktivt har redigeret. Titlen skal være valgfri og uafhængig af beskrivelse, når først brugeren har taget kontrol over feltet.
+
 ### P3 – Deling og eksport (øget fleksibilitet)
 12. [x] **Kopiér billede fra sag (COPY-001)**
    - Mulighed for at kopiere et foto fra item-detalje til udklipsholder.
