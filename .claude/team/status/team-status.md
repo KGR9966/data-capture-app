@@ -387,7 +387,10 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 | 23 | Testcases opdateret med rettet E2, TC-011 step-by-step, layout-case. | ✅ Done |
 | 24 | CLEAN-001 bulk-slet / slet flere sager lagt i backlog. | ✅ Done |
 | 25 | Lokal verifikation: TypeScript, lint, parser E1–E13, pre-test-check grønt. | ✅ Grøn |
-| 26 | Nye EAS builds startet efter titel- og layout-rettelser. | 🔄 Kører |
+| 26 | Nye EAS builds startet efter titel- og layout-rettelser. | ❌ Forældet |
+| 27 | E11 rettet: titel fryses, så ny tekst efter foto går til content. | ✅ Commit'et + pushet |
+| 28 | Lokal verifikation: TypeScript, lint, parser E1–E13, pre-test-check grønt. | ✅ Grøn |
+| 29 | Nye EAS builds startet efter E11-rettelse. | 🔄 Kører |
 
 **Næste skridt:**
 - [x] Commit + push af hotfix-ændringer.
@@ -407,8 +410,10 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 | Android (ny) | `8cb7cff2-6bb0-4c37-8724-f954658b791f` | ❌ Forældet | — |
 | iOS (nyeste) | `c4208e43-e3b5-402d-9819-451aa70d6ddf` | ❌ Forældet | — |
 | Android (nyeste) | `27ff65e4-b46d-4806-a873-88206de8b4fb` | ❌ Forældet | — |
-| iOS (super-nuværende) | `539fa596-63a4-4fdb-bb3f-5b6c3c814eb1` | ✅ Færdig | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/539fa596-63a4-4fdb-bb3f-5b6c3c814eb1 |
-| Android (super-nuværende) | `4d7ded64-6118-46c7-98bb-0d137fc8ab8f` | ✅ Færdig | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/4d7ded64-6118-46c7-98bb-0d137fc8ab8f |
+| iOS (super-nuværende) | `539fa596-63a4-4fdb-bb3f-5b6c3c814eb1` | ❌ Forældet | — |
+| Android (super-nuværende) | `4d7ded64-6118-46c7-98bb-0d137fc8ab8f` | ❌ Forældet | — |
+| iOS (final) | *(afventer)* | 🔄 Kører | *(kommer)* |
+| Android (final) | *(afventer)* | 🔄 Kører | *(kommer)* |
 
 ---
 
