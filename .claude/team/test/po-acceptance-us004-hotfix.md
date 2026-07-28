@@ -6,12 +6,12 @@
 
 ---
 
-## Testcases — stemme-oprettelse (E1–E12)
+## Testcases — stemme-oprettelse (E1–E13)
 
 | # | Handling | Forventet resultat |
 |---|---|---|
 | E1 | Sig "Byggemarked punktum køb maling punktum" | Titel: `Byggemarked`; Content: `køb maling.`; Type: `note`; Kategori: `Note` |
-| E2 | Sig "Bil komma oliepunktum" | Titel: `Bil`; Content: `olie.`; Type: `note` |
+| E2 | Sig "Bil punktum oliepunktum" | Titel: `Bil`; Content: `olie.`; Type: `note` |
 | E3 | Sig "Hus punktum vindue komma rudepunktum" | Titel: `Hus`; Content: `vindue, rude.`; Type: `note` |
 | E4 | Sig "Projekt punktum opgave 1 ny linje opgave 2 punktum" | Titel: `Projekt`; Content: `opgave 1\nopgave 2.`; Type: `note` |
 | E5 | Sig "Gem" efter en sætning | Item gemmes; modal lukker; vibration + toast vises |
@@ -23,6 +23,21 @@
 | E11 | Sig "Åbn album" under optagelse → vælg billede → vent | Optagelsen pauses under valg og genoptages efter; billedet vedhæftes; type forbliver `note`; titel ændres ikke |
 | E12 | Sig "Åbn kamera" under optagelse → tag billede → vent | Optagelsen pauses under foto og genoptages efter; billedet vedhæftes; type forbliver `note` |
 | E13 | Sig "Silvan punktum hammer ny linje komma sav punktum gem" | Titel: `Silvan`; Content: `hammer,\nsav.` (ingen mellemrum efter linjeskift) |
+
+### TC-011 — Foto under optagelse (step-by-step)
+
+1. Åbn stemmemodal og **start optagelse**.
+2. Sig: **"Anlægsarbejde punktum"** → Titel vises `Anlægsarbejde`.
+3. Sig: **"grave komma kantsten punktum"** → Content vises `grave, kantsten.`.
+4. Sig: **"Åbn album"** → optagelsen stopper, fotoalbummet åbner.
+5. **Vælg et billede** og bekræft → billede vises i modalen.
+6. Vent 1–2 sekunder; optagelsen skal **genstarte automatisk**.
+7. Sig: **"mere tekst punktum"** → Content opdateres til `grave, kantsten.\n mere tekst.`.
+8. Sig: **"gem"** eller vent 5 sek. stilhed → sagen gemmes og modalen lukker.
+9. Åbn sagen i board og verificer:
+   - Billedet er vedhæftet.
+   - Title = `Anlægsarbejde`.
+   - Content indeholder både `grave, kantsten.` og `mere tekst.`.
 
 ---
 
@@ -38,13 +53,14 @@
 
 ---
 
-## Testcases — Firestore / regression
+## Testcases — layout / regression
 
 | # | Handling | Forventet resultat |
 |---|---|---|
-| TC-006 | Åbn board med projektmedlemmer | Ingen `firestore/permission-denied` i konsol |
-| TC-007 | Opret nyt item manuelt uden stemme | Item gemmes korrekt; regression OK |
-| TC-008 | Opret projekt | Ingen falsk fejl; dubletter af samme navn forhindres |
+| TC-006 | Åbn Board på en telefon (ikke iPad) | Projekt-navn vises med "..."; knapperne "🎤 Optag" og "+ Tilføj" forbliver synlige på skærmen |
+| TC-007 | Åbn board med projektmedlemmer | Ingen `firestore/permission-denied` i konsol |
+| TC-008 | Opret nyt item manuelt uden stemme | Item gemmes korrekt; regression OK |
+| TC-009 | Opret projekt | Ingen falsk fejl; dubletter af samme navn forhindres |
 
 ---
 
@@ -52,6 +68,6 @@
 
 - [ ] Alle E1–E13 passed
 - [ ] TC-001–TC-005 passed
-- [ ] TC-006–TC-008 passed (regression)
+- [ ] TC-006–TC-009 passed (regression)
 - [ ] Ingen crash eller freeze efter foto under optagelse
 - [ ] Godkendes til merge/release: **GO / NO-GO**

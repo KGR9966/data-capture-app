@@ -215,13 +215,12 @@ export default function VoiceCaptureModal({
 
   const applyParsedResult = useCallback(
     (parsed: VoiceParseResult, { lockType = false }: { lockType?: boolean } = {}) => {
-      const currentTitle = titleRef.current.trim();
-      const hasTitle = !!currentTitle;
       const hasParsedTitle = !!parsed.title.trim();
 
-      // Første sætning bliver titel. Efterfølgende parsed titles ignoreres,
-      // medmindre brugeren manuelt har ryddet titlen.
-      if (!manualTitleEditRef.current && hasParsedTitle && !hasTitle) {
+      // Titel følger parserens første sætning under optagelse, så delvise
+      // transkriberinger (fx "Bygge" → "Byggeplads") erstattes med det
+      // endelige ord. Brugerens manuelle redigering respekteres.
+      if (!manualTitleEditRef.current && hasParsedTitle) {
         setTitle(parsed.title);
       }
 

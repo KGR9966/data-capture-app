@@ -314,9 +314,11 @@ export default function BoardScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <View>
+        <View style={styles.headerTitleSection}>
           <Text style={styles.header}>Board</Text>
-          <Text style={styles.projectName}>{activeProject.name}</Text>
+          <Text style={styles.projectName} numberOfLines={1} ellipsizeMode="tail">
+            {activeProject.name}
+          </Text>
         </View>
         <View style={styles.headerButtons}>
           <TouchableOpacity
@@ -564,10 +566,20 @@ const themedStyles = (isDark: boolean) =>
       justifyContent: "space-between",
       alignItems: "flex-start",
       marginBottom: 16,
+      gap: 12,
+    },
+    headerTitleSection: {
+      flex: 1,
+      flexShrink: 1,
+      minWidth: 0,
     },
     headerButtons: {
       flexDirection: "row",
+      flexWrap: "wrap",
       gap: 8,
+      justifyContent: "flex-end",
+      alignItems: "flex-start",
+      maxWidth: "55%",
     },
     header: {
       fontSize: 28,

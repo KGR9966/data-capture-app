@@ -72,6 +72,11 @@
    - Kræver `updates.url` + `runtimeVersion` strategi i `app.json`/`eas.json`.
    - Separat opgave efter US-004 hotfix er accepteret; ikke blandet ind nu for at holde hotfix simpelt.
    - Værdi: fremtidige små parser-/UI-rettelser kan pushes ud uden hel EAS build.
+6. [ ] **Slet flere sager / bulk-slet (CLEAN-001)**
+   - Mulighed for at vælge flere sager i Board og slette dem på én gang.
+   - Adgang begrænses til owner/admin.
+   - Bekræftelsesdialog før sletning.
+   - Som midlertidig workaround kan en ad-hoc script køres i databasen efter PO-godkendelse.
 
 ### P2 – Samarbejde og ansvarlighed (høj brugerværdi for dig som owner + kgr@trust.dk som editor)
 5. [x] **Rolle- og rettighedsmodel (RBAC)**
