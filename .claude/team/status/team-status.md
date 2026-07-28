@@ -407,8 +407,8 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 | Android (ny) | `8cb7cff2-6bb0-4c37-8724-f954658b791f` | ❌ Forældet | — |
 | iOS (nyeste) | `c4208e43-e3b5-402d-9819-451aa70d6ddf` | ❌ Forældet | — |
 | Android (nyeste) | `27ff65e4-b46d-4806-a873-88206de8b4fb` | ❌ Forældet | — |
-| iOS (super-nuværende) | *(afventer)* | 🔄 Kører | *(kommer)* |
-| Android (super-nuværende) | *(afventer)* | 🔄 Kører | *(kommer)* |
+| iOS (super-nuværende) | `539fa596-63a4-4fdb-bb3f-5b6c3c814eb1` | ✅ Færdig | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/539fa596-63a4-4fdb-bb3f-5b6c3c814eb1 |
+| Android (super-nuværende) | `4d7ded64-6118-46c7-98bb-0d137fc8ab8f` | ✅ Færdig | https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/4d7ded64-6118-46c7-98bb-0d137fc8ab8f |
 
 ---
 
