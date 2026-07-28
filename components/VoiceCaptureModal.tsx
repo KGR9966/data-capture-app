@@ -379,6 +379,18 @@ export default function VoiceCaptureModal({
         // efter foto lander i content.
         applyParsedResultRef.current(parseVoiceInput(parsed.rawText), { lockType: isFinal });
 
+        // Nulstil titel/content eksplicit til det parserte resultat uden
+        // foto-kommandoen, så restord som "åbn", "åben", "album" eller
+        // "kamera" ikke bliver hængende efter en delvis transkribering.
+        if (!manualTitleEditRef.current) {
+          setTitle(parsed.title);
+          if (parsed.title.trim()) {
+            titleFrozenRef.current = true;
+          }
+        }
+        if (!manualContentEditRef.current) {
+          setContent(parsed.content);
+        }
         // Sørg for at titlen er fryset efter foto, så ny tekst ikke
         // bliver en ny titel.
         if (!manualTitleEditRef.current && titleRef.current.trim()) {

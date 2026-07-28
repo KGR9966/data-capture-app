@@ -316,7 +316,7 @@ export default function BoardScreen() {
       <View style={styles.headerRow}>
         <View style={styles.headerTitleSection}>
           <Text style={styles.header}>Board</Text>
-          <Text style={styles.projectName} numberOfLines={1} ellipsizeMode="tail">
+          <Text style={styles.projectName} numberOfLines={2} ellipsizeMode="tail">
             {activeProject.name}
           </Text>
         </View>
@@ -579,7 +579,7 @@ const themedStyles = (isDark: boolean) =>
       gap: 8,
       justifyContent: "flex-end",
       alignItems: "flex-start",
-      maxWidth: "55%",
+      maxWidth: "45%",
     },
     header: {
       fontSize: 28,
@@ -596,6 +596,9 @@ const themedStyles = (isDark: boolean) =>
       paddingHorizontal: 14,
       paddingVertical: 8,
       borderRadius: 8,
+      minWidth: 96,
+      alignItems: "center",
+      justifyContent: "center",
     },
     voiceButton: {
       backgroundColor: "#f87171",

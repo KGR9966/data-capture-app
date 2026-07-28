@@ -146,6 +146,10 @@ export default function CreateItemForm({
   const userLockedTypeRef = useRef(externalTypeLocked || false);
   const hasPhotoRef = useRef(!!mediaUrl);
 
+  // Track whether the user has explicitly edited the title field.
+  // Once touched, auto-derivation from content must stop.
+  const titleTouchedRef = useRef(false);
+
   useEffect(() => {
     userLockedTypeRef.current = externalTypeLocked || false;
   }, [externalTypeLocked]);
@@ -154,9 +158,11 @@ export default function CreateItemForm({
     hasPhotoRef.current = !!mediaUrl;
   }, [mediaUrl]);
 
-  // Auto-derive title from content when title is empty (kun manuel oprettelse).
+  // Auto-derive title from content when title is empty and the user has not
+  // yet touched the title field (kun manuel oprettelse).
   useEffect(() => {
     if (mode === "voice") return;
+    if (titleTouchedRef.current) return;
     if (title.trim()) return;
     const suggestion = deriveTitle(content);
     if (suggestion && suggestion !== title) {
@@ -373,7 +379,10 @@ export default function CreateItemForm({
         placeholder="Titel (valgfrit)"
         placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
         value={title}
-        onChangeText={onTitleChange}
+        onChangeText={(text) => {
+          titleTouchedRef.current = true;
+          onTitleChange(text);
+        }}
       />
 
       <TextInput
