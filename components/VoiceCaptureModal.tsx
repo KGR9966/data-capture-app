@@ -222,17 +222,43 @@ export default function VoiceCaptureModal({
       const parsedTitle = parsed.title.trim();
       const parsedContent = parsed.content.trim();
 
-      // Titel følger parserens første sætning under optagelse, så delvise
-      // transkriberinger (fx "Bygge" → "Byggeplads") erstattes med det
-      // endelige ord. Brugerens manuelle redigering respekteres.
-      if (!manualTitleEditRef.current && parsedTitle) {
-        setTitle(parsed.title);
-        lastParsedTitleRef.current = parsedTitle;
-      }
+      // Når en titel allerede er etableret (manuelt eller fra tidligere
+      // input), skal efterfølgende tekst altid gå til content — aldrig til
+      // titel. Det forhindrer at "mere tekst" efter et foto pludselig bliver
+      // titel, fordi parseren ser det som en ny sætning.
+      const titleAlreadyEstablished =
+        manualTitleEditRef.current || !!titleRef.current.trim() || !!lastParsedTitleRef.current;
 
-      // Content: vi appender kun det nye, som parseren har tilføjet siden
-      // sidste opdatering. Det undgår både duplikering og overskrivning.
-      if (!manualContentEditRef.current && parsedContent) {
+      if (!manualTitleEditRef.current && parsedTitle) {
+        if (titleAlreadyEstablished) {
+          // Tidligere titel er etableret: ny tekst skrives til content.
+          const newContent = parsedContent
+            ? `${parsedTitle}\n${parsedContent}`
+            : parsedTitle;
+          if (newContent.trim()) {
+            const previous = lastParsedContentRef.current;
+            const delta = newContent.startsWith(previous)
+              ? newContent.slice(previous.length).replace(/^\n/, "")
+              : newContent;
+            if (delta) {
+              setContent((prev) => {
+                const trimmed = prev.trim();
+                return trimmed ? `${trimmed}\n${delta}` : delta;
+              });
+            }
+            lastParsedContentRef.current = newContent;
+          }
+        } else {
+          // Første sætning bliver titel.
+          setTitle(parsed.title);
+          lastParsedTitleRef.current = parsedTitle;
+          if (parsedContent) {
+            setContent(parsed.content);
+            lastParsedContentRef.current = parsedContent;
+          }
+        }
+      } else if (!manualContentEditRef.current && parsedContent) {
+        // Ingen titelændring, men nyt content: append delta.
         const previous = lastParsedContentRef.current;
         const delta = parsedContent.startsWith(previous)
           ? parsedContent.slice(previous.length).replace(/^\n/, "")
@@ -340,11 +366,16 @@ export default function VoiceCaptureModal({
         resetTranscriptRef.current();
 
         const isAlbum = parsed.command === "openAlbum";
-        // Fjern kommandoen fra eventuel titel-indhold.
+        // Anvend resultatet uden foto-kommandoen, så ord som "åbn kamera"
+        // ikke havner i titel/content. Derefter fryser vi titlen, så alt nyt
+        // efter foto lander i content.
         applyParsedResultRef.current(parseVoiceInput(parsed.rawText), { lockType: isFinal });
 
-        // Husk det parsed indhold, så optagelsen efter foto kan fortsætte
-        // appende uden at duplikere eller overskrive.
+        // Frys titlen: efterfølgende input skal altid gå til content.
+        if (!manualTitleEditRef.current && titleRef.current.trim()) {
+          lastParsedTitleRef.current = titleRef.current.trim();
+        }
+        // Husk det nuværende content som baseline for delta-appending.
         lastParsedContentRef.current = contentRef.current.trim();
 
         setTimeout(() => {
