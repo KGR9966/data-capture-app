@@ -463,7 +463,8 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 - [x] Task #87 — Developer Agent kode. **Completed**
 - [x] Task #88 — QA-verifikation. **Completed — GO**
 - [x] Task #89 — Audit-gate. **Completed — GO med forbehold**
-- [ ] **Task #90 — Build og release. In progress**
+- [x] Task #90 — Build og release: builds startet, men **stoppede** pga. konstaterede bugs i PO-test.
+- [x] Task #90 — Genstart builds efter bugfixes: **iOS-build startet, Android udskudt** pga. PO kun tester på iPhone/iPad.
 - [ ] Task #91 — PO acceptance test.
 
 ---
@@ -523,6 +524,21 @@ Før teamet kan designe rettelserne, skal PO tage stilling til:
 
 **Status:** Beslutningerne gør planen klar til formalisering og PO-godkendelse (Task #80).  
 **Planfil:** `.claude/team/plans/plan-search-lists-redesign.md`
+
+### 9.6 Seneste rettelser og build-status
+
+**PO-beslutning:** Android-build udskydes i denne runde — PO tester kun på iOS. Android-test aftales senere.
+
+**Rettelser commit'et i `9f4a57b`:**
+- `services/search.ts`: `hasEnoughSearchLetters` accepterer nu ≥2 alfanumeriske tegn (bogstaver ELLER tal). Løser problemet med titler der starter med tal eller tegn (f.eks. "50 mm rør"), så længe søgestrengen har ≥2 alfanumeriske tegn.
+- `app/(tabs)/search.tsx`: Hjælpetekst opdateret til "Skriv mindst 2 tegn" / "Indtast mindst 2 bogstaver eller tal for at søge."
+- `services/checklists.ts`: `toggleChecklistPoint` opdaterer IKKE længere kildesagens status. Listepunkt og eventuelt checkpoint opdateres stadig, men item-status holdes uændret (løser S3 ifølge PO-beslutning A: liste har ikke status, kun afkrydsning pr. punkt).
+- Fjernede ubrugte imports `getItemById`, `updateItem`.
+- TypeScript og Expo lint: grønne.
+
+**Build-status:**
+- iOS: ✅ **Klar til test** — Build `572a4608-bdc8-41f6-942d-af97754582f0` — [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/572a4608-bdc8-41f6-942d-af97754582f0)
+- Android: **udskudt** indtil videre.
 
 ### Hotfix-build links (forældede — nye kommer)
 

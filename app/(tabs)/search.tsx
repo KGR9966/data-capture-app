@@ -318,9 +318,9 @@ export default function SearchScreen() {
     if (!canSearch && query.trim()) {
       return (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>Skriv mindst 2 bogstaver</Text>
+          <Text style={styles.emptyTitle}>Skriv mindst 2 tegn</Text>
           <Text style={styles.emptySubtitle}>
-            Indtast mindst 2 bogstaver for at søge.
+            Indtast mindst 2 bogstaver eller tal for at søge.
           </Text>
         </View>
       );
@@ -386,7 +386,7 @@ export default function SearchScreen() {
 
       <View style={styles.resultHeader}>
         <Text style={styles.resultCount}>
-          {loading ? "Indlæser..." : canSearch ? `${results.length} resultat${results.length === 1 ? "" : "er"}` : "Indtast mindst 2 bogstaver"}
+          {loading ? "Indlæser..." : canSearch ? `${results.length} resultat${results.length === 1 ? "" : "er"}` : "Indtast mindst 2 tegn"}
         </Text>
         {results.length > 0 ? (
           <TouchableOpacity

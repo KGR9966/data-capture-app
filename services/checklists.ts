@@ -16,7 +16,7 @@ import {
 
 import { buildChecklistUrl } from "./deeplinks";
 import { db } from "./firebase";
-import { CaptureItem, getItemById, updateItem } from "./items";
+import { CaptureItem } from "./items";
 import {
   Checkpoint,
   createCheckpoint,
@@ -660,24 +660,9 @@ export async function toggleChecklistPoint(
 
   await batch.commit();
 
-  // 3. Tjek om alle checkpoints for item er done (separate læseoperation;
-  // item-status opdateres kun hvis nødvendigt).
-  if (point.sourceItemId && point.sourceItemId !== "manual") {
-    const checkpoints = await getCheckpointsForItem(point.sourceItemId);
-    if (checkpoints.length > 0) {
-      const allDone = checkpoints.every((cp) => cp.status === "done");
-      const anyOpen = checkpoints.some((cp) => cp.status !== "done");
-
-      if (allDone) {
-        await updateItem(point.sourceItemId, { status: "done" });
-      } else if (anyOpen && !nextCompleted) {
-        const item = await getItemById(point.sourceItemId);
-        if (item?.status === "done") {
-          await updateItem(point.sourceItemId, { status: "in_progress" });
-        }
-      }
-    }
-  }
+  // 3. Item-status opdateres IKKE baseret på listepunkter.
+  // Afkrydsning i en liste er kun en listeoperation og må ikke påvirke
+  // kildesagens status (S8 / governance-afklaring).
 }
 
 /** Deprecated: beholdes for backwards compatibility; delegerer til toggleChecklistPoint. */

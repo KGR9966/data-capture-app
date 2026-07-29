@@ -109,10 +109,11 @@ const STATUS_ALIASES: Record<string, ItemStatus> = {
   archived: "archived",
 };
 
-/** Tæl antal bogstaver (a-z + æøå, case-insensitive). */
 export function hasEnoughSearchLetters(query: string): boolean {
-  const letters = query.toLowerCase().match(/[a-zæøåé]/g) || [];
-  return letters.length >= 2;
+  // Kræv mindst 2 alfanumeriske tegn (bogstaver ELLER tal).
+  // Specialtegn alene (f.eks. "&") tæller ikke, men en søgning som "50 mm rør" eller "& Fix" accepteres.
+  const alphanumerics = query.toLowerCase().match(/[a-zæøåé0-9]/g) || [];
+  return alphanumerics.length >= 2;
 }
 
 function normalizeForMatch(str: string): string {
