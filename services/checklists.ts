@@ -418,20 +418,26 @@ export async function createDynamicChecklistFromSearch(
   const { kept: uniquePoints, removedKeys } = deduplicateStrict(candidatePoints);
   const markedPoints = markSemanticDuplicates(uniquePoints);
 
-  const checklist = await createChecklist(name, {
+  const batch = writeBatch(db);
+  const now = serverTimestamp();
+
+  // Opret checklist-dokumentet indenfor samme batch for atomicitet.
+  const checklistRef = doc(checklistsCollection);
+  const checklistPayload = stripUndefined({
+    name: name.trim(),
+    ownerId,
     projectId,
     isDynamic: true,
     searchQuery: { raw: rawQuery },
     sourceFields,
     sortBy,
-  });
-
-  const batch = writeBatch(db);
-  const checklistRef = doc(db, "checklists", checklist.id);
-  batch.update(checklistRef, {
+    sharedWith: {},
     deletedItemKeys: removedKeys,
-    updatedAt: serverTimestamp(),
+    hasNewMatches: false,
+    createdAt: now,
+    updatedAt: now,
   });
+  batch.set(checklistRef, checklistPayload);
 
   const createdCheckpoints = new Map<
     string,
@@ -466,19 +472,24 @@ export async function createDynamicChecklistFromSearch(
     });
 
     const payload = {
-      checklistId: checklist.id,
+      checklistId: checklistRef.id,
       ...point,
       sourceCheckpointId: cp?.checkpointId,
       isNewMatch: false,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+      createdAt: now,
+      updatedAt: now,
     };
-    const docRef = doc(checklistItemsCollection(checklist.id));
+    const docRef = doc(checklistItemsCollection(checklistRef.id));
     batch.set(docRef, payload);
     checklistItems.push({ id: docRef.id, ...payload });
   }
 
   await batch.commit();
+
+  const checklist: Checklist = {
+    id: checklistRef.id,
+    ...(checklistPayload as Omit<Checklist, "id">),
+  };
   return { checklist, items: checklistItems };
 }
 

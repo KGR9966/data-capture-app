@@ -92,10 +92,18 @@ export async function getOrCreateCheckpointsForItem(
   sourceFields: SourceField[]
 ): Promise<Checkpoint[]> {
   const existing = await getCheckpointsForItem(item.id);
-  if (existing.length > 0) return existing;
 
-  const derived = deriveCheckpointsFromItem(item, sourceFields);
-  const created: Checkpoint[] = [];
+  // Sikr at eksisterende checkpoints dækker alle ønskede sourceFields.
+  // Hvis ikke, tilføj de manglende (fx hvis et item tidligere kun fik title).
+  const coveredFields = new Set(existing.map((cp) => cp.sourceField));
+  const missingFields = sourceFields.filter((f) => !coveredFields.has(f));
+
+  if (existing.length > 0 && missingFields.length === 0) return existing;
+
+  const derived = deriveCheckpointsFromItem(item, sourceFields).filter((p) =>
+    missingFields.includes(p.sourceField)
+  );
+  const created: Checkpoint[] = [...existing];
   for (const point of derived) {
     const payload = {
       ...point,

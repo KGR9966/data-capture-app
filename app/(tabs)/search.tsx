@@ -308,9 +308,10 @@ export default function SearchScreen() {
     if (message.includes("Ingen søgeresultater")) return "Søgningen gav ingen resultater at oprette en liste af.";
     if (message.includes("permission-denied")) return "Du har ikke rettigheder til at oprette liste i dette projekt.";
     if (message.includes("unauthenticated")) return "Du er ikke logget ind. Log ind og prøv igen.";
-    if (message.includes("network")) return "Tjek netværket og prøv igen.";
-    // Aldvis den generiske "Kunne ikke oprette den dynamiske liste."-besked.
-    return "Listen kunne ikke oprettes. Tjek netværket og prøv igen.";
+    if (message.includes("network-request-failed") || message.includes("Network Error")) return "Tjek netværket og prøv igen.";
+    // Aldrig den generiske "Kunne ikke oprette den dynamiske liste."-besked.
+    // Vis den faktiske fejltekst for ukendte fejl, så vi kan identificere årsagen.
+    return message || "Listen kunne ikke oprettes. Prøv igen.";
   }
 
   const renderEmptyState = () => {
