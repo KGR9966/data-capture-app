@@ -529,15 +529,15 @@ Før teamet kan designe rettelserne, skal PO tage stilling til:
 
 **PO-beslutning:** Android-build udskydes i denne runde — PO tester kun på iOS. Android-test aftales senere.
 
-**Rettelser commit'et i `9f4a57b`:**
-- `services/search.ts`: `hasEnoughSearchLetters` accepterer nu ≥2 alfanumeriske tegn (bogstaver ELLER tal). Løser problemet med titler der starter med tal eller tegn (f.eks. "50 mm rør"), så længe søgestrengen har ≥2 alfanumeriske tegn.
-- `app/(tabs)/search.tsx`: Hjælpetekst opdateret til "Skriv mindst 2 tegn" / "Indtast mindst 2 bogstaver eller tal for at søge."
-- `services/checklists.ts`: `toggleChecklistPoint` opdaterer IKKE længere kildesagens status. Listepunkt og eventuelt checkpoint opdateres stadig, men item-status holdes uændret (løser S3 ifølge PO-beslutning A: liste har ikke status, kun afkrydsning pr. punkt).
-- Fjernede ubrugte imports `getItemById`, `updateItem`.
+**Rettelser commit'et i `5f97222` (efter PO-test af build `572a4608`):**
+- `services/search.ts`: `hasEnoughSearchLetters` accepterer nu ≥2 **tegn** (bogstaver, tal ELLER specialtegn). Løser problemet med søgning på `&sl`, `&slik`, `50`, etc.
+- `app/(tabs)/search.tsx`: Hjælpetekst opdateret til "Skriv mindst 2 tegn".
+- `services/checklists.ts`: `createDynamicChecklistFromSearch` fjerner nu `undefined`-værdier fra batch-payload, så `sourceCheckpointId` ikke længere forårsager "Unsupported field value: undefined".
+- `services/checklists.ts`: `toggleChecklistPoint` synkroniserer item-status med checkpoints igen — når alle checkpoints er done → item done; når et punkt un-checkes fra en done-sag → item in_progress.
 - TypeScript og Expo lint: grønne.
 
 **Build-status:**
-- iOS: ✅ **Klar til test** — Build `572a4608-bdc8-41f6-942d-af97754582f0` — [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/572a4608-bdc8-41f6-942d-af97754582f0)
+- iOS: ✅ **Klar til test** — Build `df8e2a49-b592-4a67-b1bf-6fb22d0a185a` — [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/df8e2a49-b592-4a67-b1bf-6fb22d0a185a)
 - Android: **udskudt** indtil videre.
 
 ### Hotfix-build links (forældede — nye kommer)

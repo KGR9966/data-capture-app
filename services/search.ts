@@ -110,10 +110,10 @@ const STATUS_ALIASES: Record<string, ItemStatus> = {
 };
 
 export function hasEnoughSearchLetters(query: string): boolean {
-  // Kræv mindst 2 alfanumeriske tegn (bogstaver ELLER tal).
-  // Specialtegn alene (f.eks. "&") tæller ikke, men en søgning som "50 mm rør" eller "& Fix" accepteres.
-  const alphanumerics = query.toLowerCase().match(/[a-zæøåé0-9]/g) || [];
-  return alphanumerics.length >= 2;
+  // Kræv mindst 2 tegn i søgestrengen. Tegn = bogstaver, tal ELLER specialtegn.
+  // "&", "&s", "50", "ab", "a&" accepteres alle, mens "&" eller "a" alene afvises.
+  const trimmed = query.trim();
+  return trimmed.length >= 2;
 }
 
 function normalizeForMatch(str: string): string {

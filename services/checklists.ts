@@ -16,7 +16,7 @@ import {
 
 import { buildChecklistUrl } from "./deeplinks";
 import { db } from "./firebase";
-import { CaptureItem } from "./items";
+import { CaptureItem, getItemById, updateItem } from "./items";
 import {
   Checkpoint,
   createCheckpoint,
@@ -471,17 +471,17 @@ export async function createDynamicChecklistFromSearch(
       return cpKey === key;
     });
 
-    const payload = {
+    const payload = stripUndefined({
       checklistId: checklistRef.id,
       ...point,
       sourceCheckpointId: cp?.checkpointId,
       isNewMatch: false,
       createdAt: now,
       updatedAt: now,
-    };
+    });
     const docRef = doc(checklistItemsCollection(checklistRef.id));
     batch.set(docRef, payload);
-    checklistItems.push({ id: docRef.id, ...payload });
+    checklistItems.push({ id: docRef.id, ...payload } as ChecklistItem);
   }
 
   await batch.commit();
@@ -660,9 +660,21 @@ export async function toggleChecklistPoint(
 
   await batch.commit();
 
-  // 3. Item-status opdateres IKKE baseret på listepunkter.
-  // Afkrydsning i en liste er kun en listeoperation og må ikke påvirke
-  // kildesagens status (S8 / governance-afklaring).
+  // 3. Synkronisér item-status med checkpoints: hvis alle checkpoints er
+  // done → item done; hvis et punkt un-checkes fra en done-sag → in_progress.
+  if (point.sourceItemId && point.sourceItemId !== "manual") {
+    const checkpoints = await getCheckpointsForItem(point.sourceItemId);
+    if (checkpoints.length > 0) {
+      const allDone = checkpoints.every((cp) => cp.status === "done");
+      const item = await getItemById(point.sourceItemId);
+
+      if (allDone && item?.status !== "done") {
+        await updateItem(point.sourceItemId, { status: "done" });
+      } else if (!allDone && item?.status === "done" && !nextCompleted) {
+        await updateItem(point.sourceItemId, { status: "in_progress" });
+      }
+    }
+  }
 }
 
 /** Deprecated: beholdes for backwards compatibility; delegerer til toggleChecklistPoint. */

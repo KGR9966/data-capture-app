@@ -320,7 +320,7 @@ export default function SearchScreen() {
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>Skriv mindst 2 tegn</Text>
           <Text style={styles.emptySubtitle}>
-            Indtast mindst 2 bogstaver eller tal for at søge.
+            Indtast mindst 2 tegn for at søge.
           </Text>
         </View>
       );
