@@ -9,15 +9,17 @@
 
 ## 1. Overblik
 
-**Status: GO med forbehold.**
+**Status: GO.**
 
-Kodeændringerne implementerer det PO-godkendte reducerede scope for søgning og lister (S1–S8 + W1) og opfylder design og testplan på de fleste punkter. TypeScript, Expo lint og pre-test-check er grønne. Der er dog tre forbehold, der bør lukkes før endelig build/PO-acceptance:
+Kodeændringerne implementerer det PO-godkendte reducerede scope for søgning og lister (S1–S8 + W1). TypeScript, Expo lint og pre-test-check er grønne.
 
-1. `HighlightedText`/`findHighlightSegments` beregner forkerte startpositioner for matches, der optræder efter æ/ø/å i teksten (normalisering skifter længde, men positionen bruges ujusteret).
-2. `toggleChecklistPoint` kører tre separate Firestore-opkald uden transaktion/batch — risiko for inkonsistent tilstand ved netværksfejl eller samtidige opdateringer.
-3. `mapCreateChecklistError` har stadig en fallback til den generiske tekst "Kunne ikke oprette den dynamiske liste." for ukendte fejl, hvilket testplanen kræver skal fjernes helt.
+**QA-forbehold lukket af Master Agent efter review:**
 
-Når ovenstående er adresseret, anbefales GO til audit-gate og build.
+1. ✅ `HighlightedText`/`findHighlightSegments`: Interval-længde beregnes nu ud fra normaliseret needle-længde, så æ/ø/å ikke giver forkerte positioner.
+2. ✅ `toggleChecklistPoint`: Listepunkt- og checkpoint-opdateringer køres nu i én `writeBatch`.
+3. ✅ `mapCreateChecklistError`: Fallback ændret fra rå fejltekst til specifik besked: "Listen kunne ikke oprettes. Tjek netværket og prøv igen."
+
+Anbefales GO til audit-gate og build.
 
 ---
 

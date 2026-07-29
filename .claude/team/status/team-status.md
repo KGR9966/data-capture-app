@@ -460,10 +460,10 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 - [x] Task #84 — Compliance/Security review. **Completed**
 - [x] Task #85 — Testplan. **Completed**
 - [x] Task #86 — PO-godkendelse af design + testplan. **Completed**
-- [ ] **Task #87 — Developer Agent kode (igang, Dag 1/3).**
-- [ ] Task #88 — QA-verifikation.
-- [ ] Task #89 — Audit-gate.
-- [ ] Task #90 — Build og release.
+- [x] Task #87 — Developer Agent kode. **Completed**
+- [x] Task #88 — QA-verifikation. **Completed — GO**
+- [x] Task #89 — Audit-gate. **Completed — GO med forbehold**
+- [ ] **Task #90 — Build og release. In progress**
 - [ ] Task #91 — PO acceptance test.
 
 ---
