@@ -529,15 +529,15 @@ Før teamet kan designe rettelserne, skal PO tage stilling til:
 
 **PO-beslutning:** Android-build udskydes i denne runde — PO tester kun på iOS. Android-test aftales senere.
 
-**Rettelser commit'et i `5f97222` (efter PO-test af build `572a4608`):**
-- `services/search.ts`: `hasEnoughSearchLetters` accepterer nu ≥2 **tegn** (bogstaver, tal ELLER specialtegn). Løser problemet med søgning på `&sl`, `&slik`, `50`, etc.
-- `app/(tabs)/search.tsx`: Hjælpetekst opdateret til "Skriv mindst 2 tegn".
-- `services/checklists.ts`: `createDynamicChecklistFromSearch` fjerner nu `undefined`-værdier fra batch-payload, så `sourceCheckpointId` ikke længere forårsager "Unsupported field value: undefined".
-- `services/checklists.ts`: `toggleChecklistPoint` synkroniserer item-status med checkpoints igen — når alle checkpoints er done → item done; når et punkt un-checkes fra en done-sag → item in_progress.
+**Rettelser commit'et i `aed8260` (efter PO-test af build `df8e2a49`):**
+- `app/(tabs)/search.tsx`: Projektvælgeren viser nu kun projekter med faktiske søgeresultater, og forvalger automatisk det første.
+- `app/(tabs)/search.tsx`: Antal søgeresultater vises ved hvert projekt.
+- `app/(tabs)/search.tsx`: Fejlbeskeden skelner nu mellem "ingen resultater" og "valgt projekt har ingen af resultaterne".
+- `app/(tabs)/search.tsx`: Tilføjet console.log før opkald til listeoprettelse for lettere debugging.
 - TypeScript og Expo lint: grønne.
 
 **Build-status:**
-- iOS: ✅ **Klar til test** — Build `df8e2a49-b592-4a67-b1bf-6fb22d0a185a` — [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/df8e2a49-b592-4a67-b1bf-6fb22d0a185a)
+- iOS: ✅ **Klar til test** — Build `13813298-43f0-4212-b175-603a71d1525a` — [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/13813298-43f0-4212-b175-603a71d1525a)
 - Android: **udskudt** indtil videre.
 
 ### Hotfix-build links (forældede — nye kommer)

@@ -217,6 +217,23 @@ export default function SearchScreen() {
     return searchItems(allItems, query);
   }, [query, allItems, canSearch]);
 
+  const projectResultCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const item of results) {
+      counts[item.projectId] = (counts[item.projectId] || 0) + 1;
+    }
+    return counts;
+  }, [results]);
+
+  const availableProjects = useMemo(() => {
+    return projects.filter((p) => {
+      const members = projectMembers[p.id] || [];
+      const role = getProjectRole(p, user?.uid || null, members);
+      const canCreate = canCreateItem(role);
+      return canCreate && (projectResultCounts[p.id] || 0) > 0;
+    });
+  }, [projects, projectMembers, user?.uid, projectResultCounts]);
+
   const selectedProjectRole = useMemo(() => {
     if (!selectedProjectId) return null;
     const project = projects.find((p) => p.id === selectedProjectId);
@@ -231,10 +248,12 @@ export default function SearchScreen() {
   const openConfigModal = () => {
     if (results.length === 0) return;
     setListName(`Søgning: ${query.trim() || "alle resultater"}`);
-    // Forvalg: hvis kun ét projekt, brug det.
-    setSelectedProjectId((prev) =>
-      projects.length === 1 ? projects[0].id : prev || undefined
-    );
+    // Forvalg: første projekt med resultater som brugeren kan oprette i.
+    setSelectedProjectId((prev) => {
+      if (availableProjects.length === 1) return availableProjects[0].id;
+      const stillValid = availableProjects.some((p) => p.id === prev);
+      return stillValid ? prev : availableProjects[0]?.id;
+    });
     setConfigVisible(true);
   };
 
@@ -280,6 +299,7 @@ export default function SearchScreen() {
     }
 
     setCreatingChecklist(true);
+    console.log("[create checklist] query:", query, "results:", results.length, "selectedProjectId:", selectedProjectId);
     try {
       const { checklist } = await createDynamicChecklistFromSearch(
         trimmedName || `Søgning: ${query.trim() || "alle resultater"}`,
@@ -305,11 +325,13 @@ export default function SearchScreen() {
 
   function mapCreateChecklistError(message: string): string {
     if (message.includes("Vælg et projekt")) return "Vælg et projekt for listen.";
-    if (message.includes("Ingen søgeresultater")) return "Søgningen gav ingen resultater at oprette en liste af.";
+    if (message.includes("Ingen søgeresultater tilhører"))
+      return "Det valgte projekt har ingen af de viste søgeresultater. Vælg et andet projekt.";
+    if (message.includes("Ingen søgeresultater at oprette"))
+      return "Søgningen gav ingen resultater at oprette en liste af.";
     if (message.includes("permission-denied")) return "Du har ikke rettigheder til at oprette liste i dette projekt.";
     if (message.includes("unauthenticated")) return "Du er ikke logget ind. Log ind og prøv igen.";
     if (message.includes("network-request-failed") || message.includes("Network Error")) return "Tjek netværket og prøv igen.";
-    // Aldrig den generiske "Kunne ikke oprette den dynamiske liste."-besked.
     // Vis den faktiske fejltekst for ukendte fejl, så vi kan identificere årsagen.
     return message || "Listen kunne ikke oprettes. Prøv igen.";
   }
@@ -471,37 +493,31 @@ export default function SearchScreen() {
                 maxLength={100}
               />
 
-              {projects.length > 1 ? (
+              {availableProjects.length > 0 ? (
                 <>
                   <Text style={styles.modalLabel}>Projekt</Text>
                   <View style={styles.projectList}>
-                    {projects.map((project) => {
-                      const members = projectMembers[project.id] || [];
-                      const role = getProjectRole(project, user?.uid || null, members);
-                      const canCreate = canCreateItem(role);
+                    {availableProjects.map((project) => {
+                      const count = projectResultCounts[project.id] || 0;
                       return (
                         <TouchableOpacity
                           key={project.id}
                           style={[
                             styles.projectOption,
                             selectedProjectId === project.id && styles.projectOptionActive,
-                            !canCreate && styles.projectOptionDisabled,
                           ]}
-                          onPress={() => canCreate && setSelectedProjectId(project.id)}
-                          activeOpacity={canCreate ? 0.7 : 1}
+                          onPress={() => setSelectedProjectId(project.id)}
+                          activeOpacity={0.7}
                         >
                           <Text
                             style={[
                               styles.projectOptionText,
                               selectedProjectId === project.id && styles.projectOptionTextActive,
-                              !canCreate && styles.projectOptionTextDisabled,
                             ]}
                           >
                             {project.name}
                           </Text>
-                          {!canCreate ? (
-                            <Text style={styles.projectOptionHint}>Kun læseadgang</Text>
-                          ) : null}
+                          <Text style={styles.projectOptionHint}>{count} resultat{count === 1 ? "" : "er"}</Text>
                         </TouchableOpacity>
                       );
                     })}
