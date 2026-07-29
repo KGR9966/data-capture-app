@@ -2,9 +2,55 @@
 
 **Dato:** 2026-07-15  
 **Planlagt af:** Flowagent / Master Agent  
-**Seneste opdatering:** Build 2 PO-acceptance → **TOTAL NO-GO**. US-004 + US-005 kræver grundlæggende redesign. Governance-opdatering påkrævet.  
-**Forudsætning:** PO har godkendt redesign-plan og inddragelse af UX/UI Agent.  
-**Næste handling:** Fase 1 — governance-opdatering + post-mortem. Derefter Fase 2 — US-004 redesign (parser + modal). Derefter Fase 3 — US-005 fix (dynamisk liste-oprettelse).
+**Seneste opdatering:** Task #87 påbegyndt — Developer Agent implementerer reduceret scope for søgning og lister (Dag 1/3).  
+**Forudsætning:** PO har godkendt redesign-plan og inddragelse af UX/UI Agent.
+
+---
+
+## Task #87 — Developer Agent: Søgning og lister (reduceret scope)
+
+**Startet:** 2026-07-15  
+**Forventet afslutning:** 2026-07-17 (maksimalt 3 dage)  
+**Mandat:** PO-godkendt reduceret scope; tekniske beslutninger inden for scope træffes af Developer Agent. Stop-kriterier rapporteres til Master Agent.
+
+### Dag 1 status (2026-07-15)
+- [x] Læst design, testplan, compliance og eksisterende kode.
+- [x] Rewrite search-parser (`services/search.ts`): bevarer `&`, `/`, `-`, tal, æøå; substring-match; `hasEnoughSearchLetters` ≥2 bogstaver.
+- [x] Opret `components/HighlightedText.tsx`.
+- [x] Checkpoint-model (`services/checkpoints.ts`) og `toggleChecklistPoint` adskiller listepunkt-status fra item-status.
+- [x] Listeoprettelse fra søgning (`app/(tabs)/search.tsx`) med projektvalg, rollecheck og specifikke fejl.
+- [x] UI-fixes: KeyboardAvoidingView i checklist-modal (`app/checklist.tsx`) og fast header i `app/item.tsx`.
+- [x] Project-scoped visning af lister (`app/(tabs)/checklists.tsx` + `subscribeToProjectChecklists`).
+- [x] Firestore-regler opdateret til project-scoped adgang for checklists og checkpoints.
+- [x] Wipe-script (`scripts/wipe-checklists.js`) oprettet til at rydde gamle lister.
+- [x] TypeScript og Expo lint fejlfri.
+
+### Næste skridt
+- [ ] Commit og daglig rapport til Master Agent.
+- [ ] Dag 3 regressionstest på simulator/fysisk enhed.
+- [ ] Markér Task #87 som færdig ved GO.
+
+### Med i denne runde
+1. **S2:** Search-parser skal håndtere `&` og andre specialtegn.
+2. **S8:** Minimum 2 bogstaver før søgning.
+3. **W1:** Highlight af matchende ord i søgeresultater og lister.
+4. **S1:** Listeoprettelse fra søgning skal virke (projektvalg, rollecheck, specifikke fejl).
+5. **S3/S4/S7:** Adskillelse af listepunkt-status og item-status via ny checkpoint-model.
+6. **S5:** Tastatur må ikke dække felter i liste.
+7. **S6:** Kommentar-layout i item.tsx så "Tilbage" altid er synlig.
+8. **Firestore-regler:** Project-scoped adgang; alle projektmedlemmer må se lister.
+
+### Ude af scope (udskydes)
+- Migrering af gamle lister — **wipes** i stedet.
+- Smart-søgeoperatorer (`*ord*`, `"frase"`, `-ord`, `OR`, filtre).
+
+### Risici / stop-kriterier
+- Hvis arbejdet vurderes til >3 dage → rapporter straks til Master Agent.
+- Hvis S1 kræver større arkitekturændring end designet → stop og rapporter.
+- Hvis Firestore-regelændringer påvirker andre dele af appen → stop og rapporter.
+
+### Blokeringer
+Ingen.
 
 ---
 
@@ -189,7 +235,7 @@ Alternativt kan US-004 og US-005 bygges i samme release, hvis PO ønsker færre 
 **Output:** `.claude/team/audit/governance-check-b-c-redo-v2.md` med go/no-go og eventuelle læringspunkter.  
 **Afhængigheder:** Fase 7 (QA) godkendt.  
 **Review-punkter:**
-- Governance-regler overholdt.
+- Governance-regler overholdes.
 - Ingen solo-arbejde uden godkendelse.
 - Build er ikke startet før PO-go.
 - Scope ikke udvidet uden PO-go.
@@ -401,12 +447,82 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 **Næste skridt:**
 - [x] Commit + push af hotfix-ændringer.
 - [x] PO-go til ny EAS hotfix-build.
-- [x] EAS Update holdt ude; opgave i backlog.
+- [x] EAS Update holdes ude; opgave i backlog.
 - [x] Nye iOS/Android builds færdige.
 - [x] PO installerer hotfix-build på fysisk enhed.
 - [x] PO acceptance test af hotfix-build med `po-acceptance-us004-hotfix.md`.
 - [x] PO formelt godkender hotfix-runden som GO.
-- [ ] Næste pulje prioriteres (små restpunkter + evt. andet).
+- [x] PO har valgt at gå videre med søgning og lister (valg B: planlæg først).
+- [x] PO-godkendelse af opgaveplan for søg/lister redesign.
+- [x] Task #81 — Userstoryagent beriger user stories.
+- [x] Task #82 — Flowagent designer workflow.
+- [x] Task #83 — Solution Design arkitektur. **Completed**
+- [x] Task #84 — Compliance/Security review. **Completed**
+- [x] Task #85 — Testplan. **Completed**
+- [x] Task #86 — PO-godkendelse af design + testplan. **Completed**
+- [ ] **Task #87 — Developer Agent kode (igang, Dag 1/3).**
+- [ ] Task #88 — QA-verifikation.
+- [ ] Task #89 — Audit-gate.
+- [ ] Task #90 — Build og release.
+- [ ] Task #91 — PO acceptance test.
+
+---
+
+## 9. Søgning og lister — PO-feedback og næste fase
+
+PO har aflagt test på søgning og lister. Følgende er registreret som fundament for næste fase. Ingen kode startes før PO har godkendt opgaveplan og scope.
+
+### 9.1 Konstaterede fejl (kræver rettelse)
+
+| # | Fejl | Kritikalitet |
+|---|---|---|
+| S1 | "Kunne ikke oprette den dynamiske liste" ved alle forsøg på at oprette liste fra søgning | **Høj** |
+| S2 | `&` kan ikke indgå i søgning. "Jem & Fix" finder ikke match, mens "Jem Fix" virker. Listenavn bliver "Jem" når søgestrengen er "Jem & Fix" | Høj |
+| S3 | Afkrydsning af ét listepunkt ændrer hele kildesagens status til Done, selvom sagen indeholder andre punkter | Høj |
+| S4 | Hvis kildesagen sættes til `in_progress`, vises listepunktet stadig som gennemstreget Done i listen | Høj |
+| S5 | Tastatur dækker felter ved "+ Tilføj Punkt" og redigering i liste | Mellem |
+| S6 | Når man skriver kommentar i en sag, forsvinder "Tilbage" og man kan ikke komme ud. Kommentar kan ikke slettes for at låse op | Mellem |
+| S7 | Når en sag sættes til Done, opdateres den dynamiske liste ikke for det pågældende punkt | Mellem |
+| S8 | Minimum 2 bogstaver ved søgning ser ikke ud til at være håndhævet | Lav |
+
+### 9.2 Ønsker / forbedringer
+
+| # | Ønske |
+|---|---|
+| W1 | Vis hit/highlight for det ord, der har skabt match |
+
+### 9.3 Fungerende
+
+- Del, Kopiér, Slet i liste virker.
+
+### 9.4 Åbne PO-beslutninger før design
+
+Før teamet kan designe rettelserne, skal PO tage stilling til:
+
+1. **Scope:** Skal vi tage alle S1–S8 + W1 i én runde, eller dele op?
+2. **Afkrydsning → sag-status (S3):** Hvad skal der ske, når ét listepunkt afkrydses?
+   - A) Punktets egen status ændres; kildesagen påvirkes ikke.
+   - B) Kildesagens status ændres kun, hvis alle punkter fra den sag er færdige.
+   - C) Andet — beskriv.
+3. **Sags-status → liste (S4/S7):** Hvis kildesagens status ændres manuelt, skal listen så:
+   - A) altid spejle sagsstatus (gennemstreget hvis Done, flueben hvis Done)?
+   - B) adskille punkt-status og sags-status helt?
+4. **Kommentar (S6):** Skal kommentar-bugen rettes i denne runde, eller lægges i separat task?
+5. **Prioritet:** Hvilken af S1–S8 skal rettes først?
+
+### 9.5 PO-beslutninger taget — søgning og lister
+
+| # | Spørgsmål | PO-valg |
+|---|---|---|
+| 1 | Scope | Alle S1–S8 + W1 i én runde, med dybdegående helhedsanalyse af hele søge- og listeflowet |
+| 2 | Afkrydsning → sag-status (S3) | **B** — listepunkt opdaterer kun det pågældende punkt i kildesagen; hele sagen påvirkes ikke, medmindre alle punkter er færdige |
+| 3 | Sags-status → liste (S4/S7) | **A** — listen har ikke status; den har afkrydsning pr. punkt. Punkt-status er adskilt fra sags-status |
+| 4 | Kommentar-bug (S6) | Med i runden, men rettes først efter analyse og test af søge/lister-flowet |
+| 5 | Prioritet | Helhedsanalyse først; derefter prioritering baseret på tekniske fund og afhængigheder |
+| 6 | Search-parser | Full rewrite af `services/search.ts` vurderes som en del af helhedsanalysen pga. S2 (`&`-håndtering) |
+
+**Status:** Beslutningerne gør planen klar til formalisering og PO-godkendelse (Task #80).  
+**Planfil:** `.claude/team/plans/plan-search-lists-redesign.md`
 
 ### Hotfix-build links (forældede — nye kommer)
 
@@ -420,12 +536,14 @@ Alle åbne spørgsmål er besvaret. Planen er klar til PO-godkendelse.
 | Android (nyeste) | `27ff65e4-b46d-4806-a873-88206de8b4fb` | ❌ Forældet | — |
 | iOS (super-nuværende) | `539fa596-63a4-4fdb-bb3f-5b6c3c814eb1` | ❌ Forældet | — |
 | Android (super-nuværende) | `4d7ded64-6118-46c7-98bb-0d137fc8ab8f` | ❌ Forældet | — |
-| iOS (preview v2) | `36614917-4d57-467e-9b13-219d2f5d5346` | ✅ Færdig | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/36614917-4d57-467e-9b13-219d2f5d5346) |
-| Android (preview v2) | `9ce2e19b-1c3d-4b97-95eb-12d992b70e6b` | ✅ Færdig | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/9ce2e19b-1c3d-4b97-95eb-12d992b70e6b) |
+| iOS (preview v3) | `759b6e99-ff98-470c-885c-b9e8fd503f21` | ✅ Færdig | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/759b6e99-ff98-470c-885c-b9e8fd503f21) |
+| Android (preview v3) | `af2f73c5-4b91-4326-ab53-3e2cf71087eb` | ✅ Færdig | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/af2f73c5-4b91-4326-ab53-3e2cf71087eb) |
+| iOS (preview v2) | `36614917-4d57-467e-9b13-219d2f5d5346` | ❌ Forældet | — |
+| Android (preview v2) | `9ce2e19b-1c3d-4b97-95eb-12d992b70e6b` | ❌ Forældet | — |
 | iOS (preview v1) | `f60352d4-bb68-4136-824c-23b11055a308` | ❌ Forældet | — |
 | Android (preview v1) | `5a068110-3978-4315-b416-5e067029d7ac` | ❌ Forældet | — |
 | iOS (final v2) | `15cdb9cf-efe6-4ec7-bd65-9c33b58cfb44` | ❌ Forældet (development client) | — |
-| iOS (final v1) | `ba760c35-a98e-4ef3-bdfd-f01e75f7ca1e` | ❌ Forældet | — |
+| iOS (final v1) | `ba760c35-a98e-4ef3-bdfd-f01e75f7ca7e` | ❌ Forældet | — |
 | Android (final) | `64dff434-7baa-4794-b151-24fdcdad2ff8` | ❌ Forældet | — |
 
 ---

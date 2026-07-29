@@ -755,6 +755,13 @@ export default function ItemDetailScreen() {
       keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
     >
       <View style={{ flex: 1 }}>
+        {/* Fixed header — Tilbage-knap scroller ikke væk */}
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Text style={styles.backText}>← Tilbage</Text>
+          </TouchableOpacity>
+        </View>
+
         <ScrollView
           ref={scrollViewRef}
           contentContainerStyle={styles.scrollContent}
@@ -763,12 +770,6 @@ export default function ItemDetailScreen() {
           onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
           scrollEventThrottle={150}
         >
-          <View style={styles.headerRow}>
-            <TouchableOpacity onPress={() => router.back()}>
-              <Text style={styles.backText}>← Tilbage</Text>
-            </TouchableOpacity>
-          </View>
-
           {editing ? renderEdit() : renderView()}
         </ScrollView>
 
@@ -817,12 +818,14 @@ const themedStyles = (isDark: boolean) =>
     scrollContent: {
       flexGrow: 1,
       backgroundColor: isDark ? "#0f172a" : "#f8fafc",
-      paddingTop: 60,
       paddingHorizontal: 16,
       paddingBottom: 16,
     },
     headerRow: {
-      marginBottom: 16,
+      paddingTop: 60,
+      paddingHorizontal: 16,
+      paddingBottom: 16,
+      backgroundColor: isDark ? "#0f172a" : "#f8fafc",
     },
     backText: {
       color: "#38bdf8",

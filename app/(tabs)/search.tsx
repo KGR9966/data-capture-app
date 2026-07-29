@@ -7,13 +7,13 @@ import {
   Modal,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 
+import HighlightedText from "../../components/HighlightedText";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useVoiceRecognition } from "../../hooks/useVoiceRecognition";
@@ -23,8 +23,9 @@ import {
   SourceField,
 } from "../../services/checklists";
 import { CaptureItem, subscribeToItems } from "../../services/items";
-import { subscribeToProjects } from "../../services/projects";
-import { searchItems } from "../../services/search";
+import { getProjectMembers, Project, subscribeToProjects } from "../../services/projects";
+import { canCreateItem, getProjectRole } from "../../services/roles";
+import { hasEnoughSearchLetters, searchItems } from "../../services/search";
 
 const ITEM_TYPE_LABELS: Record<string, string> = {
   idea: "Idé",
@@ -82,6 +83,8 @@ export default function SearchScreen() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [allItems, setAllItems] = useState<CaptureItem[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectMembers, setProjectMembers] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(true);
   const [voiceActive, setVoiceActive] = useState(false);
   const [creatingChecklist, setCreatingChecklist] = useState(false);
@@ -93,7 +96,7 @@ export default function SearchScreen() {
     category: false,
   });
   const [sortBy, setSortBy] = useState<ChecklistSortBy>("alphabetical");
-  const [syncStatus, setSyncStatus] = useState(true);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(undefined);
   const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearMaxDurationTimer = () => {
@@ -131,6 +134,7 @@ export default function SearchScreen() {
   const isDark = theme === "dark";
   const styles = themedStyles(isDark);
 
+  // Hent projekter
   useEffect(() => {
     if (!user?.uid) return;
 
@@ -139,8 +143,28 @@ export default function SearchScreen() {
     const projectsUnsubscribe = subscribeToProjects(
       user.uid,
       user.email || null,
-      (projects) => {
-        const itemUnsubscribes = projects.map((project) =>
+      (projectsData) => {
+        setProjects(projectsData);
+      }
+    );
+    unsubscribes.push(projectsUnsubscribe);
+
+    return () => {
+      unsubscribes.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [user?.uid, user?.email]);
+
+  // Hent items for brugerens projekter
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const unsubscribes: (() => void)[] = [];
+
+    const projectsUnsubscribe = subscribeToProjects(
+      user.uid,
+      user.email || null,
+      (projectsData) => {
+        const itemUnsubscribes = projectsData.map((project) =>
           subscribeToItems(project.id, (items) => {
             setAllItems((prev) => {
               const others = prev.filter((i) => i.projectId !== project.id);
@@ -160,13 +184,57 @@ export default function SearchScreen() {
     };
   }, [user?.uid, user?.email]);
 
+  // Hent projekt-medlemmer når projekter ændres
+  const projectIds = useMemo(() => projects.map((p) => p.id).join(","), [projects]);
+  useEffect(() => {
+    if (!projectIds) return;
+    const ids = projectIds.split(",");
+    let cancelled = false;
+
+    async function loadMembers() {
+      const next: Record<string, any[]> = {};
+      for (const projectId of ids) {
+        try {
+          next[projectId] = await getProjectMembers(projectId);
+        } catch (err) {
+          console.log("Load project members error", err);
+          next[projectId] = [];
+        }
+      }
+      if (!cancelled) setProjectMembers(next);
+    }
+
+    loadMembers();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectIds]);
+
+  const canSearch = hasEnoughSearchLetters(query);
+
   const results = useMemo(() => {
+    if (!canSearch) return [];
     return searchItems(allItems, query);
-  }, [query, allItems]);
+  }, [query, allItems, canSearch]);
+
+  const selectedProjectRole = useMemo(() => {
+    if (!selectedProjectId) return null;
+    const project = projects.find((p) => p.id === selectedProjectId);
+    const members = projectMembers[selectedProjectId] || [];
+    return getProjectRole(project || null, user?.uid || null, members);
+  }, [selectedProjectId, projects, projectMembers, user?.uid]);
+
+  const canCreateChecklist = useMemo(() => {
+    return canCreateItem(selectedProjectRole);
+  }, [selectedProjectRole]);
 
   const openConfigModal = () => {
     if (results.length === 0) return;
     setListName(`Søgning: ${query.trim() || "alle resultater"}`);
+    // Forvalg: hvis kun ét projekt, brug det.
+    setSelectedProjectId((prev) =>
+      projects.length === 1 ? projects[0].id : prev || undefined
+    );
     setConfigVisible(true);
   };
 
@@ -187,26 +255,84 @@ export default function SearchScreen() {
       return;
     }
 
+    if (projects.length > 1 && !selectedProjectId) {
+      Alert.alert("Vælg projekt", "Vælg et projekt for listen.");
+      return;
+    }
+
+    if (!selectedProjectId) {
+      Alert.alert("Vælg projekt", "Vælg et projekt for listen.");
+      return;
+    }
+
+    if (!canCreateChecklist) {
+      Alert.alert(
+        "Begrænset adgang",
+        "Du har ikke rettigheder til at oprette liste i dette projekt."
+      );
+      return;
+    }
+
+    const trimmedName = listName.trim();
+    if (trimmedName.length > 100) {
+      Alert.alert("For langt navn", "Listens navn må højst være 100 tegn.");
+      return;
+    }
+
     setCreatingChecklist(true);
     try {
       const { checklist } = await createDynamicChecklistFromSearch(
-        listName.trim() || `Søgning: ${query.trim() || "alle resultater"}`,
+        trimmedName || `Søgning: ${query.trim() || "alle resultater"}`,
         query.trim(),
         results,
         {
+          projectId: selectedProjectId,
           sourceFields: selectedFields,
           sortBy,
-          syncStatusToSource: syncStatus,
         }
       );
       setConfigVisible(false);
       router.push(`/checklist?id=${checklist.id}` as any);
     } catch (error) {
       console.log("Create checklist error", error);
-      Alert.alert("Fejl", "Kunne ikke oprette den dynamiske liste.");
+      const message =
+        error instanceof Error ? error.message : "Kunne ikke oprette den dynamiske liste.";
+      Alert.alert("Fejl", mapCreateChecklistError(message));
     } finally {
       setCreatingChecklist(false);
     }
+  };
+
+  function mapCreateChecklistError(message: string): string {
+    if (message.includes("Vælg et projekt")) return "Vælg et projekt for listen.";
+    if (message.includes("Ingen søgeresultater")) return "Søgningen gav ingen resultater at oprette en liste af.";
+    if (message.includes("permission-denied")) return "Du har ikke rettigheder til at oprette liste i dette projekt.";
+    if (message.includes("unauthenticated")) return "Du er ikke logget ind. Log ind og prøv igen.";
+    if (message.includes("network")) return "Tjek netværket og prøv igen.";
+    return message;
+  }
+
+  const renderEmptyState = () => {
+    if (!canSearch && query.trim()) {
+      return (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyTitle}>Skriv mindst 2 bogstaver</Text>
+          <Text style={styles.emptySubtitle}>
+            Indtast mindst 2 bogstaver for at søge.
+          </Text>
+        </View>
+      );
+    }
+    return (
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyTitle}>Ingen resultater</Text>
+        <Text style={styles.emptySubtitle}>
+          {query.trim()
+            ? "Prøv en anden søgning."
+            : "Alle dine projekters indlæg vises her."}
+        </Text>
+      </View>
+    );
   };
 
   return (
@@ -215,7 +341,7 @@ export default function SearchScreen() {
       <View style={styles.searchBar}>
         <TextInput
           style={styles.input}
-          placeholder={'Søg: *vand* "frase" type:note kategori:indkøb -kande OR flaske'}
+          placeholder={'Søg: Jem & Fix, 50 mm rør, æseløse...'}
           placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
           value={query}
           onChangeText={setQuery}
@@ -258,7 +384,7 @@ export default function SearchScreen() {
 
       <View style={styles.resultHeader}>
         <Text style={styles.resultCount}>
-          {loading ? "Indlæser..." : `${results.length} resultat${results.length === 1 ? "" : "er"}`}
+          {loading ? "Indlæser..." : canSearch ? `${results.length} resultat${results.length === 1 ? "" : "er"}` : "Indtast mindst 2 bogstaver"}
         </Text>
         {results.length > 0 ? (
           <TouchableOpacity
@@ -274,19 +400,10 @@ export default function SearchScreen() {
       </View>
 
       <FlatList
-        data={results}
+        data={canSearch ? results : []}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>Ingen resultater</Text>
-            <Text style={styles.emptySubtitle}>
-              {query.trim()
-                ? "Prøv en anden søgning."
-                : "Alle dine projekters indlæg vises her."}
-            </Text>
-          </View>
-        }
+        ListEmptyComponent={renderEmptyState()}
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.itemCard}
@@ -303,11 +420,18 @@ export default function SearchScreen() {
                 </View>
               ) : null}
             </View>
-            <Text style={styles.itemTitle}>{item.title}</Text>
+            <HighlightedText
+              text={item.title}
+              query={query}
+              style={styles.itemTitle}
+            />
             {item.content ? (
-              <Text style={styles.itemContent} numberOfLines={2}>
-                {item.content}
-              </Text>
+              <HighlightedText
+                text={item.content}
+                query={query}
+                style={styles.itemContent}
+                numberOfLines={2}
+              />
             ) : null}
             {item.assignedToName ? (
               <View style={styles.assigneeRow}>
@@ -342,7 +466,46 @@ export default function SearchScreen() {
                 onChangeText={setListName}
                 placeholder="Navn på listen"
                 placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+                maxLength={100}
               />
+
+              {projects.length > 1 ? (
+                <>
+                  <Text style={styles.modalLabel}>Projekt</Text>
+                  <View style={styles.projectList}>
+                    {projects.map((project) => {
+                      const members = projectMembers[project.id] || [];
+                      const role = getProjectRole(project, user?.uid || null, members);
+                      const canCreate = canCreateItem(role);
+                      return (
+                        <TouchableOpacity
+                          key={project.id}
+                          style={[
+                            styles.projectOption,
+                            selectedProjectId === project.id && styles.projectOptionActive,
+                            !canCreate && styles.projectOptionDisabled,
+                          ]}
+                          onPress={() => canCreate && setSelectedProjectId(project.id)}
+                          activeOpacity={canCreate ? 0.7 : 1}
+                        >
+                          <Text
+                            style={[
+                              styles.projectOptionText,
+                              selectedProjectId === project.id && styles.projectOptionTextActive,
+                              !canCreate && styles.projectOptionTextDisabled,
+                            ]}
+                          >
+                            {project.name}
+                          </Text>
+                          {!canCreate ? (
+                            <Text style={styles.projectOptionHint}>Kun læseadgang</Text>
+                          ) : null}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              ) : null}
 
               <Text style={styles.modalLabel}>Felter til punkter</Text>
               {(["content", "title", "category"] as SourceField[]).map((field) => (
@@ -385,16 +548,6 @@ export default function SearchScreen() {
                 ))}
               </View>
 
-              <View style={styles.optionRow}>
-                <Text style={styles.optionText}>Status-synk til kildesag</Text>
-                <Switch
-                  value={syncStatus}
-                  onValueChange={setSyncStatus}
-                  thumbColor={syncStatus ? "#38bdf8" : isDark ? "#94a3b8" : "#64748b"}
-                  trackColor={{ false: "#475569", true: "#0ea5e9" }}
-                />
-              </View>
-
               <View style={styles.modalButtons}>
                 <TouchableOpacity
                   style={styles.modalButtonSecondary}
@@ -405,10 +558,10 @@ export default function SearchScreen() {
                 <TouchableOpacity
                   style={[
                     styles.modalButtonPrimary,
-                    creatingChecklist && styles.buttonDisabled,
+                    (creatingChecklist || !canCreateChecklist) && styles.buttonDisabled,
                   ]}
                   onPress={handleCreateChecklist}
-                  disabled={creatingChecklist}
+                  disabled={creatingChecklist || !canCreateChecklist}
                 >
                   <Text style={styles.modalButtonPrimaryText}>
                     {creatingChecklist ? "Opretter..." : "Opret"}
@@ -655,6 +808,40 @@ const themedStyles = (isDark: boolean) =>
     },
     sortButtonTextActive: {
       color: "#0f172a",
+    },
+    projectList: {
+      gap: 8,
+    },
+    projectOption: {
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+      backgroundColor: isDark ? "#0f172a" : "#f1f5f9",
+    },
+    projectOptionActive: {
+      backgroundColor: "#38bdf8",
+      borderColor: "#38bdf8",
+    },
+    projectOptionDisabled: {
+      opacity: 0.7,
+    },
+    projectOptionText: {
+      fontSize: 15,
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      fontWeight: "600",
+    },
+    projectOptionTextActive: {
+      color: "#0f172a",
+    },
+    projectOptionTextDisabled: {
+      color: isDark ? "#94a3b8" : "#64748b",
+    },
+    projectOptionHint: {
+      fontSize: 12,
+      color: isDark ? "#94a3b8" : "#64748b",
+      marginTop: 2,
     },
     modalButtons: {
       flexDirection: "row",

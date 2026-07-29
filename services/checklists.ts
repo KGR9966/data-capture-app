@@ -16,7 +16,15 @@ import {
 
 import { buildChecklistUrl } from "./deeplinks";
 import { db } from "./firebase";
-import { CaptureItem, createItem, getItemById, updateItem } from "./items";
+import { CaptureItem, getItemById, updateItem } from "./items";
+import {
+  Checkpoint,
+  createCheckpoint,
+  deriveCheckpointsFromItem,
+  getCheckpointsForItem,
+  getOrCreateCheckpointsForItem,
+  updateCheckpoint,
+} from "./checkpoints";
 import { parseSearchQuery, searchItems } from "./search";
 
 export type ChecklistSortBy = "alphabetical" | "date" | "priority";
@@ -32,7 +40,8 @@ export interface Checklist {
   sourceFields?: SourceField[];
   sortBy?: ChecklistSortBy;
   sharedWith: Record<string, "owner" | "admin" | "editor" | "viewer">;
-  syncStatusToSource: boolean;
+  /** @deprecated Adskillelse af status gør denne toggle overflødig; beholdes for backwards compat. */
+  syncStatusToSource?: boolean;
   hasNewMatches?: boolean;
   lastViewedAt?: any;
   deletedItemKeys?: string[];
@@ -46,6 +55,9 @@ export interface ChecklistItem {
   sourceItemId: string;
   sourceProjectId: string;
   sourceItemPath?: string;
+  sourceCheckpointId?: string;
+  sourceField: SourceField | "manual";
+  lineIndex?: number;
   title: string;
   notes: string;
   isCompleted: boolean;
@@ -58,16 +70,15 @@ export interface ChecklistItem {
   staleNote?: string;
   isDuplicate?: boolean;
   duplicateOf?: string;
-  sourceStatusBeforeSync?: string;
   createdAt?: any;
   updatedAt?: any;
 }
 
 export interface CreateDynamicChecklistOptions {
-  projectId?: string;
+  /** Påkrævet ved oprettelse fra søgning. */
+  projectId: string;
   sourceFields?: SourceField[];
   sortBy?: ChecklistSortBy;
-  syncStatusToSource?: boolean;
 }
 
 const checklistsCollection = collection(db, "checklists");
@@ -133,20 +144,24 @@ function statusToPriority(status?: string): number {
 function parseSourceTextIntoPoints(
   text: string,
   sourceItem: CaptureItem,
-  orderOffset: number
+  orderOffset: number,
+  sourceField: SourceField
 ): Omit<ChecklistItem, "id" | "checklistId" | "createdAt" | "updatedAt">[] {
   if (!text || !text.trim()) return [];
 
   const rawLines = text.split(/\r?\n/);
   const points: Omit<ChecklistItem, "id" | "checklistId" | "createdAt" | "updatedAt">[] = [];
 
-  for (const rawLine of rawLines) {
+  for (let i = 0; i < rawLines.length; i++) {
+    const rawLine = rawLines[i];
     const line = rawLine.replace(/^[\s]*[-*•][\s]+/, "").trim();
     if (!line) continue;
     points.push({
       sourceItemId: sourceItem.id,
       sourceProjectId: sourceItem.projectId,
       sourceItemPath: `items/${sourceItem.id}`,
+      sourceField,
+      lineIndex: sourceField === "content" ? i : undefined,
       title: line,
       notes: sourceItem.title ? `Fra: ${sourceItem.title}` : "",
       isCompleted: false,
@@ -162,8 +177,8 @@ function extractPointsFromItem(
   item: CaptureItem,
   sourceFields: SourceField[],
   orderOffset: number
-): Omit<ChecklistItem, "id" | "checklistId" | "createdAt" | "updatedAt">[] {
-  const points: Omit<ChecklistItem, "id" | "checklistId" | "createdAt" | "updatedAt">[] = [];
+): Omit<ChecklistItem, "id" | "checklistId" | "createdAt" | "updatedAt" | "sourceCheckpointId">[] {
+  const points: Omit<ChecklistItem, "id" | "checklistId" | "createdAt" | "updatedAt" | "sourceCheckpointId">[] = [];
 
   for (const field of sourceFields) {
     if (field === "title" && item.title) {
@@ -171,6 +186,7 @@ function extractPointsFromItem(
         sourceItemId: item.id,
         sourceProjectId: item.projectId,
         sourceItemPath: `items/${item.id}`,
+        sourceField: "title",
         title: item.title,
         notes: "",
         isCompleted: false,
@@ -179,13 +195,14 @@ function extractPointsFromItem(
       });
     } else if (field === "content" && item.content) {
       points.push(
-        ...parseSourceTextIntoPoints(item.content, item, orderOffset + points.length)
+        ...parseSourceTextIntoPoints(item.content, item, orderOffset + points.length, "content")
       );
     } else if (field === "category" && item.category) {
       points.push({
         sourceItemId: item.id,
         sourceProjectId: item.projectId,
         sourceItemPath: `items/${item.id}`,
+        sourceField: "category",
         title: item.category,
         notes: "",
         isCompleted: false,
@@ -198,9 +215,9 @@ function extractPointsFromItem(
   return points;
 }
 
-function deduplicateStrict<T extends { title: string }>(
-  points: T[]
-): { kept: T[]; removedKeys: string[] } {
+function deduplicateStrict<
+  T extends { title: string }
+>(points: T[]): { kept: T[]; removedKeys: string[] } {
   const seen = new Set<string>();
   const kept: T[] = [];
   const removedKeys: string[] = [];
@@ -235,9 +252,7 @@ function wordSetSimilarity(a: string, b: string): number {
   return intersection.size / union.size;
 }
 
-function markSemanticDuplicates<T extends { title: string }>(
-  points: T[]
-): T[] {
+function markSemanticDuplicates<T extends { title: string }>(points: T[]): T[] {
   const marked: T[] = [];
   const representativeKeys: string[] = [];
 
@@ -260,7 +275,7 @@ function markSemanticDuplicates<T extends { title: string }>(
       ...point,
       isDuplicate: !!duplicateOf,
       duplicateOf,
-    });
+    } as T);
   }
 
   return marked;
@@ -289,7 +304,7 @@ export async function createChecklist(
     sourceFields: options.sourceFields || undefined,
     sortBy: options.sortBy || undefined,
     sharedWith: {},
-    syncStatusToSource: options.syncStatusToSource !== false,
+    syncStatusToSource: options.syncStatusToSource,
     hasNewMatches: false,
     deletedItemKeys: [],
     createdAt: serverTimestamp(),
@@ -305,11 +320,14 @@ export async function createChecklistFromItems(
   items: CaptureItem[],
   options: {
     projectId?: string;
-    syncStatusToSource?: boolean;
+    sourceFields?: SourceField[];
   } = {}
 ): Promise<{ checklist: Checklist; items: ChecklistItem[] }> {
   const ownerId = getUserId();
   if (!ownerId) throw new Error("Du skal være logget ind for at oprette en liste.");
+
+  const sourceFields: SourceField[] =
+    options.sourceFields?.length ? options.sourceFields : ["content"];
 
   const seen = new Set<string>();
   const deduplicatedItems = items.filter((item) => {
@@ -323,26 +341,46 @@ export async function createChecklistFromItems(
 
   const checklist = await createChecklist(name, {
     projectId: options.projectId,
-    syncStatusToSource: options.syncStatusToSource,
   });
 
   const checklistItems: ChecklistItem[] = [];
   for (let i = 0; i < deduplicatedItems.length; i++) {
     const item = deduplicatedItems[i];
-    const payload = {
-      checklistId: checklist.id,
-      sourceItemId: item.id,
-      sourceProjectId: item.projectId,
-      sourceItemPath: `items/${item.id}`,
-      title: item.title,
-      notes: item.content || "",
-      isCompleted: false,
-      orderIndex: i,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    };
-    const docRef = await addDoc(checklistItemsCollection(checklist.id), payload);
-    checklistItems.push({ id: docRef.id, ...payload });
+
+    // Opret checkpoints for title/category/content så toggle kan linke tilbage.
+    const checkpoints = await getOrCreateCheckpointsForItem(item, sourceFields);
+    const checkpointByKey = new Map<
+      string,
+      { checkpointId: string; lineIndex?: number; sourceField: SourceField }
+    >();
+    for (const cp of checkpoints) {
+      const key =
+        cp.sourceField === "content" ? `content:${cp.lineIndex ?? 0}` : cp.sourceField;
+      checkpointByKey.set(key, {
+        checkpointId: cp.id,
+        lineIndex: cp.lineIndex,
+        sourceField: cp.sourceField,
+      });
+    }
+
+    const points = extractPointsFromItem(item, sourceFields, i * 1000);
+    for (const point of points) {
+      const key =
+        point.sourceField === "content"
+          ? `content:${point.lineIndex ?? 0}`
+          : point.sourceField;
+      const cp = checkpointByKey.get(key);
+
+      const payload = {
+        checklistId: checklist.id,
+        ...point,
+        sourceCheckpointId: cp?.checkpointId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      const docRef = await addDoc(checklistItemsCollection(checklist.id), payload);
+      checklistItems.push({ id: docRef.id, ...payload });
+    }
   }
 
   return { checklist, items: checklistItems };
@@ -352,10 +390,11 @@ export async function createDynamicChecklistFromSearch(
   name: string,
   rawQuery: string,
   items: CaptureItem[],
-  options: CreateDynamicChecklistOptions = {}
+  options: CreateDynamicChecklistOptions
 ): Promise<{ checklist: Checklist; items: ChecklistItem[] }> {
   const ownerId = getUserId();
   if (!ownerId) throw new Error("Du skal være logget ind for at oprette en liste.");
+  if (!options.projectId) throw new Error("Vælg et projekt for listen.");
   if (items.length === 0) throw new Error("Søgningen gav ingen resultater at oprette en liste af.");
 
   const sourceFields: SourceField[] =
@@ -363,10 +402,16 @@ export async function createDynamicChecklistFromSearch(
       ? options.sourceFields
       : ["content"];
 
-  const projectId = options.projectId || items[0].projectId;
+  const projectId = options.projectId;
   const sortBy: ChecklistSortBy = options.sortBy || "alphabetical";
 
-  const candidatePoints = items.flatMap((item, index) =>
+  // Filtrér resultater til det valgte projekt.
+  const projectItems = items.filter((item) => item.projectId === projectId);
+  if (projectItems.length === 0) {
+    throw new Error("Ingen søgeresultater tilhører det valgte projekt.");
+  }
+
+  const candidatePoints = projectItems.flatMap((item, index) =>
     extractPointsFromItem(item, sourceFields, index * 1000)
   );
 
@@ -379,7 +424,6 @@ export async function createDynamicChecklistFromSearch(
     searchQuery: { raw: rawQuery },
     sourceFields,
     sortBy,
-    syncStatusToSource: options.syncStatusToSource,
   });
 
   const batch = writeBatch(db);
@@ -389,12 +433,42 @@ export async function createDynamicChecklistFromSearch(
     updatedAt: serverTimestamp(),
   });
 
+  const createdCheckpoints = new Map<
+    string,
+    { checkpointId: string; lineIndex?: number; sourceField: SourceField }[]
+  >();
+
+  // Opret checkpoints for hver kilde-sag i det valgte projekt.
+  for (const item of projectItems) {
+    const checkpoints = await getOrCreateCheckpointsForItem(item, sourceFields);
+    createdCheckpoints.set(
+      item.id,
+      checkpoints.map((cp) => ({
+        checkpointId: cp.id,
+        lineIndex: cp.lineIndex,
+        sourceField: cp.sourceField,
+      }))
+    );
+  }
+
   const checklistItems: ChecklistItem[] = [];
   for (let i = 0; i < markedPoints.length; i++) {
     const point = markedPoints[i];
+    const cps = createdCheckpoints.get(point.sourceItemId) || [];
+    const key =
+      point.sourceField === "content"
+        ? `content:${point.lineIndex ?? 0}`
+        : point.sourceField;
+    const cp = cps.find((c) => {
+      const cpKey =
+        c.sourceField === "content" ? `content:${c.lineIndex ?? 0}` : c.sourceField;
+      return cpKey === key;
+    });
+
     const payload = {
       checklistId: checklist.id,
       ...point,
+      sourceCheckpointId: cp?.checkpointId,
       isNewMatch: false,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -433,6 +507,7 @@ export function subscribeToChecklists(
   userId: string,
   callback: (checklists: Checklist[]) => void
 ) {
+  // @deprecated Brug project-scoped lister via subscribeToProjectChecklists.
   const q = query(checklistsCollection, where("ownerId", "==", userId));
   return onSnapshot(
     q,
@@ -451,6 +526,33 @@ export function subscribeToChecklists(
     },
     (error) => {
       console.error("[subscribeToChecklists] error:", error);
+      callback([]);
+    }
+  );
+}
+
+export function subscribeToProjectChecklists(
+  projectId: string,
+  callback: (checklists: Checklist[]) => void
+) {
+  const q = query(checklistsCollection, where("projectId", "==", projectId));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const checklists = snapshot.docs
+        .map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<Checklist, "id">),
+        }))
+        .sort((a, b) => {
+          const aTime = a.updatedAt?.toMillis?.() || 0;
+          const bTime = b.updatedAt?.toMillis?.() || 0;
+          return bTime - aTime;
+        });
+      callback(checklists);
+    },
+    (error) => {
+      console.error(`[subscribeToProjectChecklists] projectId=${projectId} error:`, error);
       callback([]);
     }
   );
@@ -508,47 +610,58 @@ export async function updateChecklistItem(
   });
 }
 
-export async function toggleChecklistItemComplete(
+export async function toggleChecklistPoint(
   checklist: Checklist,
-  item: ChecklistItem,
+  point: ChecklistItem,
   userId: string
 ): Promise<void> {
-  const nextCompleted = !item.isCompleted;
+  const nextCompleted = !point.isCompleted;
   const now = serverTimestamp();
 
-  try {
-    if (checklist.syncStatusToSource !== false && nextCompleted) {
-      // Snapshot current source status so we can restore it on uncheck.
-      const sourceItem = await getItemById(item.sourceItemId);
-      if (sourceItem) {
-        await updateChecklistItem(checklist.id, item.id, {
-          sourceStatusBeforeSync: sourceItem.status,
-        });
-      }
-    }
-  } catch (error) {
-    console.error("[toggleChecklistItemComplete] failed to snapshot source status:", error);
-  }
-
-  await updateChecklistItem(checklist.id, item.id, {
+  // 1. Opdater listepunkt
+  await updateChecklistItem(checklist.id, point.id, {
     isCompleted: nextCompleted,
     completedAt: nextCompleted ? now : undefined,
     completedBy: nextCompleted ? userId : undefined,
   });
 
-  if (checklist.syncStatusToSource === false) return;
-
-  try {
-    if (nextCompleted) {
-      await updateItem(item.sourceItemId, { status: "done" });
-    } else {
-      const restoredStatus: CaptureItem["status"] =
-        (item.sourceStatusBeforeSync as CaptureItem["status"]) || "in_progress";
-      await updateItem(item.sourceItemId, { status: restoredStatus });
-    }
-  } catch (error) {
-    console.error("[toggleChecklistItemComplete] failed to sync source item status:", error);
+  // 2. Opdater matchende checkpoint hvis det findes
+  if (
+    point.sourceItemId &&
+    point.sourceItemId !== "manual" &&
+    point.sourceCheckpointId
+  ) {
+    await updateCheckpoint(point.sourceItemId, point.sourceCheckpointId, {
+      status: nextCompleted ? "done" : "new",
+    });
   }
+
+  // 3. Tjek om alle checkpoints for item er done
+  if (point.sourceItemId && point.sourceItemId !== "manual") {
+    const checkpoints = await getCheckpointsForItem(point.sourceItemId);
+    if (checkpoints.length > 0) {
+      const allDone = checkpoints.every((cp) => cp.status === "done");
+      const anyOpen = checkpoints.some((cp) => cp.status !== "done");
+
+      if (allDone) {
+        await updateItem(point.sourceItemId, { status: "done" });
+      } else if (anyOpen && !nextCompleted) {
+        const item = await getItemById(point.sourceItemId);
+        if (item?.status === "done") {
+          await updateItem(point.sourceItemId, { status: "in_progress" });
+        }
+      }
+    }
+  }
+}
+
+/** Deprecated: beholdes for backwards compatibility; delegerer til toggleChecklistPoint. */
+export async function toggleChecklistItemComplete(
+  checklist: Checklist,
+  item: ChecklistItem,
+  userId: string
+): Promise<void> {
+  return toggleChecklistPoint(checklist, item, userId);
 }
 
 export async function markChecklistAsViewed(checklistId: string): Promise<void> {
@@ -585,8 +698,6 @@ export async function synchronizeDynamicChecklist(
   const matchedItems = searchItems(currentItems, rawQuery).filter(
     (item) => !projectId || item.projectId === projectId
   );
-
-  const queryObj = parseSearchQuery(rawQuery);
 
   const existingSnap = await getDocs(checklistItemsCollection(checklist.id));
   const existingItems = existingSnap.docs.map((d) => ({
@@ -640,6 +751,22 @@ export async function synchronizeDynamicChecklist(
     const alreadyHasSource = existingBySource.has(item.id);
     if (alreadyHasSource) continue;
 
+    // Opret checkpoints for ny match så den kan afkrydses korrekt.
+    const checkpoints = await getOrCreateCheckpointsForItem(item, sourceFields);
+    const cpByKey = new Map<
+      string,
+      { checkpointId: string; lineIndex?: number; sourceField: SourceField }
+    >();
+    for (const cp of checkpoints) {
+      const key =
+        cp.sourceField === "content" ? `content:${cp.lineIndex ?? 0}` : cp.sourceField;
+      cpByKey.set(key, {
+        checkpointId: cp.id,
+        lineIndex: cp.lineIndex,
+        sourceField: cp.sourceField,
+      });
+    }
+
     const newPoints = extractPointsFromItem(item, sourceFields, orderIndex);
     orderIndex += newPoints.length;
 
@@ -648,10 +775,17 @@ export async function synchronizeDynamicChecklist(
       if (!key || deletedKeys.has(key) || existingKeys.has(key)) continue;
       existingKeys.add(key);
 
+      const ptKey =
+        point.sourceField === "content"
+          ? `content:${point.lineIndex ?? 0}`
+          : point.sourceField;
+      const cp = cpByKey.get(ptKey);
+
       const docRef = doc(checklistItemsCollection(checklist.id));
       batch.set(docRef, {
         checklistId: checklist.id,
         ...point,
+        sourceCheckpointId: cp?.checkpointId,
         isNewMatch: true,
         createdAt: now,
         updatedAt: now,
@@ -683,6 +817,7 @@ export async function addManualItemToChecklist(
   if (checklist.isDynamic) {
     if (!checklist.projectId) throw new Error("Dynamisk liste mangler projekt.");
 
+    const { createItem } = await import("./items");
     const sourceItem = await createItem({
       projectId: checklist.projectId,
       createdBy: getUserId() || "",
@@ -692,10 +827,22 @@ export async function addManualItemToChecklist(
       status: "new",
     });
 
+    // Opret ét checkpoint for den manuelt tilføjede note, så den kan afkrydses.
+    const checkpoint = await createCheckpoint(sourceItem.id, {
+      itemId: sourceItem.id,
+      projectId: checklist.projectId,
+      sourceField: "content",
+      lineIndex: 0,
+      text: notes || title,
+      status: "new",
+    });
+
     return addChecklistItem(checklist.id, {
       sourceItemId: sourceItem.id,
       sourceProjectId: checklist.projectId,
       sourceItemPath: `items/${sourceItem.id}`,
+      sourceCheckpointId: checkpoint.id,
+      sourceField: "manual",
       title,
       notes: notes || "",
       isCompleted: false,
@@ -707,6 +854,7 @@ export async function addManualItemToChecklist(
   return addChecklistItem(checklist.id, {
     sourceItemId: "manual",
     sourceProjectId: checklist.projectId || "",
+    sourceField: "manual",
     title,
     notes: notes || "",
     isCompleted: false,

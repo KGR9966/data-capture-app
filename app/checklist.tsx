@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 
+import HighlightedText from "../components/HighlightedText";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { buildChecklistUrl, copyToClipboard } from "../services/deeplinks";
@@ -33,7 +34,7 @@ import {
   shareChecklistText,
   subscribeToChecklistItems,
   synchronizeDynamicChecklist,
-  toggleChecklistItemComplete,
+  toggleChecklistPoint,
   updateChecklist,
   updateChecklistItem,
 } from "../services/checklists";
@@ -181,10 +182,12 @@ export default function ChecklistDetailScreen() {
 
   const openCount = items.length - completedCount;
 
+  const rawQuery = checklist?.searchQuery?.raw || "";
+
   const handleToggleItem = async (item: ChecklistItem) => {
     if (!checklist || !user?.uid) return;
     try {
-      await toggleChecklistItemComplete(checklist, item, user.uid);
+      await toggleChecklistPoint(checklist, item, user.uid);
     } catch (error) {
       console.log("Toggle item error", error);
       Alert.alert("Fejl", "Kunne ikke opdatere punktet.");
@@ -392,14 +395,11 @@ export default function ChecklistDetailScreen() {
         <Text style={styles.title}>{checklist.name}</Text>
         <Text style={styles.subtitle}>
           {completedCount} af {items.length} udført · {openCount} åbne
-          {checklist.syncStatusToSource !== false
-            ? " · status synkroniseres til sagen"
-            : ""}
         </Text>
 
         <View style={styles.sortRow}>
           <Text style={styles.sortLabel}>Sorter:</Text>
-          {( ["alphabetical", "date", "priority"] as ChecklistSortBy[]).map((sort) => (
+          {(["alphabetical", "date", "priority"] as ChecklistSortBy[]).map((sort) => (
             <TouchableOpacity
               key={sort}
               style={[
@@ -463,15 +463,15 @@ export default function ChecklistDetailScreen() {
                 </TouchableOpacity>
                 <View style={styles.itemContent}>
                   <View style={styles.itemTitleRow}>
-                    <Text
+                    <HighlightedText
+                      text={item.title}
+                      query={rawQuery}
                       style={[
                         styles.itemTitle,
                         item.isCompleted && styles.completedText,
                         item.isStale && styles.staleText,
                       ]}
-                    >
-                      {item.title}
-                    </Text>
+                    />
                     {item.isNewMatch ? (
                       <View style={styles.newBadge}>
                         <Text style={styles.newBadgeText}>Nyt match</Text>
@@ -486,16 +486,16 @@ export default function ChecklistDetailScreen() {
                     ) : null}
                   </View>
                   {item.notes ? (
-                    <Text
+                    <HighlightedText
+                      text={item.notes}
+                      query={rawQuery}
                       style={[
                         styles.itemNotes,
                         item.isCompleted && styles.completedText,
                         item.isStale && styles.staleText,
                       ]}
                       numberOfLines={2}
-                    >
-                      {item.notes}
-                    </Text>
+                    />
                   ) : null}
                   {item.isStale ? (
                     <Text style={styles.staleNote}>
@@ -545,40 +545,46 @@ export default function ChecklistDetailScreen() {
         onRequestClose={closeEditModal}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ScrollView keyboardShouldPersistTaps="handled">
-              <Text style={styles.modalTitle}>Rediger punkt</Text>
-              <Text style={styles.modalLabel}>Titel</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={editTitle}
-                onChangeText={setEditTitle}
-                placeholder="Punktets titel"
-                placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-              />
-              <Text style={styles.modalLabel}>Noter</Text>
-              <TextInput
-                style={[styles.modalInput, styles.modalInputMultiline]}
-                value={editNotes}
-                onChangeText={setEditNotes}
-                placeholder="Noter (valgfrit)"
-                placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-                multiline
-                numberOfLines={3}
-              />
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={styles.modalButtonSecondary}
-                  onPress={closeEditModal}
-                >
-                  <Text style={styles.modalButtonSecondaryText}>Annuller</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.modalButtonPrimary} onPress={saveEdit}>
-                  <Text style={styles.modalButtonPrimaryText}>Gem</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+            style={styles.keyboardAvoiding}
+          >
+            <View style={styles.modalContent}>
+              <ScrollView keyboardShouldPersistTaps="handled">
+                <Text style={styles.modalTitle}>Rediger punkt</Text>
+                <Text style={styles.modalLabel}>Titel</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={editTitle}
+                  onChangeText={setEditTitle}
+                  placeholder="Punktets titel"
+                  placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+                />
+                <Text style={styles.modalLabel}>Noter</Text>
+                <TextInput
+                  style={[styles.modalInput, styles.modalInputMultiline]}
+                  value={editNotes}
+                  onChangeText={setEditNotes}
+                  placeholder="Noter (valgfrit)"
+                  placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+                  multiline
+                  numberOfLines={3}
+                />
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={styles.modalButtonSecondary}
+                    onPress={closeEditModal}
+                  >
+                    <Text style={styles.modalButtonSecondaryText}>Annuller</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.modalButtonPrimary} onPress={saveEdit}>
+                    <Text style={styles.modalButtonPrimaryText}>Gem</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -590,52 +596,58 @@ export default function ChecklistDetailScreen() {
         onRequestClose={() => setAddModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ScrollView keyboardShouldPersistTaps="handled">
-              <Text style={styles.modalTitle}>Tilføj punkt</Text>
-              <Text style={styles.modalHelper}>
-                Der oprettes automatisk en sag, der matcher listens søgning.
-              </Text>
-              <Text style={styles.modalLabel}>Titel</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={newItemTitle}
-                onChangeText={setNewItemTitle}
-                placeholder="Ny sag / punkt"
-                placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-              />
-              <Text style={styles.modalLabel}>Noter</Text>
-              <TextInput
-                style={[styles.modalInput, styles.modalInputMultiline]}
-                value={newItemNotes}
-                onChangeText={setNewItemNotes}
-                placeholder="Noter (valgfrit)"
-                placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-                multiline
-                numberOfLines={3}
-              />
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={styles.modalButtonSecondary}
-                  onPress={() => setAddModalVisible(false)}
-                >
-                  <Text style={styles.modalButtonSecondaryText}>Annuller</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.modalButtonPrimary,
-                    (!newItemTitle.trim() || adding) && styles.buttonDisabled,
-                  ]}
-                  onPress={handleAddItem}
-                  disabled={!newItemTitle.trim() || adding}
-                >
-                  <Text style={styles.modalButtonPrimaryText}>
-                    {adding ? "Tilføjer..." : "Tilføj"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+            style={styles.keyboardAvoiding}
+          >
+            <View style={styles.modalContent}>
+              <ScrollView keyboardShouldPersistTaps="handled">
+                <Text style={styles.modalTitle}>Tilføj punkt</Text>
+                <Text style={styles.modalHelper}>
+                  Der oprettes automatisk en sag, der matcher listens søgning.
+                </Text>
+                <Text style={styles.modalLabel}>Titel</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={newItemTitle}
+                  onChangeText={setNewItemTitle}
+                  placeholder="Ny sag / punkt"
+                  placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+                />
+                <Text style={styles.modalLabel}>Noter</Text>
+                <TextInput
+                  style={[styles.modalInput, styles.modalInputMultiline]}
+                  value={newItemNotes}
+                  onChangeText={setNewItemNotes}
+                  placeholder="Noter (valgfrit)"
+                  placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+                  multiline
+                  numberOfLines={3}
+                />
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={styles.modalButtonSecondary}
+                    onPress={() => setAddModalVisible(false)}
+                  >
+                    <Text style={styles.modalButtonSecondaryText}>Annuller</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.modalButtonPrimary,
+                      (!newItemTitle.trim() || adding) && styles.buttonDisabled,
+                    ]}
+                    onPress={handleAddItem}
+                    disabled={!newItemTitle.trim() || adding}
+                  >
+                    <Text style={styles.modalButtonPrimaryText}>
+                      {adding ? "Tilføjer..." : "Tilføj"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </KeyboardAvoidingView>
@@ -903,6 +915,9 @@ const themedStyles = (isDark: boolean) =>
       flex: 1,
       backgroundColor: "rgba(0,0,0,0.5)",
       justifyContent: "flex-end",
+    },
+    keyboardAvoiding: {
+      width: "100%",
     },
     modalContent: {
       backgroundColor: isDark ? "#1e293b" : "#ffffff",

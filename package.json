@@ -12,7 +12,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "pre-test-check": "node scripts/pre-test-check.js"
+    "pre-test-check": "node scripts/pre-test-check.js",
+    "wipe:checklists": "node scripts/wipe-checklists.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
@@ -51,6 +52,7 @@
     "@types/react": "~19.2.2",
     "eslint": "^9.39.4",
     "eslint-config-expo": "~57.0.0",
+    "firebase-admin": "^13.0.0",
     "typescript": "~6.0.3"
   },
   "private": true

@@ -16,9 +16,10 @@ import { useTheme } from "../../contexts/ThemeContext";
 import {
   Checklist,
   deleteChecklist,
-  subscribeToChecklists,
   subscribeToChecklistItems,
+  subscribeToProjectChecklists,
 } from "../../services/checklists";
+import { subscribeToProjects } from "../../services/projects";
 
 interface ItemCounts {
   open: number;
@@ -64,13 +65,60 @@ export default function ChecklistsScreen() {
   useEffect(() => {
     if (!user?.uid) return;
 
-    const unsubscribeChecklists = subscribeToChecklists(user.uid, (data) => {
-      setChecklists(data);
-      setLoading(false);
-    });
+    const byProject = new Map<string, Checklist[]>();
+    let projectIds: string[] = [];
+    let unsubscribes: (() => void)[] = [];
 
-    return () => unsubscribeChecklists();
-  }, [user?.uid]);
+    const mergeChecklists = () => {
+      const merged = Array.from(byProject.values())
+        .flat()
+        .reduce<Map<string, Checklist>>((map, list) => {
+          if (!map.has(list.id) || list.updatedAt?.toMillis?.() > map.get(list.id)!.updatedAt?.toMillis?.()) {
+            map.set(list.id, list);
+          }
+          return map;
+        }, new Map());
+      const sorted = Array.from(merged.values()).sort((a, b) => {
+        const aTime = a.updatedAt?.toMillis?.() || 0;
+        const bTime = b.updatedAt?.toMillis?.() || 0;
+        return bTime - aTime;
+      });
+      setChecklists(sorted);
+      setLoading(false);
+    };
+
+    const unsubscribeProjects = subscribeToProjects(
+      user.uid,
+      user.email ?? null,
+      (projects) => {
+        projectIds = projects.map((p) => p.id);
+
+        // Genopret listeners for det nye projektsæt.
+        unsubscribes.forEach((u) => u());
+        unsubscribes = [];
+        byProject.clear();
+
+        if (projectIds.length === 0) {
+          setChecklists([]);
+          setLoading(false);
+          return;
+        }
+
+        projectIds.forEach((projectId) => {
+          const unsubscribe = subscribeToProjectChecklists(projectId, (data) => {
+            byProject.set(projectId, data);
+            mergeChecklists();
+          });
+          unsubscribes.push(unsubscribe);
+        });
+      }
+    );
+
+    return () => {
+      unsubscribeProjects();
+      unsubscribes.forEach((u) => u());
+    };
+  }, [user?.uid, user?.email]);
 
   useEffect(() => {
     if (!user?.uid || checklistsRef.current.length === 0) return;

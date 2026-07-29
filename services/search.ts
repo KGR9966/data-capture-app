@@ -1,5 +1,7 @@
 // Client-side søgemotor for Data Capture.
-// Parser en query-string med syntaks: "frase", *ord*, -negation, OR, og key:value filtre.
+// Fase 1: substring-søgning der bevarer specialtegn (&, /, -, tal, æøå).
+// Smart-syntaks ("frase", *ord*, -ord, OR, key:value) parses stadig for
+// backwards compatibility, men er ikke den primære brugsvej i denne runde.
 
 import { CaptureItem, ItemStatus, ItemType } from "./items";
 
@@ -45,6 +47,11 @@ export interface SearchFilters {
   assignee?: string; // søger i assignedToName eller e-mail
   projectId?: string;
   hasPhoto?: boolean;
+}
+
+export interface HighlightSegment {
+  text: string;
+  highlight: boolean;
 }
 
 type Token =
@@ -102,14 +109,43 @@ const STATUS_ALIASES: Record<string, ItemStatus> = {
   archived: "archived",
 };
 
-function normalize(str: string): string {
+/** Tæl antal bogstaver (a-z + æøå, case-insensitive). */
+export function hasEnoughSearchLetters(query: string): boolean {
+  const letters = query.toLowerCase().match(/[a-zæøåé]/g) || [];
+  return letters.length >= 2;
+}
+
+function normalizeForMatch(str: string): string {
   return str
     .toLowerCase()
     .replace(/[æ]/g, "ae")
     .replace(/[ø]/g, "oe")
-    .replace(/[å]/g, "aa")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .trim();
+    .replace(/[å]/g, "aa");
+}
+
+function readQuoted(remaining: string, startIndex: number): { value: string; rest: string } {
+  let i = startIndex;
+  let value = "";
+  while (i < remaining.length) {
+    const ch = remaining[i];
+    if (ch === '"') {
+      return { value, rest: remaining.slice(i + 1) };
+    }
+    value += ch;
+    i++;
+  }
+  // unmatched quote: rest is phrase
+  return { value, rest: "" };
+}
+
+function readWord(remaining: string): { value: string; rest: string } {
+  let i = 0;
+  let value = "";
+  while (i < remaining.length && remaining[i].trim() !== "") {
+    value += remaining[i];
+    i++;
+  }
+  return { value, rest: remaining.slice(i) };
 }
 
 function tokenize(raw: string): Token[] {
@@ -118,47 +154,36 @@ function tokenize(raw: string): Token[] {
 
   while (remaining.length > 0) {
     remaining = remaining.trimStart();
+    if (remaining.length === 0) break;
 
     // Phrase: "..."
     if (remaining.startsWith('"')) {
-      const end = remaining.indexOf('"', 1);
-      if (end > 0) {
-        tokens.push({ kind: "phrase", value: remaining.slice(1, end) });
-        remaining = remaining.slice(end + 1);
-        continue;
-      }
-      // unmatched quote: treat rest as phrase
-      tokens.push({ kind: "phrase", value: remaining.slice(1) });
-      break;
+      const { value, rest } = readQuoted(remaining, 1);
+      tokens.push({ kind: "phrase", value });
+      remaining = rest;
+      continue;
     }
 
     // Exclude: -word or -"phrase"
     if (remaining.startsWith("-")) {
       if (remaining.startsWith('-"')) {
-        const end = remaining.indexOf('"', 2);
-        if (end > 0) {
-          tokens.push({
-            kind: "exclude",
-            value: remaining.slice(2, end),
-            exact: false,
-          });
-          remaining = remaining.slice(end + 1);
-          continue;
-        }
+        const { value, rest } = readQuoted(remaining, 2);
+        tokens.push({ kind: "exclude", value, exact: false });
+        remaining = rest;
+        continue;
       }
-      const nextSpace = remaining.search(/\s/);
-      const term =
-        nextSpace > 0 ? remaining.slice(1, nextSpace) : remaining.slice(1);
+      const { value, rest } = readWord(remaining.slice(1));
+      const cleaned = value.replace(/^\*+|\*+$/g, "");
       tokens.push({
         kind: "exclude",
-        value: term.replace(/^\*+|\*+$/g, ""),
-        exact: !term.startsWith("*") && !term.endsWith("*"),
+        value: cleaned,
+        exact: !(value.startsWith("*") || value.endsWith("*")),
       });
-      remaining = nextSpace > 0 ? remaining.slice(nextSpace) : "";
+      remaining = rest;
       continue;
     }
 
-    // Filter key:value
+    // Filter key:value (value runs until whitespace)
     const filterMatch = remaining.match(/^([a-zæøåéA-ZÆØÅÉ0-9_]+):([^\s]+)/i);
     if (filterMatch) {
       tokens.push({
@@ -170,24 +195,25 @@ function tokenize(raw: string): Token[] {
       continue;
     }
 
-    // OR operator
-    if (remaining.toLowerCase().startsWith("or ")) {
-      tokens.push({ kind: "or" });
-      remaining = remaining.slice(3);
-      continue;
+    // OR operator (whole word, case-insensitive)
+    if (remaining.length >= 2 && remaining.slice(0, 2).toLowerCase() === "or") {
+      const after = remaining[2];
+      if (after === undefined || after.trim() === "") {
+        tokens.push({ kind: "or" });
+        remaining = remaining.slice(3);
+        continue;
+      }
     }
 
-    // Plain word with optional *...* word-boundary marker
-    const nextSpace = remaining.search(/\s/);
-    const term =
-      nextSpace > 0 ? remaining.slice(0, nextSpace) : remaining;
-    const cleaned = term.replace(/^\*+|\*+$/g, "");
+    // Plain word: read until whitespace. Preserve every char including & / - , . etc.
+    const { value, rest } = readWord(remaining);
+    const cleaned = value.replace(/^\*+|\*+$/g, "");
     tokens.push({
       kind: "word",
       value: cleaned,
-      exact: term.startsWith("*") || term.endsWith("*"),
+      exact: value.startsWith("*") || value.endsWith("*"),
     });
-    remaining = nextSpace > 0 ? remaining.slice(nextSpace) : "";
+    remaining = rest;
   }
 
   return tokens;
@@ -293,47 +319,37 @@ function getSearchableText(item: CaptureItem): string {
   return parts.filter((s): s is string => Boolean(s)).join(" ").toLowerCase();
 }
 
-function hasWholeWord(haystack: string, needle: string): boolean {
-  const normalizedHaystack = normalize(haystack);
-  const normalizedNeedle = normalize(needle);
+function containsTerm(haystack: string, needle: string): boolean {
+  const normalizedHaystack = normalizeForMatch(haystack);
+  const normalizedNeedle = normalizeForMatch(needle);
   if (!normalizedNeedle) return false;
-  const pattern = new RegExp(
-    `(^|\\s|\\b)${normalizedNeedle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|\\s|\\b)`,
-    "i"
-  );
-  return pattern.test(normalizedHaystack);
+  return normalizedHaystack.includes(normalizedNeedle);
 }
 
 function containsPhrase(haystack: string, phrase: string): boolean {
-  return haystack.toLowerCase().includes(phrase.toLowerCase());
-}
-
-function containsTerm(haystack: string, needle: string): boolean {
-  const normalizedHaystack = normalize(haystack);
-  const normalizedNeedle = normalize(needle);
-  if (!normalizedNeedle) return false;
-  return normalizedHaystack.includes(normalizedNeedle);
+  return containsTerm(haystack, phrase);
 }
 
 function termMatches(
   haystack: string,
   term: { value: string; exact: boolean }
 ): boolean {
-  if (term.exact) return hasWholeWord(haystack, term.value);
+  // Fase 1: substring-baseret matching. exact-flagget parses stadig men
+  // påvirker ikke matchingen (whole-word marker *ord* er ude af scope).
   return containsTerm(haystack, term.value);
 }
 
 function matchesFilters(item: CaptureItem, filters: SearchFilters): boolean {
   if (filters.type && item.type !== filters.type) return false;
   if (filters.category) {
-    const itemCategory = (item.category || "").toLowerCase();
-    if (itemCategory !== filters.category.toLowerCase()) return false;
+    const itemCategory = normalizeForMatch(item.category || "");
+    if (itemCategory !== normalizeForMatch(filters.category)) return false;
   }
   if (filters.status && item.status !== filters.status) return false;
   if (filters.assignee) {
-    const assignee = (filters.assignee || "").toLowerCase();
-    const name = (item.assignedToName || "").toLowerCase();
-    const userId = (item.assignedTo || "").toLowerCase();
+    const assignee = normalizeForMatch(filters.assignee);
+    const name = normalizeForMatch(item.assignedToName || "");
+    const userId = normalizeForMatch(item.assignedTo || "");
     if (!name.includes(assignee) && !userId.includes(assignee)) return false;
   }
   if (filters.projectId && item.projectId !== filters.projectId) return false;
@@ -352,11 +368,7 @@ export function matchItem(item: CaptureItem, query: SearchQuery): number {
   for (const word of query.required) {
     if (termMatches(text, word)) {
       score += 1;
-      // Bonus for title match; extra bonus for whole-word title match
-      if (item.title) {
-        if (termMatches(item.title, word)) score += 1;
-        if (hasWholeWord(item.title, word.value)) score += 1;
-      }
+      if (item.title && containsTerm(item.title, word.value)) score += 1;
     } else {
       return 0;
     }
@@ -384,10 +396,7 @@ export function matchItem(item: CaptureItem, query: SearchQuery): number {
 
   // Excluded terms
   for (const term of query.excluded) {
-    const matched = term.exact
-      ? hasWholeWord(text, term.value)
-      : containsTerm(text, term.value) || containsPhrase(text, term.value);
-    if (matched) {
+    if (termMatches(text, term)) {
       return 0;
     }
   }
@@ -399,6 +408,8 @@ export function searchItems(
   items: CaptureItem[],
   rawQuery: string
 ): CaptureItem[] {
+  if (!rawQuery.trim()) return items;
+
   const query = parseSearchQuery(rawQuery);
 
   if (
@@ -415,4 +426,77 @@ export function searchItems(
     .filter(({ score }) => score > 0)
     .sort((a, b) => b.score - a.score)
     .map(({ item }) => item);
+}
+
+/** Find highlight-intervaller i text baseret på query-tokens. */
+export function findHighlightSegments(
+  text: string,
+  queryRaw: string
+): HighlightSegment[] {
+  if (!text || !queryRaw.trim()) {
+    return [{ text, highlight: false }];
+  }
+
+  const query = parseSearchQuery(queryRaw);
+  const searchableText = text.toLowerCase();
+  const intervals: { start: number; end: number }[] = [];
+
+  const addInterval = (start: number, end: number) => {
+    if (start < 0) start = 0;
+    if (end > text.length) end = text.length;
+    if (start >= end) return;
+    intervals.push({ start, end });
+  };
+
+  const findTokenMatches = (token: string) => {
+    const needle = normalizeForMatch(token);
+    if (!needle) return;
+    let index = 0;
+    while (index < searchableText.length) {
+      const pos = normalizeForMatch(searchableText.slice(index)).indexOf(needle);
+      if (pos === -1) break;
+      const actualStart = index + pos;
+      addInterval(actualStart, actualStart + token.length);
+      index = actualStart + Math.max(1, token.length);
+    }
+  };
+
+  for (const word of query.required) findTokenMatches(word.value);
+  for (const phrase of query.phrases) findTokenMatches(phrase);
+  for (const group of query.orGroups) {
+    for (const term of group) {
+      findTokenMatches(term.value);
+    }
+  }
+
+  // Merge intervals
+  intervals.sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged: { start: number; end: number }[] = [];
+  for (const interval of intervals) {
+    const last = merged[merged.length - 1];
+    if (last && interval.start <= last.end) {
+      last.end = Math.max(last.end, interval.end);
+    } else {
+      merged.push({ ...interval });
+    }
+  }
+
+  // Build segments
+  const segments: HighlightSegment[] = [];
+  let cursor = 0;
+  for (const interval of merged) {
+    if (interval.start > cursor) {
+      segments.push({ text: text.slice(cursor, interval.start), highlight: false });
+    }
+    segments.push({ text: text.slice(interval.start, interval.end), highlight: true });
+    cursor = interval.end;
+  }
+  if (cursor < text.length) {
+    segments.push({ text: text.slice(cursor), highlight: false });
+  }
+  if (segments.length === 0) {
+    segments.push({ text, highlight: false });
+  }
+
+  return segments;
 }
