@@ -453,11 +453,15 @@ export function findHighlightSegments(
     if (!needle) return;
     let index = 0;
     while (index < searchableText.length) {
-      const pos = normalizeForMatch(searchableText.slice(index)).indexOf(needle);
+      const normalizedSlice = normalizeForMatch(searchableText.slice(index));
+      const pos = normalizedSlice.indexOf(needle);
       if (pos === -1) break;
       const actualStart = index + pos;
-      addInterval(actualStart, actualStart + token.length);
-      index = actualStart + Math.max(1, token.length);
+      // Interval-længden skal matche needle-længden i den normaliserede tekst,
+      // så æ/ø/å (som bliver til 2 tegn) ikke giver forkerte slutpositioner.
+      const actualEnd = actualStart + needle.length;
+      addInterval(actualStart, actualEnd);
+      index = actualStart + Math.max(1, needle.length);
     }
   };
 

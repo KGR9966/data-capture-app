@@ -309,7 +309,8 @@ export default function SearchScreen() {
     if (message.includes("permission-denied")) return "Du har ikke rettigheder til at oprette liste i dette projekt.";
     if (message.includes("unauthenticated")) return "Du er ikke logget ind. Log ind og prøv igen.";
     if (message.includes("network")) return "Tjek netværket og prøv igen.";
-    return message;
+    // Aldvis den generiske "Kunne ikke oprette den dynamiske liste."-besked.
+    return "Listen kunne ikke oprettes. Tjek netværket og prøv igen.";
   }
 
   const renderEmptyState = () => {

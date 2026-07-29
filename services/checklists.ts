@@ -617,12 +617,15 @@ export async function toggleChecklistPoint(
 ): Promise<void> {
   const nextCompleted = !point.isCompleted;
   const now = serverTimestamp();
+  const batch = writeBatch(db);
 
   // 1. Opdater listepunkt
-  await updateChecklistItem(checklist.id, point.id, {
+  const pointRef = doc(db, "checklists", checklist.id, "items", point.id);
+  batch.update(pointRef, {
     isCompleted: nextCompleted,
-    completedAt: nextCompleted ? now : undefined,
-    completedBy: nextCompleted ? userId : undefined,
+    completedAt: nextCompleted ? now : deleteField(),
+    completedBy: nextCompleted ? userId : deleteField(),
+    updatedAt: now,
   });
 
   // 2. Opdater matchende checkpoint hvis det findes
@@ -631,12 +634,23 @@ export async function toggleChecklistPoint(
     point.sourceItemId !== "manual" &&
     point.sourceCheckpointId
   ) {
-    await updateCheckpoint(point.sourceItemId, point.sourceCheckpointId, {
+    const checkpointRef = doc(
+      db,
+      "items",
+      point.sourceItemId,
+      "checkpoints",
+      point.sourceCheckpointId
+    );
+    batch.update(checkpointRef, {
       status: nextCompleted ? "done" : "new",
+      updatedAt: now,
     });
   }
 
-  // 3. Tjek om alle checkpoints for item er done
+  await batch.commit();
+
+  // 3. Tjek om alle checkpoints for item er done (separate læseoperation;
+  // item-status opdateres kun hvis nødvendigt).
   if (point.sourceItemId && point.sourceItemId !== "manual") {
     const checkpoints = await getCheckpointsForItem(point.sourceItemId);
     if (checkpoints.length > 0) {
