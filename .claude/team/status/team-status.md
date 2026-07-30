@@ -525,20 +525,23 @@ Før teamet kan designe rettelserne, skal PO tage stilling til:
 **Status:** Beslutningerne gør planen klar til formalisering og PO-godkendelse (Task #80).  
 **Planfil:** `.claude/team/plans/plan-search-lists-redesign.md`
 
-### 9.6 Seneste rettelser og build-status
+### 9.7 Ny samlet runde godkendt — comprehensive bug/backlog round
 
-**PO-beslutning:** Android-build udskydes i denne runde — PO tester kun på iOS. Android-test aftales senere.
+**PO har godkendt plan:** `.claude/plans/comprehensive-bug-backlog-round.md`
 
-**Rettelser commit'et i `aed8260` (efter PO-test af build `df8e2a49`):**
-- `app/(tabs)/search.tsx`: Projektvælgeren viser nu kun projekter med faktiske søgeresultater, og forvalger automatisk det første.
-- `app/(tabs)/search.tsx`: Antal søgeresultater vises ved hvert projekt.
-- `app/(tabs)/search.tsx`: Fejlbeskeden skelner nu mellem "ingen resultater" og "valgt projekt har ingen af resultaterne".
-- `app/(tabs)/search.tsx`: Tilføjet console.log før opkald til listeoprettelse for lettere debugging.
-- TypeScript og Expo lint: grønne.
+**Scope for denne runde:**
+- Alle tilbageværende kendte bugs + B3 (offline lister), B4 (push-reminders), B8 (US-006 tomt-navn + server-side dubletter), B9 (slet projekt), D1 (photo "Åben" residue), D3 (auto-title bug).
+- UI/UX-polish: Tilføj-knap i Board skal have samme størrelse som Optag; vis ansvarlig i liste.
+- Governance: Arkiver usecase-dokumenter, UI/UX-agent review, testplan, QA, audit.
+
+**Metode:** Test før build. Samle alle rettelser i ét build. Ingen build uden PO-go.
 
 **Build-status:**
-- iOS: ✅ **Klar til test** — Build `b6e985e2-5228-4eed-878a-9703e7986e16` — [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/b6e985e2-5228-4eed-878a-9703e7986e16)
+- iOS: ✅ **Klar til test af A1-rettelse** — Build `b6e985e2-5228-4eed-878a-9703e7986e16` — [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/b6e985e2-5228-4eed-878a-9703e7986e16)
+  - Bemærk: Firestore-regler er netop deployet manuelt. Dette build kan nu testes for listeoprettelse.
 - Android: **udskudt** indtil videre.
+
+### Hotfix-build links (forældede — nye kommer)
 
 ### Hotfix-build links (forældede — nye kommer)
 
