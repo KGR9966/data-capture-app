@@ -234,16 +234,12 @@ export default function SearchScreen() {
     });
   }, [projects, projectMembers, user?.uid, projectResultCounts]);
 
-  const selectedProjectRole = useMemo(() => {
-    if (!selectedProjectId) return null;
-    const project = projects.find((p) => p.id === selectedProjectId);
-    const members = projectMembers[selectedProjectId] || [];
-    return getProjectRole(project || null, user?.uid || null, members);
-  }, [selectedProjectId, projects, projectMembers, user?.uid]);
-
+  // Brug availableProjects som sandhedskilde for oprettelsesrettigheder,
+  // så projektvælger og knap altid er synkroniserede.
   const canCreateChecklist = useMemo(() => {
-    return canCreateItem(selectedProjectRole);
-  }, [selectedProjectRole]);
+    if (!selectedProjectId) return false;
+    return availableProjects.some((p) => p.id === selectedProjectId);
+  }, [selectedProjectId, availableProjects]);
 
   const openConfigModal = () => {
     if (results.length === 0) return;

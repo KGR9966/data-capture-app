@@ -537,7 +537,7 @@ Før teamet kan designe rettelserne, skal PO tage stilling til:
 - TypeScript og Expo lint: grønne.
 
 **Build-status:**
-- iOS: ✅ **Klar til test** — Build `13813298-43f0-4212-b175-603a71d1525a` — [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/13813298-43f0-4212-b175-603a71d1525a)
+- iOS: ✅ **Klar til test** — Build `b6e985e2-5228-4eed-878a-9703e7986e16` — [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/b6e985e2-5228-4eed-878a-9703e7986e16)
 - Android: **udskudt** indtil videre.
 
 ### Hotfix-build links (forældede — nye kommer)
