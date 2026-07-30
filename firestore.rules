@@ -34,7 +34,10 @@ service cloud.firestore {
       return isAuthenticated()
              && (getProjectData(projectId).ownerId == getUserId()
                  || (getUserId() in getProjectData(projectId).roles
-                     && getProjectData(projectId).roles.get(getUserId(), null) in allowedRoles));
+                     && getProjectData(projectId).roles.get(getUserId(), null) in allowedRoles)
+                 || (request.auth.token.email != null
+                     && request.auth.token.email in getProjectData(projectId).memberEmails
+                     && "editor" in allowedRoles));
     }
 
     function canCreateInProject(projectId) {
