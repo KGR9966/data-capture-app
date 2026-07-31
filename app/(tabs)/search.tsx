@@ -402,6 +402,10 @@ export default function SearchScreen() {
         ) : null}
       </View>
 
+      <Text style={styles.searchHint}>
+        Almindelig tekst søger som delstreng. Brug &quot;...&quot; for præcis ord/phrase og *...* for hele-ord wildcard.
+      </Text>
+
       <View style={styles.resultHeader}>
         <Text style={styles.resultCount}>
           {loading ? "Indlæser..." : canSearch ? `${results.length} resultat${results.length === 1 ? "" : "er"}` : "Indtast mindst 2 tegn"}
@@ -612,7 +616,13 @@ const themedStyles = (isDark: boolean) =>
       paddingHorizontal: 12,
       borderWidth: 1,
       borderColor: isDark ? "#334155" : "#e2e8f0",
+      marginBottom: 6,
+    },
+    searchHint: {
+      fontSize: 12,
+      color: isDark ? "#94a3b8" : "#64748b",
       marginBottom: 12,
+      marginLeft: 2,
     },
     input: {
       flex: 1,

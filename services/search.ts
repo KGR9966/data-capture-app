@@ -320,6 +320,10 @@ function getSearchableText(item: CaptureItem): string {
   return parts.filter((s): s is string => Boolean(s)).join(" ").toLowerCase();
 }
 
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function containsTerm(haystack: string, needle: string): boolean {
   const normalizedHaystack = normalizeForMatch(haystack);
   const normalizedNeedle = normalizeForMatch(needle);
@@ -327,17 +331,34 @@ function containsTerm(haystack: string, needle: string): boolean {
   return normalizedHaystack.includes(normalizedNeedle);
 }
 
+function containsWholeWord(
+  haystack: string,
+  needle: string,
+  wildcard: boolean
+): boolean {
+  const normalizedHaystack = normalizeForMatch(haystack);
+  const normalizedNeedle = normalizeForMatch(needle);
+  if (!normalizedNeedle) return false;
+
+  const escaped = escapeRegex(normalizedNeedle).replace(/\\\*/g, "[^\\s]*");
+  const pattern = wildcard
+    ? `\\b[^\\s]*${escaped}[^\\s]*\\b`
+    : `\\b${escaped}\\b`;
+
+  return new RegExp(pattern, "i").test(normalizedHaystack);
+}
+
 function containsPhrase(haystack: string, phrase: string): boolean {
-  return containsTerm(haystack, phrase);
+  return containsWholeWord(haystack, phrase, false);
 }
 
 function termMatches(
   haystack: string,
   term: { value: string; exact: boolean }
 ): boolean {
-  // Fase 1: substring-baseret matching. exact-flagget parses stadig men
-  // påvirker ikke matchingen (whole-word marker *ord* er ude af scope).
-  return containsTerm(haystack, term.value);
+  return term.exact
+    ? containsWholeWord(haystack, term.value, true)
+    : containsTerm(haystack, term.value);
 }
 
 function matchesFilters(item: CaptureItem, filters: SearchFilters): boolean {
@@ -429,7 +450,10 @@ export function searchItems(
     .map(({ item }) => item);
 }
 
-/** Find highlight-intervaller i text baseret på query-tokens. */
+/** Find highlight-intervaller i text baseret på query-tokens.
+ *  Bruger samme regex-baserede matching som søgningen, så phrase/wildcard
+ *  markerer korrekte interval-grænser i den originale tekst.
+ */
 export function findHighlightSegments(
   text: string,
   queryRaw: string
@@ -439,7 +463,6 @@ export function findHighlightSegments(
   }
 
   const query = parseSearchQuery(queryRaw);
-  const searchableText = text.toLowerCase();
   const intervals: { start: number; end: number }[] = [];
 
   const addInterval = (start: number, end: number) => {
@@ -449,28 +472,50 @@ export function findHighlightSegments(
     intervals.push({ start, end });
   };
 
-  const findTokenMatches = (token: string) => {
-    const needle = normalizeForMatch(token);
-    if (!needle) return;
-    let index = 0;
-    while (index < searchableText.length) {
-      const normalizedSlice = normalizeForMatch(searchableText.slice(index));
-      const pos = normalizedSlice.indexOf(needle);
-      if (pos === -1) break;
-      const actualStart = index + pos;
-      // Interval-længden skal matche needle-længden i den normaliserede tekst,
-      // så æ/ø/å (som bliver til 2 tegn) ikke giver forkerte slutpositioner.
-      const actualEnd = actualStart + needle.length;
-      addInterval(actualStart, actualEnd);
-      index = actualStart + Math.max(1, needle.length);
+  const findTokenMatches = (token: string, wildcard: boolean) => {
+    const normalizedToken = normalizeForMatch(token);
+    if (!normalizedToken) return;
+    const escaped = escapeRegex(normalizedToken).replace(/\\\*/g, "[^\\s]*");
+    const pattern = wildcard
+      ? `\\b[^\\s]*${escaped}[^\\s]*\\b`
+      : `\\b${escaped}\\b`;
+    const regex = new RegExp(pattern, "gi");
+
+    // Match på normaliseret tekst; map derefter positionerne tilbage til
+    // original tekst via en løber, så æ/ø/å (2 tegn normaliseret) får
+    // korrekte slutpositioner.
+    const normalizedText = normalizeForMatch(text);
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(normalizedText)) !== null) {
+      let originalStart = 0;
+      let normalizedIndex = 0;
+      for (const char of text) {
+        if (normalizedIndex >= match.index) break;
+        normalizedIndex += normalizeForMatch(char).length;
+        originalStart += char.length;
+      }
+
+      let originalEnd = originalStart;
+      let matchedNormalizedLength = 0;
+      for (const char of text.slice(originalStart)) {
+        if (matchedNormalizedLength >= match[0].length) break;
+        matchedNormalizedLength += normalizeForMatch(char).length;
+        originalEnd += char.length;
+      }
+
+      addInterval(originalStart, originalEnd);
+      // Forhindre uendelig løkke hvis pattern matcher tom streng.
+      if (match[0].length === 0) {
+        regex.lastIndex = match.index + 1;
+      }
     }
   };
 
-  for (const word of query.required) findTokenMatches(word.value);
-  for (const phrase of query.phrases) findTokenMatches(phrase);
+  for (const word of query.required) findTokenMatches(word.value, word.exact);
+  for (const phrase of query.phrases) findTokenMatches(phrase, false);
   for (const group of query.orGroups) {
     for (const term of group) {
-      findTokenMatches(term.value);
+      findTokenMatches(term.value, term.exact);
     }
   }
 
