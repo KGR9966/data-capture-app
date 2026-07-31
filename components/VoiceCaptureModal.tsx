@@ -374,14 +374,9 @@ export default function VoiceCaptureModal({
         resetTranscriptRef.current();
 
         const isAlbum = parsed.command === "openAlbum";
-        // Anvend resultatet uden foto-kommandoen, så ord som "åbn kamera"
-        // ikke havner i titel/content. Derefter fryser vi titlen, så alt nyt
-        // efter foto lander i content.
-        applyParsedResultRef.current(parseVoiceInput(parsed.rawText), { lockType: isFinal });
 
-        // Nulstil titel/content eksplicit til det parserte resultat uden
-        // foto-kommandoen, så restord som "åbn", "åben", "album" eller
-        // "kamera" ikke bliver hængende efter en delvis transkribering.
+        // Parseren har allerede fjernet foto-kommandoen + præfiksord. Brug
+        // parsed.title/content direkte; undgå dobbelt parse og race-conditions.
         if (!manualTitleEditRef.current) {
           setTitle(parsed.title);
           if (parsed.title.trim()) {

@@ -80,6 +80,8 @@ const OPEN_CAMERA_COMMANDS = [
   "kamera",
 ];
 
+const PHOTO_PREFIXES = ["aabne", "aaben", "aabn", "vaelg", "tag", "et"];
+
 const PUNCTUATION_COMMANDS: Record<string, string> = {
   punktum: ".",
   punkt: ".",
@@ -166,6 +168,35 @@ function detectCommand(input: string): VoiceCommand {
   return null;
 }
 
+/** Fjerner foto-kommandoen og evt. foranstående aktionsord (åbn/åben/åbne/tag/vælg/et).
+ *  Beholder resten af den originale tekst, så den kan renses af cleanText senere. */
+function stripPhotoCommand(input: string, command: "openAlbum" | "openCamera"): string {
+  const normalized = normalizeCommand(input);
+  const commands = command === "openAlbum" ? OPEN_ALBUM_COMMANDS : OPEN_CAMERA_COMMANDS;
+
+  let matchedPhrase = "";
+  let matchedIndex = -1;
+  for (const cmd of commands) {
+    const idx = normalized.indexOf(cmd);
+    if (idx !== -1 && (matchedIndex === -1 || idx < matchedIndex)) {
+      matchedIndex = idx;
+      matchedPhrase = cmd;
+    }
+  }
+  if (!matchedPhrase) return input;
+
+  const beforeText = normalized.slice(0, matchedIndex).trim();
+  const beforeWords = beforeText.split(/\s+/).filter(Boolean);
+  while (beforeWords.length > 0 && PHOTO_PREFIXES.includes(beforeWords[beforeWords.length - 1])) {
+    beforeWords.pop();
+  }
+
+  const afterText = normalized.slice(matchedIndex + matchedPhrase.length).trim();
+  const afterWords = afterText.split(/\s+/).filter(Boolean);
+
+  return [...beforeWords, ...afterWords].join(" ");
+}
+
 /** Fjerner de sidste N tokens svarende til den genkendte kommando.
  *  Fjerner også evt. efterfølgende tegnsætning, men bevarer resten. */
 function removeCommandWords(input: string, command: VoiceCommand): string {
@@ -189,30 +220,7 @@ function removeCommandWords(input: string, command: VoiceCommand): string {
   // Fjernelsen sker via ordbounds-tælling på normaliseret tekst, så accenter og
   // store/små bogstaver i det originale input ignoreres.
   if (command === "openAlbum" || command === "openCamera") {
-    const normalizedInput = normalizeCommand(input);
-    let matchedPhrase = "";
-    for (const cmd of lists[command]) {
-      if (normalizedInput.includes(cmd)) {
-        matchedPhrase = cmd;
-        break;
-      }
-    }
-    if (!matchedPhrase) return input;
-
-    const index = normalizedInput.indexOf(matchedPhrase);
-    const wordsBefore = normalizedInput
-      .slice(0, index)
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean).length;
-    const targetWordCount = matchedPhrase.split(/\s+/).length;
-    const originalWords = input.trim().split(/\s+/).filter(Boolean);
-    return [
-      ...originalWords.slice(0, wordsBefore),
-      ...originalWords.slice(wordsBefore + targetWordCount),
-    ]
-      .join(" ")
-      .trim();
+    return stripPhotoCommand(input, command);
   }
 
   let matchedPhrase = "";

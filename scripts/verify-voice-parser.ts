@@ -29,7 +29,7 @@ const cases = [
   {
     id: "E6",
     input: "Tag billede af skaden på taget",
-    expected: { title: "af skaden på taget", content: "", type: "other", command: "openCamera" },
+    expected: { title: "af skaden paa taget", content: "", type: "other", command: "openCamera" },
   },
   {
     id: "E7",
@@ -65,6 +65,46 @@ const cases = [
     id: "E13",
     input: "Billede punktum smukt husgem",
     expected: { title: "Billede", content: "smukt hus", type: "other", command: "save" },
+  },
+  {
+    id: "D1.1",
+    input: "Åbn kamera",
+    expected: { title: "", content: "", type: "other", command: "openCamera" },
+  },
+  {
+    id: "D1.2",
+    input: "Åben kamera",
+    expected: { title: "", content: "", type: "other", command: "openCamera" },
+  },
+  {
+    id: "D1.3",
+    input: "Åbne kamera",
+    expected: { title: "", content: "", type: "other", command: "openCamera" },
+  },
+  {
+    id: "D1.4",
+    input: "Åbn album vinduet er sprunget",
+    expected: { title: "vinduet er sprunget", content: "", type: "other", command: "openAlbum" },
+  },
+  {
+    id: "D1.5",
+    input: "Tag billede af skaden på taget",
+    expected: { title: "af skaden paa taget", content: "", type: "other", command: "openCamera" },
+  },
+  {
+    id: "D1.6",
+    input: "Vælg foto fra dokumentation",
+    expected: { title: "fra dokumentation", content: "", type: "other", command: "openAlbum" },
+  },
+  {
+    id: "D1.7",
+    input: "Observationsnote åbn kamera skaden på taget",
+    expected: { title: "observationsnote skaden paa taget", content: "", type: "observation", command: "openCamera" },
+  },
+  {
+    id: "D1.8",
+    input: "Silvan punktum åbn kamera",
+    expected: { title: "silvan", content: "", type: "other", command: "openCamera" },
   },
 ];
 
