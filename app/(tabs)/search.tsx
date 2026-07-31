@@ -119,7 +119,6 @@ export default function SearchScreen() {
       }
     },
     onError: (message) => {
-      console.log("Search voice error", message);
       clearMaxDurationTimer();
       setVoiceActive(false);
     },
@@ -196,8 +195,7 @@ export default function SearchScreen() {
       for (const projectId of ids) {
         try {
           next[projectId] = await getProjectMembers(projectId);
-        } catch (err) {
-          console.log("Load project members error", err);
+        } catch {
           next[projectId] = [];
         }
       }
@@ -232,7 +230,7 @@ export default function SearchScreen() {
       const canCreate = canCreateItem(role);
       return canCreate && (projectResultCounts[p.id] || 0) > 0;
     });
-  }, [projects, projectMembers, user?.uid, projectResultCounts]);
+  }, [projects, projectMembers, user?.uid, user?.email, projectResultCounts]);
 
   // Brug availableProjects som sandhedskilde for oprettelsesrettigheder,
   // så projektvælger og knap altid er synkroniserede.
@@ -295,7 +293,6 @@ export default function SearchScreen() {
     }
 
     setCreatingChecklist(true);
-    console.log("[create checklist] query:", query, "results:", results.length, "selectedProjectId:", selectedProjectId);
     try {
       const { checklist } = await createDynamicChecklistFromSearch(
         trimmedName || `Søgning: ${query.trim() || "alle resultater"}`,
@@ -310,7 +307,6 @@ export default function SearchScreen() {
       setConfigVisible(false);
       router.push(`/checklist?id=${checklist.id}` as any);
     } catch (error) {
-      console.log("Create checklist error", error);
       const message =
         error instanceof Error ? error.message : "Kunne ikke oprette den dynamiske liste.";
       Alert.alert("Fejl", mapCreateChecklistError(message));

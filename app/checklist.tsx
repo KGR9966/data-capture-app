@@ -147,8 +147,7 @@ export default function ChecklistDetailScreen() {
             setItems(merged);
           });
         }
-      } catch (error) {
-        console.log("Load checklist error", error);
+      } catch {
       } finally {
         setLoading(false);
       }
@@ -166,13 +165,13 @@ export default function ChecklistDetailScreen() {
       });
       getRemindersForChecklist(user.uid, checklistId)
         .then((initial) => setReminders(initial))
-        .catch(console.log);
+        .catch(() => {});
       getPendingOpsForChecklist(user.uid, checklistId)
         .then((ops) => {
           pendingOpsRef.current = ops;
           setPendingOps(ops);
         })
-        .catch(console.log);
+        .catch(() => {});
     }
 
     return () => {
@@ -225,8 +224,7 @@ export default function ChecklistDetailScreen() {
       );
       pendingOpsRef.current = compactPendingOps([...pendingOpsRef.current, newOp]);
       await refreshPendingOps();
-    } catch (error) {
-      console.log("Toggle item error", error);
+    } catch {
       Alert.alert("Fejl", "Kunne ikke opdatere punktet.");
       setItems((prev) =>
         prev.map((i) =>
@@ -241,8 +239,7 @@ export default function ChecklistDetailScreen() {
     setSharing(true);
     try {
       await shareChecklistText(checklist, items);
-    } catch (error) {
-      console.log("Share checklist error", error);
+    } catch {
       Alert.alert("Fejl", "Kunne ikke dele listen.");
     } finally {
       setSharing(false);
@@ -263,8 +260,7 @@ export default function ChecklistDetailScreen() {
             try {
               await deleteChecklistAndClearCache(checklist.id, user.uid);
               router.back();
-            } catch (error) {
-              console.log("Delete checklist error", error);
+            } catch {
               Alert.alert("Fejl", "Kunne ikke slette listen.");
             }
           },
@@ -279,8 +275,7 @@ export default function ChecklistDetailScreen() {
     try {
       await flushPendingOps(user.uid);
       await refreshPendingOps();
-    } catch (error) {
-      console.log("Refresh error", error);
+    } catch {
     } finally {
       setRefreshing(false);
     }
@@ -322,8 +317,7 @@ export default function ChecklistDetailScreen() {
       }
       setReminderModalVisible(false);
       setReminderTargetItem(null);
-    } catch (error) {
-      console.log("Save reminder error", error);
+    } catch {
       Alert.alert("Fejl", "Kunne ikke gemme påmindelsen.");
     } finally {
       setReminderSaving(false);
@@ -337,8 +331,7 @@ export default function ChecklistDetailScreen() {
       await deleteReminder(user.uid, existingChecklistItemReminder.id);
       setReminderModalVisible(false);
       setReminderTargetItem(null);
-    } catch (error) {
-      console.log("Delete reminder error", error);
+    } catch {
       Alert.alert("Fejl", "Kunne ikke slette påmindelsen.");
     } finally {
       setReminderSaving(false);
