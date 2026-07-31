@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
+  Linking,
   ScrollView,
   StyleSheet,
   Switch,
@@ -12,7 +13,12 @@ import {
 
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
-import { registerForPushNotificationsAsync } from "../../services/notifications";
+import {
+  getNotificationPermissionStatus,
+  NotificationPermissionStatus,
+  registerForPushNotificationsAsync,
+  scheduleTestNotification,
+} from "../../services/notifications";
 
 export default function SettingsScreen() {
   const { user, logOut } = useAuth();
@@ -20,11 +26,17 @@ export default function SettingsScreen() {
   const router = useRouter();
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
+  const [permissionStatus, setPermissionStatus] = useState<NotificationPermissionStatus>("undetermined");
+  const [checkingPermission, setCheckingPermission] = useState(true);
 
   const styles = themedStyles(isDark);
 
   useEffect(() => {
     registerForPushNotificationsAsync().then(setPushToken).catch(console.log);
+    getNotificationPermissionStatus()
+      .then(setPermissionStatus)
+      .catch(console.log)
+      .finally(() => setCheckingPermission(false));
   }, []);
 
   const handleRegisterPush = async () => {
@@ -32,6 +44,8 @@ export default function SettingsScreen() {
     try {
       const token = await registerForPushNotificationsAsync();
       setPushToken(token);
+      const status = await getNotificationPermissionStatus();
+      setPermissionStatus(status);
       if (token) {
         Alert.alert("Push-token registreret", token);
       } else {
@@ -44,6 +58,29 @@ export default function SettingsScreen() {
       setRegistering(false);
     }
   };
+
+  const handleOpenSettings = () => {
+    Linking.openSettings().catch(() => {
+      Alert.alert("Fejl", "Kunne ikke åbne indstillinger.");
+    });
+  };
+
+  const handleTestNotification = async () => {
+    try {
+      await scheduleTestNotification();
+      Alert.alert("Testnotifikation planlagt", "Du bør se den om få sekunder.");
+    } catch (error) {
+      console.log("Test notification error", error);
+      Alert.alert("Fejl", "Kunne ikke planlægge testnotifikation.");
+    }
+  };
+
+  const permissionLabel =
+    permissionStatus === "granted"
+      ? "Tilladt"
+      : permissionStatus === "denied"
+      ? "Afslået"
+      : "Ikke spurgt";
 
   const handleLogout = async () => {
     try {
@@ -89,6 +126,12 @@ export default function SettingsScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionHeader}>Notifikationer</Text>
         <View style={styles.card}>
+          <Text style={styles.label}>Tilladelse</Text>
+          <Text style={styles.value}>
+            {checkingPermission ? "Tjekker..." : permissionLabel}
+          </Text>
+        </View>
+        <View style={styles.card}>
           <Text style={styles.label}>Push-token</Text>
           <Text style={[styles.value, styles.mono, styles.token]} numberOfLines={3}>
             {pushToken || "Ikke registreret"}
@@ -102,6 +145,20 @@ export default function SettingsScreen() {
               {registering ? "Registrerer..." : "Registrer push"}
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.button, styles.buttonSecondary, styles.testButton]}
+            onPress={handleTestNotification}
+          >
+            <Text style={styles.buttonSecondaryText}>Afprøv notifikation</Text>
+          </TouchableOpacity>
+          {permissionStatus === "denied" ? (
+            <TouchableOpacity
+              style={[styles.button, styles.buttonSecondary, styles.testButton]}
+              onPress={handleOpenSettings}
+            >
+              <Text style={styles.buttonSecondaryText}>Åbn indstillinger</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
@@ -180,6 +237,16 @@ const themedStyles = (isDark: boolean) =>
     },
     buttonDisabled: {
       opacity: 0.5,
+    },
+    buttonSecondary: {
+      backgroundColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    buttonSecondaryText: {
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      fontWeight: "600",
+    },
+    testButton: {
+      marginTop: 10,
     },
     logoutButton: {
       backgroundColor: "#f87171",

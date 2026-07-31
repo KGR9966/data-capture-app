@@ -1,49 +1,49 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import NetInfo from "@react-native-community/netinfo";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   KeyboardAvoidingView,
-  Modal,
   Platform,
-  ScrollView,
+  RefreshControl,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 
-import HighlightedText from "../components/HighlightedText";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
-import { buildChecklistUrl, copyToClipboard } from "../services/deeplinks";
-import { getProjectById, getProjectMembers } from "../services/projects";
-import { getProjectRole } from "../services/roles";
-import { CaptureItem, subscribeToItems } from "../services/items";
+import ReminderModal from "../components/ReminderModal";
 import {
-  addManualItemToChecklist,
   Checklist,
   ChecklistItem,
-  ChecklistSortBy,
-  deleteChecklist,
-  deleteChecklistItemAndTrack,
   getChecklistById,
-  markChecklistAsViewed,
   shareChecklistText,
   subscribeToChecklistItems,
-  synchronizeDynamicChecklist,
-  toggleChecklistPoint,
-  updateChecklist,
-  updateChecklistItem,
 } from "../services/checklists";
-
-const SORT_LABELS: Record<ChecklistSortBy, string> = {
-  alphabetical: "Alfabetisk",
-  date: "Dato",
-  priority: "Prioritet",
-};
+import {
+  compactPendingOps,
+  deleteChecklistAndClearCache,
+  flushPendingOps,
+  getPendingOpsForChecklist,
+  isOnline,
+  loadCachedItems,
+  PendingOp,
+  saveCachedItems,
+  toggleChecklistPointOffline,
+} from "../services/checklistsOffline";
+import {
+  createReminder,
+  deleteReminder,
+  getRemindersForChecklist,
+  Reminder,
+  subscribeToReminders,
+  updateReminder,
+} from "../services/reminders";
 
 function formatDate(ts: any) {
   if (!ts) return "";
@@ -57,43 +57,6 @@ function formatDate(ts: any) {
   });
 }
 
-function formatAssigneeName(item: ChecklistItem, projectItems: CaptureItem[]): string | null {
-  if (item.sourceItemId === "manual" || !item.sourceItemId) return null;
-  const source = projectItems.find((pi) => pi.id === item.sourceItemId);
-  return source?.assignedToName || null;
-}
-
-function sortChecklistItems(
-  items: ChecklistItem[],
-  sortBy: ChecklistSortBy
-): ChecklistItem[] {
-  const open = items.filter((i) => !i.isCompleted);
-  const completed = items.filter((i) => i.isCompleted);
-
-  const sortOpen = (a: ChecklistItem, b: ChecklistItem): number => {
-    switch (sortBy) {
-      case "date":
-        return (
-          (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)
-        );
-      case "priority":
-        return (b.priority || 1) - (a.priority || 1);
-      case "alphabetical":
-      default:
-        return a.title.localeCompare(b.title, "da-DK");
-    }
-  };
-
-  open.sort(sortOpen);
-  completed.sort((a, b) => {
-    const aTime = a.completedAt?.toMillis?.() || 0;
-    const bTime = b.completedAt?.toMillis?.() || 0;
-    return bTime - aTime;
-  });
-
-  return [...open, ...completed];
-}
-
 export default function ChecklistDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -101,102 +64,175 @@ export default function ChecklistDetailScreen() {
   const { theme } = useTheme();
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [items, setItems] = useState<ChecklistItem[]>([]);
-  const [projectItems, setProjectItems] = useState<CaptureItem[]>([]);
   const [sharing, setSharing] = useState(false);
-  const [copying, setCopying] = useState(false);
-  const [accessDenied, setAccessDenied] = useState(false);
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [editingItem, setEditingItem] = useState<ChecklistItem | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editNotes, setEditNotes] = useState("");
-  const [addModalVisible, setAddModalVisible] = useState(false);
-  const [newItemTitle, setNewItemTitle] = useState("");
-  const [newItemNotes, setNewItemNotes] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [sortBy, setSortBy] = useState<ChecklistSortBy>("alphabetical");
+  const [online, setOnline] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [pendingOps, setPendingOps] = useState<PendingOp[]>([]);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [reminderModalVisible, setReminderModalVisible] = useState(false);
+  const [reminderTargetItem, setReminderTargetItem] = useState<ChecklistItem | null>(null);
+  const [reminderSaving, setReminderSaving] = useState(false);
   const checklistId = typeof id === "string" ? id : undefined;
-  const [loading, setLoading] = useState(!!checklistId);
+  const pendingOpsRef = React.useRef<PendingOp[]>(pendingOps);
 
   const isDark = theme === "dark";
   const styles = themedStyles(isDark);
+  const [loading, setLoading] = useState(!checklistId);
 
-  // Load checklist and verify access
+  // Network state
+  useEffect(() => {
+    const check = async () => setOnline(await isOnline());
+    check();
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const connected =
+        state.isConnected === true && state.isInternetReachable !== false;
+      setOnline(connected);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const refreshPendingOps = async () => {
+    if (!user?.uid || !checklistId) return;
+    const ops = await getPendingOpsForChecklist(user.uid, checklistId);
+    pendingOpsRef.current = ops;
+    setPendingOps(ops);
+  };
+
+  const applyPendingOps = (
+    serverItems: ChecklistItem[],
+    ops: PendingOp[]
+  ): ChecklistItem[] => {
+    const byId = new Map(serverItems.map((i) => [i.id, { ...i }]));
+    for (const op of ops) {
+      if (op.type === "toggleChecklistItem") {
+        const item = byId.get(op.payload.itemId as string);
+        if (item) {
+          item.isCompleted = op.payload.completed as boolean;
+          item.isPending = true;
+        }
+      } else if (op.type === "updateChecklistItem") {
+        const item = byId.get(op.payload.itemId as string);
+        if (item) {
+          Object.assign(item, op.payload.updates);
+          item.isPending = true;
+        }
+      } else if (op.type === "deleteChecklistItem") {
+        byId.delete(op.payload.itemId as string);
+      } else if (op.type === "deleteChecklist") {
+        return [];
+      }
+    }
+    return Array.from(byId.values());
+  };
+
   useEffect(() => {
     if (!checklistId) return;
-
     let unsubscribeItems: (() => void) | undefined;
-    let unsubscribeProjectItems: (() => void) | undefined;
+    let unsubscribeReminders: (() => void) | undefined;
 
-    getChecklistById(checklistId)
-      .then(async (data) => {
+    const loadCachedAndServer = async () => {
+      const cached = await loadCachedItems(checklistId);
+      if (cached.length > 0) {
+        setItems(cached);
+        setLoading(false);
+      }
+
+      try {
+        const data = await getChecklistById(checklistId);
         setChecklist(data);
         if (data) {
-          setSortBy(data.sortBy || "alphabetical");
-
-          // Verify access for deep-link / shared opens
-          if (user?.uid && data.ownerId !== user.uid && data.projectId) {
-            const [project, members] = await Promise.all([
-              getProjectById(data.projectId),
-              getProjectMembers(data.projectId),
-            ]);
-            const role = getProjectRole(project, user.uid, members);
-            if (!role) {
-              setAccessDenied(true);
-              setLoading(false);
-              return;
-            }
-          }
-
           unsubscribeItems = subscribeToChecklistItems(checklistId, (listItems) => {
-            setItems(listItems);
+            saveCachedItems(checklistId, listItems);
+            const merged = applyPendingOps(listItems, pendingOpsRef.current);
+            setItems(merged);
           });
-
-          if (data.isDynamic && data.projectId && user?.uid) {
-            unsubscribeProjectItems = subscribeToItems(data.projectId, (projItems) => {
-              setProjectItems(projItems);
-            });
-          }
-
-          await markChecklistAsViewed(checklistId);
         }
-      })
-      .catch(console.log)
-      .finally(() => setLoading(false));
+      } catch (error) {
+        console.log("Load checklist error", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadCachedAndServer();
+
+    if (user?.uid) {
+      unsubscribeReminders = subscribeToReminders(user.uid, (all) => {
+        setReminders(
+          all.filter(
+            (r) => r.targetType === "checklistItem" && r.targetId === checklistId
+          )
+        );
+      });
+      getRemindersForChecklist(user.uid, checklistId)
+        .then((initial) => setReminders(initial))
+        .catch(console.log);
+      getPendingOpsForChecklist(user.uid, checklistId)
+        .then((ops) => {
+          pendingOpsRef.current = ops;
+          setPendingOps(ops);
+        })
+        .catch(console.log);
+    }
 
     return () => {
       if (unsubscribeItems) unsubscribeItems();
-      if (unsubscribeProjectItems) unsubscribeProjectItems();
+      if (unsubscribeReminders) unsubscribeReminders();
     };
   }, [checklistId, user?.uid]);
 
-  // Sync dynamic checklist against current project items whenever they change
-  useEffect(() => {
-    if (!checklist || !checklist.isDynamic || !projectItems.length) return;
-    synchronizeDynamicChecklist(checklist, projectItems).catch((error) =>
-      console.log("Sync checklist error", error)
-    );
-  }, [checklist, projectItems]);
-
-  const sortedItems = useMemo(() => {
-    return sortChecklistItems(items, sortBy);
-  }, [items, sortBy]);
-
-  const completedCount = useMemo(
-    () => items.filter((i) => i.isCompleted).length,
+  const openItems = useMemo(
+    () =>
+      items
+        .filter((i) => !i.isCompleted)
+        .sort((a, b) => a.title.localeCompare(b.title, "da-DK")),
     [items]
   );
 
-  const openCount = items.length - completedCount;
+  const completedItems = useMemo(
+    () =>
+      items
+        .filter((i) => i.isCompleted)
+        .sort((a, b) => {
+          const aTime = a.completedAt?.toMillis?.() || 0;
+          const bTime = b.completedAt?.toMillis?.() || 0;
+          return bTime - aTime;
+        }),
+    [items]
+  );
 
-  const rawQuery = checklist?.searchQuery?.raw || "";
+  const sortedItems = useMemo(
+    () => [...openItems, ...completedItems],
+    [openItems, completedItems]
+  );
 
   const handleToggleItem = async (item: ChecklistItem) => {
     if (!checklist || !user?.uid) return;
+    const nextCompleted = !item.isCompleted;
     try {
-      await toggleChecklistPoint(checklist, item, user.uid);
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === item.id
+            ? { ...i, isCompleted: nextCompleted, isPending: true }
+            : i
+        )
+      );
+      const newOp = await toggleChecklistPointOffline(
+        checklist,
+        item,
+        nextCompleted,
+        user.uid
+      );
+      pendingOpsRef.current = compactPendingOps([...pendingOpsRef.current, newOp]);
+      await refreshPendingOps();
     } catch (error) {
       console.log("Toggle item error", error);
       Alert.alert("Fejl", "Kunne ikke opdatere punktet.");
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === item.id ? { ...i, isCompleted: item.isCompleted, isPending: false } : i
+        )
+      );
     }
   };
 
@@ -213,22 +249,8 @@ export default function ChecklistDetailScreen() {
     }
   };
 
-  const handleCopyLink = async () => {
-    if (!checklist) return;
-    setCopying(true);
-    try {
-      await copyToClipboard(buildChecklistUrl(checklist.id));
-      Alert.alert("Kopieret", "Linket er kopieret til udklipsholderen.");
-    } catch (error) {
-      console.log("Copy link error", error);
-      Alert.alert("Fejl", "Kunne ikke kopiere linket.");
-    } finally {
-      setCopying(false);
-    }
-  };
-
   const handleDelete = () => {
-    if (!checklist) return;
+    if (!checklist || !user?.uid) return;
     Alert.alert(
       "Slet liste",
       `Er du sikker på du vil slette "${checklist.name}"?`,
@@ -239,7 +261,7 @@ export default function ChecklistDetailScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              await deleteChecklist(checklist.id);
+              await deleteChecklistAndClearCache(checklist.id, user.uid);
               router.back();
             } catch (error) {
               console.log("Delete checklist error", error);
@@ -251,81 +273,75 @@ export default function ChecklistDetailScreen() {
     );
   };
 
-  const handleSortChange = async (nextSort: ChecklistSortBy) => {
-    setSortBy(nextSort);
-    if (checklist && checklist.sortBy !== nextSort) {
-      try {
-        await updateChecklist(checklist.id, { sortBy: nextSort });
-      } catch (error) {
-        console.log("Update sort error", error);
-      }
-    }
-  };
-
-  const openEditModal = (item: ChecklistItem) => {
-    setEditingItem(item);
-    setEditTitle(item.title);
-    setEditNotes(item.notes || "");
-    setEditModalVisible(true);
-  };
-
-  const closeEditModal = () => {
-    setEditModalVisible(false);
-    setEditingItem(null);
-    setEditTitle("");
-    setEditNotes("");
-  };
-
-  const saveEdit = async () => {
-    if (!checklist || !editingItem) return;
+  const handleRefresh = async () => {
+    if (!user?.uid) return;
+    setRefreshing(true);
     try {
-      await updateChecklistItem(checklist.id, editingItem.id, {
-        title: editTitle.trim(),
-        notes: editNotes.trim(),
-      });
-      closeEditModal();
+      await flushPendingOps(user.uid);
+      await refreshPendingOps();
     } catch (error) {
-      console.log("Update item error", error);
-      Alert.alert("Fejl", "Kunne ikke opdatere punktet.");
-    }
-  };
-
-  const handleDeleteItem = (item: ChecklistItem) => {
-    if (!checklist) return;
-    Alert.alert("Slet punkt", `Slet "${item.title}"?`, [
-      { text: "Annuller", style: "cancel" },
-      {
-        text: "Slet",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteChecklistItemAndTrack(checklist, item);
-          } catch (error) {
-            console.log("Delete item error", error);
-            Alert.alert("Fejl", "Kunne ikke slette punktet.");
-          }
-        },
-      },
-    ]);
-  };
-
-  const handleAddItem = async () => {
-    if (!checklist || !newItemTitle.trim()) return;
-    setAdding(true);
-    try {
-      await addManualItemToChecklist(
-        checklist,
-        newItemTitle.trim(),
-        newItemNotes.trim()
-      );
-      setNewItemTitle("");
-      setNewItemNotes("");
-      setAddModalVisible(false);
-    } catch (error) {
-      console.log("Add item error", error);
-      Alert.alert("Fejl", "Kunne ikke tilføje punktet.");
+      console.log("Refresh error", error);
     } finally {
-      setAdding(false);
+      setRefreshing(false);
+    }
+  };
+
+  const openReminderModal = (item: ChecklistItem) => {
+    setReminderTargetItem(item);
+    setReminderModalVisible(true);
+  };
+
+  const existingChecklistItemReminder = reminderTargetItem
+    ? reminders.find(
+        (r) =>
+          r.targetType === "checklistItem" &&
+          r.targetId === checklistId &&
+          r.targetSubId === reminderTargetItem.id
+      ) || null
+    : null;
+
+  const handleSaveReminder = async (payload: {
+    scheduledAt: number;
+    repeat: Reminder["repeat"];
+    note?: string;
+  }) => {
+    if (!user?.uid || !checklistId || !reminderTargetItem || !checklist) return;
+    setReminderSaving(true);
+    try {
+      if (existingChecklistItemReminder) {
+        await updateReminder(user.uid, existingChecklistItemReminder.id, payload);
+      } else {
+        await createReminder({
+          userId: user.uid,
+          targetType: "checklistItem",
+          targetId: checklistId,
+          targetSubId: reminderTargetItem.id,
+          title: reminderTargetItem.title || "Listepunkt",
+          ...payload,
+        });
+      }
+      setReminderModalVisible(false);
+      setReminderTargetItem(null);
+    } catch (error) {
+      console.log("Save reminder error", error);
+      Alert.alert("Fejl", "Kunne ikke gemme påmindelsen.");
+    } finally {
+      setReminderSaving(false);
+    }
+  };
+
+  const handleDeleteReminder = async () => {
+    if (!user?.uid || !existingChecklistItemReminder) return;
+    setReminderSaving(true);
+    try {
+      await deleteReminder(user.uid, existingChecklistItemReminder.id);
+      setReminderModalVisible(false);
+      setReminderTargetItem(null);
+    } catch (error) {
+      console.log("Delete reminder error", error);
+      Alert.alert("Fejl", "Kunne ikke slette påmindelsen.");
+    } finally {
+      setReminderSaving(false);
     }
   };
 
@@ -333,17 +349,6 @@ export default function ChecklistDetailScreen() {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color={isDark ? "#38bdf8" : "#0284c7"} />
-      </View>
-    );
-  }
-
-  if (accessDenied) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.notFound}>Du har ikke adgang til denne liste.</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backButtonText}>Tilbage</Text>
-        </TouchableOpacity>
       </View>
     );
   }
@@ -372,78 +377,47 @@ export default function ChecklistDetailScreen() {
           </TouchableOpacity>
           <View style={styles.headerActions}>
             <TouchableOpacity
-              style={[styles.headerAction, sharing && styles.buttonDisabled]}
+              style={[
+                styles.headerAction,
+                (sharing || !online) && styles.buttonDisabled,
+              ]}
               onPress={handleShare}
-              disabled={sharing}
+              disabled={sharing || !online}
             >
-              <Text style={styles.headerActionText}>
-                {sharing ? "Deler..." : "Del"}
-              </Text>
+              <Text style={styles.headerActionText}>{sharing ? "Deler..." : "Del"}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.headerAction, copying && styles.buttonDisabled]}
-              onPress={handleCopyLink}
-              disabled={copying}
-            >
-              <Text style={styles.headerActionText}>
-                {copying ? "..." : "Link"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.headerActionDanger}
+              style={[styles.headerActionDanger, !online && styles.buttonDisabled]}
               onPress={handleDelete}
+              disabled={!online}
             >
               <Text style={styles.headerActionDangerText}>Slet</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <Text style={styles.title}>{checklist.name}</Text>
-        <Text style={styles.subtitle}>
-          {completedCount} af {items.length} udført · {openCount} åbne
-        </Text>
-
-        <View style={styles.sortRow}>
-          <Text style={styles.sortLabel}>Sorter:</Text>
-          {(["alphabetical", "date", "priority"] as ChecklistSortBy[]).map((sort) => (
-            <TouchableOpacity
-              key={sort}
-              style={[
-                styles.sortButton,
-                sortBy === sort && styles.sortButtonActive,
-              ]}
-              onPress={() => handleSortChange(sort)}
-            >
-              <Text
-                style={[
-                  styles.sortButtonText,
-                  sortBy === sort && styles.sortButtonTextActive,
-                ]}
-              >
-                {SORT_LABELS[sort]}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>{checklist.name}</Text>
+          {!online ? (
+            <View style={styles.offlineBadge}>
+              <Text style={styles.offlineBadgeText}>Offline</Text>
+            </View>
+          ) : pendingOps.length > 0 ? (
+            <View style={styles.pendingBadge}>
+              <Text style={styles.pendingBadgeText}>Synkroniserer {pendingOps.length}</Text>
+            </View>
+          ) : null}
         </View>
-
-        {checklist.isDynamic ? (
-          <View style={styles.addRow}>
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => setAddModalVisible(true)}
-            >
-              <Text style={styles.addButtonText}>+ Tilføj punkt</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
+        <Text style={styles.subtitle}>
+          {items.filter((i) => i.isCompleted).length} af {items.length} udført
+          {checklist.syncStatusToSource !== false ? " · status synkroniseres til sagen" : ""}
+        </Text>
 
         {sortedItems.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>Ingen punkter</Text>
             <Text style={styles.emptySubtitle}>
-              {checklist.isDynamic
-                ? "Listen opdateres automatisk, når sager matcher søgningen."
-                : "Listen er tom."}
+              Listen er tom. Opret nye punkter fra søgeresultater.
             </Text>
           </View>
         ) : (
@@ -451,219 +425,106 @@ export default function ChecklistDetailScreen() {
             data={sortedItems}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.list}
-            renderItem={({ item }) => (
-              <View
-                style={[
-                  styles.itemCard,
-                  item.isCompleted && styles.completedCard,
-                  item.isStale && styles.staleCard,
-                ]}
-              >
-                <TouchableOpacity
-                  style={styles.checkbox}
-                  onPress={() => handleToggleItem(item)}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+            }
+            renderItem={({ item }) => {
+              const itemReminder = reminders.find(
+                (r) =>
+                  r.targetType === "checklistItem" &&
+                  r.targetId === checklistId &&
+                  r.targetSubId === item.id
+              );
+              return (
+                <View
+                  style={[
+                    styles.itemCard,
+                    item.isCompleted && styles.completedCard,
+                    item.isPending && styles.pendingCard,
+                    !online && styles.offlineCard,
+                  ]}
                 >
-                  <Text style={styles.checkboxText}>
-                    {item.isCompleted ? "☑" : "☐"}
-                  </Text>
-                </TouchableOpacity>
-                <View style={styles.itemContent}>
-                  <View style={styles.itemTitleRow}>
-                    <HighlightedText
-                      text={item.title}
-                      query={rawQuery}
-                      style={[
-                        styles.itemTitle,
-                        item.isCompleted && styles.completedText,
-                        item.isStale && styles.staleText,
-                      ]}
-                    />
-                    {item.isNewMatch ? (
-                      <View style={styles.newBadge}>
-                        <Text style={styles.newBadgeText}>Nyt match</Text>
-                      </View>
-                    ) : null}
-                    {item.isDuplicate ? (
-                      <View style={styles.duplicateBadge}>
-                        <Text style={styles.duplicateBadgeText}>
-                          Måske duplikat
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  {item.notes ? (
-                    <HighlightedText
-                      text={item.notes}
-                      query={rawQuery}
-                      style={[
-                        styles.itemNotes,
-                        item.isCompleted && styles.completedText,
-                        item.isStale && styles.staleText,
-                      ]}
-                      numberOfLines={2}
-                    />
-                  ) : null}
-                  {item.isStale ? (
-                    <Text style={styles.staleNote}>
-                      {item.staleNote || "Kilden matcher ikke længere søgningen"}
+                  <TouchableOpacity
+                    style={styles.checkbox}
+                    onPress={() => handleToggleItem(item)}
+                    disabled={item.isPending}
+                  >
+                    <Text style={styles.checkboxText}>
+                      {item.isCompleted ? "☑" : "☐"}
                     </Text>
-                  ) : null}
-                  {(() => {
-                    const assigneeName = formatAssigneeName(item, projectItems);
-                    return assigneeName ? (
-                      <View style={styles.assigneeRow}>
-                        <Text style={styles.assigneeText}>👤 {assigneeName}</Text>
-                      </View>
-                    ) : null;
-                  })()}
-                  {item.sourceItemId && item.sourceItemId !== "manual" ? (
+                  </TouchableOpacity>
+                  <View style={styles.itemContent}>
+                    <View style={styles.itemTitleRow}>
+                      <Text
+                        style={[
+                          styles.itemTitle,
+                          item.isCompleted && styles.completedText,
+                        ]}
+                      >
+                        {item.title}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.reminderIcon}
+                        onPress={() => openReminderModal(item)}
+                        disabled={reminderSaving}
+                      >
+                        <Ionicons
+                          name={itemReminder ? "notifications" : "notifications-outline"}
+                          size={18}
+                          color={isDark ? "#38bdf8" : "#0284c7"}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    {item.notes ? (
+                      <Text
+                        style={[
+                          styles.itemNotes,
+                          item.isCompleted && styles.completedText,
+                        ]}
+                        numberOfLines={2}
+                      >
+                        {item.notes}
+                      </Text>
+                    ) : null}
+                    {item.isPending ? (
+                      <Text style={styles.pendingLabel}>Afventer synkronisering</Text>
+                    ) : null}
                     <TouchableOpacity
-                      onPress={() =>
-                        router.push(`/item?itemId=${item.sourceItemId}` as any)
-                      }
+                      onPress={() => router.push(`/item?itemId=${item.sourceItemId}` as any)}
                     >
                       <Text style={styles.sourceLink}>Åbn sag →</Text>
                     </TouchableOpacity>
-                  ) : null}
-                  {item.isCompleted ? (
-                    <Text style={styles.completedMeta}>
-                      Udført {formatDate(item.completedAt)}
-                    </Text>
-                  ) : null}
-                  <View style={styles.itemActions}>
-                    <TouchableOpacity
-                      onPress={() => openEditModal(item)}
-                      style={styles.itemAction}
-                    >
-                      <Text style={styles.itemActionText}>Rediger</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => handleDeleteItem(item)}
-                      style={styles.itemActionDanger}
-                    >
-                      <Text style={styles.itemActionDangerText}>Slet</Text>
-                    </TouchableOpacity>
+                    {item.isCompleted ? (
+                      <Text style={styles.completedMeta}>
+                        Udført {formatDate(item.completedAt)}
+                      </Text>
+                    ) : null}
                   </View>
                 </View>
-              </View>
-            )}
+              );
+            }}
           />
         )}
       </View>
-
-      {/* Edit item modal */}
-      <Modal
-        visible={editModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={closeEditModal}
-      >
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
-            style={styles.keyboardAvoiding}
-          >
-            <View style={styles.modalContent}>
-              <ScrollView keyboardShouldPersistTaps="handled">
-                <Text style={styles.modalTitle}>Rediger punkt</Text>
-                <Text style={styles.modalLabel}>Titel</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  value={editTitle}
-                  onChangeText={setEditTitle}
-                  placeholder="Punktets titel"
-                  placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-                />
-                <Text style={styles.modalLabel}>Noter</Text>
-                <TextInput
-                  style={[styles.modalInput, styles.modalInputMultiline]}
-                  value={editNotes}
-                  onChangeText={setEditNotes}
-                  placeholder="Noter (valgfrit)"
-                  placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-                  multiline
-                  numberOfLines={3}
-                />
-                <View style={styles.modalButtons}>
-                  <TouchableOpacity
-                    style={styles.modalButtonSecondary}
-                    onPress={closeEditModal}
-                  >
-                    <Text style={styles.modalButtonSecondaryText}>Annuller</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.modalButtonPrimary} onPress={saveEdit}>
-                    <Text style={styles.modalButtonPrimaryText}>Gem</Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
-
-      {/* Add item modal */}
-      <Modal
-        visible={addModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setAddModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
-            style={styles.keyboardAvoiding}
-          >
-            <View style={styles.modalContent}>
-              <ScrollView keyboardShouldPersistTaps="handled">
-                <Text style={styles.modalTitle}>Tilføj punkt</Text>
-                <Text style={styles.modalHelper}>
-                  Der oprettes automatisk en sag, der matcher listens søgning.
-                </Text>
-                <Text style={styles.modalLabel}>Titel</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  value={newItemTitle}
-                  onChangeText={setNewItemTitle}
-                  placeholder="Ny sag / punkt"
-                  placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-                />
-                <Text style={styles.modalLabel}>Noter</Text>
-                <TextInput
-                  style={[styles.modalInput, styles.modalInputMultiline]}
-                  value={newItemNotes}
-                  onChangeText={setNewItemNotes}
-                  placeholder="Noter (valgfrit)"
-                  placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-                  multiline
-                  numberOfLines={3}
-                />
-                <View style={styles.modalButtons}>
-                  <TouchableOpacity
-                    style={styles.modalButtonSecondary}
-                    onPress={() => setAddModalVisible(false)}
-                  >
-                    <Text style={styles.modalButtonSecondaryText}>Annuller</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.modalButtonPrimary,
-                      (!newItemTitle.trim() || adding) && styles.buttonDisabled,
-                    ]}
-                    onPress={handleAddItem}
-                    disabled={!newItemTitle.trim() || adding}
-                  >
-                    <Text style={styles.modalButtonPrimaryText}>
-                      {adding ? "Tilføjer..." : "Tilføj"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
+      {reminderTargetItem ? (
+        <ReminderModal
+          key={
+            reminderModalVisible
+              ? existingChecklistItemReminder?.id || reminderTargetItem.id
+              : "closed"
+          }
+          visible={reminderModalVisible}
+          title={reminderTargetItem.title || "Listepunkt"}
+          existingReminder={existingChecklistItemReminder}
+          saving={reminderSaving}
+          onClose={() => {
+            setReminderModalVisible(false);
+            setReminderTargetItem(null);
+          }}
+          onSave={handleSaveReminder}
+          onDelete={existingChecklistItemReminder ? handleDeleteReminder : undefined}
+        />
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
@@ -719,57 +580,38 @@ const themedStyles = (isDark: boolean) =>
       color: isDark ? "#f8fafc" : "#0f172a",
       marginBottom: 4,
     },
+    titleRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 10,
+    },
+    offlineBadge: {
+      backgroundColor: isDark ? "#7c2d12" : "#fef3c7",
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    offlineBadgeText: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: isDark ? "#fdba74" : "#b45309",
+    },
+    pendingBadge: {
+      backgroundColor: isDark ? "#1e3a8a" : "#dbeafe",
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    pendingBadgeText: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: isDark ? "#93c5fd" : "#1d4ed8",
+    },
     subtitle: {
       fontSize: 13,
       color: isDark ? "#94a3b8" : "#64748b",
-      marginBottom: 12,
-    },
-    sortRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginBottom: 12,
-      flexWrap: "wrap",
-    },
-    sortLabel: {
-      fontSize: 13,
-      color: isDark ? "#94a3b8" : "#64748b",
-      fontWeight: "600",
-    },
-    sortButton: {
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      borderRadius: 6,
-      backgroundColor: isDark ? "#1e293b" : "#e2e8f0",
-      borderWidth: 1,
-      borderColor: isDark ? "#334155" : "#e2e8f0",
-    },
-    sortButtonActive: {
-      backgroundColor: "#38bdf8",
-      borderColor: "#38bdf8",
-    },
-    sortButtonText: {
-      fontSize: 12,
-      color: isDark ? "#e2e8f0" : "#0f172a",
-      fontWeight: "600",
-    },
-    sortButtonTextActive: {
-      color: "#0f172a",
-    },
-    addRow: {
-      marginBottom: 12,
-    },
-    addButton: {
-      backgroundColor: "#34d399",
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      alignSelf: "flex-start",
-    },
-    addButtonText: {
-      color: "#0f172a",
-      fontWeight: "700",
-      fontSize: 13,
+      marginBottom: 16,
     },
     list: {
       paddingBottom: 24,
@@ -805,10 +647,6 @@ const themedStyles = (isDark: boolean) =>
       opacity: 0.8,
       backgroundColor: isDark ? "#1e293b" : "#f1f5f9",
     },
-    staleCard: {
-      borderColor: isDark ? "#475569" : "#cbd5e1",
-      backgroundColor: isDark ? "#1e293b" : "#f8fafc",
-    },
     checkbox: {
       padding: 4,
     },
@@ -819,19 +657,22 @@ const themedStyles = (isDark: boolean) =>
     itemContent: {
       flex: 1,
     },
-    itemTitleRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      alignItems: "center",
-      gap: 6,
-      marginBottom: 2,
-    },
     itemTitle: {
       fontSize: 15,
       fontWeight: "600",
       color: isDark ? "#f8fafc" : "#0f172a",
+      marginBottom: 2,
       lineHeight: 20,
-      flexShrink: 1,
+      flex: 1,
+    },
+    itemTitleRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 8,
+    },
+    reminderIcon: {
+      padding: 4,
     },
     itemNotes: {
       fontSize: 13,
@@ -839,18 +680,21 @@ const themedStyles = (isDark: boolean) =>
       lineHeight: 18,
       marginBottom: 4,
     },
+    pendingCard: {
+      borderColor: isDark ? "#0ea5e9" : "#38bdf8",
+      borderStyle: "dashed",
+    },
+    offlineCard: {
+      opacity: 0.85,
+    },
+    pendingLabel: {
+      fontSize: 11,
+      color: isDark ? "#38bdf8" : "#0284c7",
+      marginBottom: 4,
+    },
     completedText: {
       textDecorationLine: "line-through",
       color: isDark ? "#94a3b8" : "#64748b",
-    },
-    staleText: {
-      color: isDark ? "#64748b" : "#94a3b8",
-    },
-    staleNote: {
-      fontSize: 11,
-      color: isDark ? "#94a3b8" : "#64748b",
-      fontStyle: "italic",
-      marginBottom: 4,
     },
     sourceLink: {
       fontSize: 12,
@@ -858,62 +702,10 @@ const themedStyles = (isDark: boolean) =>
       fontWeight: "600",
       marginTop: 2,
     },
-    assigneeRow: {
-      marginTop: 4,
-      marginBottom: 2,
-    },
-    assigneeText: {
-      fontSize: 12,
-      color: "#38bdf8",
-      fontWeight: "600",
-    },
     completedMeta: {
       fontSize: 11,
       color: "#34d399",
       marginTop: 4,
-    },
-    itemActions: {
-      flexDirection: "row",
-      gap: 12,
-      marginTop: 8,
-    },
-    itemAction: {
-      paddingVertical: 4,
-    },
-    itemActionText: {
-      fontSize: 12,
-      color: "#38bdf8",
-      fontWeight: "600",
-    },
-    itemActionDanger: {
-      paddingVertical: 4,
-    },
-    itemActionDangerText: {
-      fontSize: 12,
-      color: "#f87171",
-      fontWeight: "600",
-    },
-    newBadge: {
-      backgroundColor: "#f87171",
-      borderRadius: 4,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-    },
-    newBadgeText: {
-      fontSize: 10,
-      fontWeight: "700",
-      color: "#0f172a",
-    },
-    duplicateBadge: {
-      backgroundColor: "#fbbf24",
-      borderRadius: 4,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-    },
-    duplicateBadgeText: {
-      fontSize: 10,
-      fontWeight: "700",
-      color: "#0f172a",
     },
     notFound: {
       fontSize: 16,
@@ -933,78 +725,5 @@ const themedStyles = (isDark: boolean) =>
     },
     buttonDisabled: {
       opacity: 0.5,
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
-      justifyContent: "flex-end",
-    },
-    keyboardAvoiding: {
-      width: "100%",
-    },
-    modalContent: {
-      backgroundColor: isDark ? "#1e293b" : "#ffffff",
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      padding: 20,
-      maxHeight: "85%",
-    },
-    modalTitle: {
-      fontSize: 20,
-      fontWeight: "700",
-      color: isDark ? "#f8fafc" : "#0f172a",
-      marginBottom: 8,
-    },
-    modalHelper: {
-      fontSize: 13,
-      color: isDark ? "#94a3b8" : "#64748b",
-      marginBottom: 12,
-    },
-    modalLabel: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: isDark ? "#94a3b8" : "#64748b",
-      marginTop: 12,
-      marginBottom: 8,
-    },
-    modalInput: {
-      backgroundColor: isDark ? "#0f172a" : "#f1f5f9",
-      borderRadius: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      fontSize: 15,
-      color: isDark ? "#e2e8f0" : "#0f172a",
-      borderWidth: 1,
-      borderColor: isDark ? "#334155" : "#e2e8f0",
-    },
-    modalInputMultiline: {
-      minHeight: 80,
-      textAlignVertical: "top",
-    },
-    modalButtons: {
-      flexDirection: "row",
-      justifyContent: "flex-end",
-      gap: 12,
-      marginTop: 20,
-    },
-    modalButtonPrimary: {
-      backgroundColor: "#38bdf8",
-      borderRadius: 10,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-    },
-    modalButtonPrimaryText: {
-      color: "#0f172a",
-      fontWeight: "700",
-      fontSize: 15,
-    },
-    modalButtonSecondary: {
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-    },
-    modalButtonSecondaryText: {
-      color: isDark ? "#94a3b8" : "#64748b",
-      fontSize: 15,
-      fontWeight: "600",
     },
   });

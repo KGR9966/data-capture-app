@@ -12,6 +12,8 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import { Button, StyleSheet, Text, View } from "react-native";
 import type { FirebaseAuthTypes } from "@react-native-firebase/auth";
 
+import { clearAllOfflineData, stopNetworkListener } from "../services/checklistsOffline";
+
 const LOCAL_PROFILE_KEY = "@data_capture_profile";
 
 interface LocalProfile {
@@ -222,6 +224,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       logOut: async () => {
         if (!auth) throw new Error("Auth ikke initialiseret");
+        const uid = auth.currentUser?.uid;
+        try {
+          stopNetworkListener();
+          if (uid) {
+            await clearAllOfflineData(uid);
+          }
+        } catch (error) {
+          console.error("[AuthProvider] logOut cleanup error:", error);
+        }
         return signOut(auth);
       },
     }),

@@ -304,8 +304,153 @@
 
 ---
 
+## 2. Præcis / wildcard-søgning (US-005)
+
+### Oversigt
+
+| # | Case | ID | Regression | Status |
+|---|---|---|---|---|
+| 1 | Almindelig tekst substring | TC-SRC-001 | Ja | ⚪ |
+| 2 | Præcis phrase matcher hele ord | TC-SRC-002 | Ja | ⚪ |
+| 3 | Phrase skelner fra delstreng | TC-SRC-003 | Ja | ⚪ |
+| 4 | Tegnsætning som word boundary | TC-SRC-004 | Ja | ⚪ |
+| 5 | Hele-ord wildcard `*...*` | TC-SRC-005 | Ja | ⚪ |
+| 6 | Wildcard kræver sammenhæng i ét ord | TC-SRC-006 | Ja | ⚪ |
+| 7 | Kombinationer OR/NOT/substring | TC-SRC-007 | Ja | ⚪ |
+| 8 | æøå + normalisering | TC-SRC-008 | Ja | ⚪ |
+| 9 | Highlight-intervaller | TC-SRC-009 | Ja | ⚪ |
+| 10 | UI-hint for søgesyntaks | TC-SRC-010 | Ja | ⚪ |
+
+---
+
+## 3. Push-påmindelser (US-011 / B4)
+
+### Oversigt
+
+| # | Case | ID | Regression | Status |
+|---|---|---|---|---|
+| 1 | Opret påmindelse på sag | TC-REM-001 | Ja | ⚪ |
+| 2 | Tryk på notifikation åbner sag | TC-REM-002 | Ja | ⚪ |
+| 3 | Slet påmindelse inden udløb | TC-REM-003 | Ja | ⚪ |
+| 4 | Daglig gentagelse | TC-REM-004 | Ja | ⚪ |
+| 5 | Tilladelse nægtet flow | TC-REM-005 | Ja | ⚪ |
+| 6 | App dræbt inden udløb | TC-REM-006 | Ja | ⚪ |
+| 7 | Ændring af tidspunkt | TC-REM-007 | Ja | ⚪ |
+| 8 | Påmindelse på listepunkt | TC-REM-008 | Ja | ⚪ |
+| 9 | Slet sag/liste fjerner påmindelser | TC-REM-009 | Ja | ⚪ |
+
+---
+
+## 4. Offline understøttelse af lister (US-005 / B3)
+
+### Oversigt
+
+| # | Case | ID | Regression | Status |
+|---|---|---|---|---|
+| 1 | Listeoversigt offline | TC-OFL-001 | Ja | ⚪ |
+| 2 | Listedetalje offline | TC-OFL-002 | Ja | ⚪ |
+| 3 | Afkryds offline | TC-OFL-003 | Ja | ⚪ |
+| 4 | Rediger noter offline | TC-OFL-004 | Ja | ⚪ |
+| 5 | Genstart app offline | TC-OFL-005 | Ja | ⚪ |
+| 6 | Opret punkt på manuel liste offline | TC-OFL-006 | Ja | ⚪ |
+| 7 | Slet punkt offline | TC-OFL-007 | Ja | ⚪ |
+| 8 | To enheder konflikt | TC-OFL-008 | Ja | ⚪ |
+| 9 | Kompaktion af pending queue | TC-OFL-009 | Ja | ⚪ |
+| 10 | Pull-to-refresh flush | TC-OFL-010 | Ja | ⚪ |
+| 11 | Offline-indikator + deaktiverede handlinger | TC-OFL-011 | Ja | ⚪ |
+
+---
+
+## 5. Slet projekt (US-001 / B9)
+
+### Oversigt
+
+| # | Case | ID | Regression | Status |
+|---|---|---|---|---|
+| 1 | Slet tomt projekt | TC-DEL-001 | Ja | ⚪ |
+| 2 | Slet projekt med sager/checkpoints/kommentarer | TC-DEL-002 | Ja | ⚪ |
+| 3 | Slet projekt med checklister | TC-DEL-003 | Ja | ⚪ |
+| 4 | Slet projekt med fotos | TC-DEL-004 | Ja | ⚪ |
+| 5 | Medlem/admin afvises | TC-DEL-005 | Ja | ⚪ |
+| 6 | Annullér i dialog | TC-DEL-006 | Ja | ⚪ |
+| 7 | Forkert navn i bekræftelse | TC-DEL-007 | Ja | ⚪ |
+| 8 | Aktivt projekt slettes | TC-DEL-008 | Ja | ⚪ |
+| 9 | Netværksfejl under sletning | TC-DEL-009 | Ja | ⚪ |
+
+---
+
+## 6. Tomt projektnavn + dubletter (B8 / US-006)
+
+### Oversigt
+
+| # | Case | ID | Regression | Status |
+|---|---|---|---|---|
+| 1 | Tomt navn client-side | TC-PRJ-001 | Ja | ⚪ |
+| 2 | Whitespace-only navn | TC-PRJ-002 | Ja | ⚪ |
+| 3 | Dublet eksakt match | TC-PRJ-003 | Ja | ⚪ |
+| 4 | Dublet case/mellemrum | TC-PRJ-004 | Ja | ⚪ |
+| 5 | Anden brugers projekt med samme navn | TC-PRJ-005 | Ja | ⚪ |
+| 6 | Cloud Function afviser tomt navn | TC-PRJ-006 | Ja | ⚪ |
+| 7 | Cloud Function afviser dublet | TC-PRJ-007 | Ja | ⚪ |
+| 8 | Eksisterende dubletter håndteres | TC-PRJ-008 | Ja | ⚪ |
+| 9 | Vellykket oprettelse | TC-PRJ-009 | Ja | ⚪ |
+| 10 | `updateProject` validerer navn | TC-PRJ-010 | Ja | ⚪ |
+
+---
+
+## 7. Voice — fjern "Åben"/"åbn"-residu (US-004 D1)
+
+### Oversigt
+
+| # | Case | ID | Regression | Status |
+|---|---|---|---|---|
+| 1 | Kun "Åbn kamera" | TC-VRC-001 | Ja | ⚪ |
+| 2 | "Åben kamera" | TC-VRC-002 | Ja | ⚪ |
+| 3 | "Åbne kamera" fjerner præfiks | TC-VRC-003 | Ja | ⚪ |
+| 4 | Tekst efter album-kommando | TC-VRC-004 | Ja | ⚪ |
+| 5 | "Tag billede af..." | TC-VRC-005 | Ja | ⚪ |
+| 6 | "Vælg foto fra..." | TC-VRC-006 | Ja | ⚪ |
+| 7 | Observationsnote + kamera | TC-VRC-007 | Ja | ⚪ |
+| 8 | Modal-flow med foto + tekst | TC-VRC-008 | Ja | ⚪ |
+| 9 | Regression E1–E13 parser tests | TC-VRC-009 | Ja | ⚪ |
+
+---
+
+## 8. Auto-titel må ikke overskrive manuel titel (US-004 D3)
+
+### Oversigt
+
+| # | Case | ID | Regression | Status |
+|---|---|---|---|---|
+| 1 | Auto-titel fra beskrivelse | TC-ATT-001 | Ja | ⚪ |
+| 2 | Manuel titel overskrives ikke | TC-ATT-002 | Ja | ⚪ |
+| 3 | Slettet manuel titel fallback ved gem | TC-ATT-003 | Ja | ⚪ |
+| 4 | Titel før beskrivelse | TC-ATT-004 | Ja | ⚪ |
+| 5 | Modal nulstilles | TC-ATT-005 | Ja | ⚪ |
+| 6 | Voice-mode påvirkes ikke | TC-ATT-006 | Ja | ⚪ |
+| 7 | Gem med kun beskrivelse | TC-ATT-007 | Ja | ⚪ |
+| 8 | Gem med kun titel | TC-ATT-008 | Ja | ⚪ |
+
+---
+
+## 9. UI/UX Review: Board, checklist og item-kommentar
+
+### Oversigt
+
+| # | Case | ID | Regression | Status |
+|---|---|---|---|---|
+| 1 | Board-knapper ens bredde | TC-UXR-001 | Ja | ⚪ |
+| 2 | Board-knapper accessibility | TC-UXR-002 | Ja | ⚪ |
+| 3 | Ansvarlig vises i checklist-item | TC-UXR-003 | Ja | ⚪ |
+| 4 | Ansvarlig fallback skjuler tom linje | TC-UXR-004 | Ja | ⚪ |
+| 5 | "Tilbage" synlig under kommentar | TC-UXR-005 | Ja | ⚪ |
+| 6 | Kommentar + tastatur + navigation | TC-UXR-006 | Ja | ⚪ |
+
+---
+
 ## Ændringslog
 
 | Dato | Version | Ændring | Ansvarlig |
 |---|---|---|---|
 | 2026-07-15 | 1.0 | Oprettet sektion "Søgning og lister — redesign v2" med 21 testcases for S1–S8 + W1. | Test Manager Agent |
+| 2026-07-15 | 1.1 | Tilføjet sektioner 2–9 for comprehensive bug/backlog-round: søgning, reminders, offline lists, delete project, project name validation, voice residue, auto-title, UI/UX review. | Test Manager Agent |

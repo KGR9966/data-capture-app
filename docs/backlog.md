@@ -141,6 +141,12 @@
    - Se detaljeret case: `docs/backlog-cases/VOICE-001-voice-input-improvements.md`.
 
 ### P2.5 – US-004 hotfix restpunkter (næste pulje)
+11a. [ ] **Flyt projektsletning til Cloud Function (B9-teknisk-gæld)**
+   - Implementeret som client-side cascade delete i denne runde for at spare Cloud Functions-opsætning.
+   - Fremtidigt: flyt `deleteProject` til en `onCall` Firebase Cloud Function for bedre sikkerhed, pålidelighed og mulighed for at slette store projekter uden timeout.
+   - Kræver: `functions/`-mappe, Blaze-plan, opdateret `firebase.json`, app-kode der kalder `httpsCallable`.
+   - PO skal tage stilling til prioritering og budget.
+
 11b. [ ] **Fjern "Åben"/"åbn"-tekst fra titel/content efter kamera/album-kommando**
    - Parser/modal fjerner kommandoen, men residu kan stadig vises. Rettes så kamera/album-kommandoer forsvinder helt.
    - Oprindeligt rapporteret under US-004 hotfix test, 2026-07-28.

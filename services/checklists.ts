@@ -26,6 +26,7 @@ import {
   updateCheckpoint,
 } from "./checkpoints";
 import { parseSearchQuery, searchItems } from "./search";
+import { deleteRemindersForChecklist, deleteRemindersForChecklistItem } from "./reminders";
 
 export type ChecklistSortBy = "alphabetical" | "date" | "priority";
 export type SourceField = "title" | "content" | "category";
@@ -72,6 +73,9 @@ export interface ChecklistItem {
   duplicateOf?: string;
   createdAt?: any;
   updatedAt?: any;
+  isPending?: boolean;
+  pendingError?: string;
+  localOnly?: boolean;
 }
 
 export interface CreateDynamicChecklistOptions {
@@ -509,8 +513,12 @@ export async function addChecklistItem(
 
 export async function deleteChecklistItem(
   checklistId: string,
-  itemId: string
+  itemId: string,
+  userId?: string
 ): Promise<void> {
+  if (userId) {
+    await deleteRemindersForChecklistItem(userId, checklistId, itemId);
+  }
   await deleteDoc(doc(db, "checklists", checklistId, "items", itemId));
 }
 
@@ -612,13 +620,26 @@ export async function updateChecklist(
 export async function updateChecklistItem(
   checklistId: string,
   itemId: string,
-  updates: Partial<Omit<ChecklistItem, "id" | "checklistId" | "createdAt">>
+  updates: Partial<Omit<ChecklistItem, "id" | "checklistId" | "createdAt">>,
+  userId?: string
 ) {
   const ref = doc(db, "checklists", checklistId, "items", itemId);
   await updateDoc(ref, {
     ...prepareUpdateFields(updates as Record<string, unknown>),
     updatedAt: serverTimestamp(),
   });
+
+  if (userId && updates.title !== undefined) {
+    try {
+      const { getRemindersForChecklistItem, updateReminder } = await import("./reminders");
+      const reminders = await getRemindersForChecklistItem(userId, checklistId, itemId);
+      await Promise.all(
+        reminders.map((r) => updateReminder(userId, r.id, { title: updates.title || r.title }))
+      );
+    } catch (error) {
+      console.error("[updateChecklistItem] failed to update reminder titles:", error);
+    }
+  }
 }
 
 export async function toggleChecklistPoint(
@@ -626,11 +647,19 @@ export async function toggleChecklistPoint(
   point: ChecklistItem,
   userId: string
 ): Promise<void> {
-  const nextCompleted = !point.isCompleted;
+  return setChecklistPointCompleted(checklist, point, !point.isCompleted, userId);
+}
+
+export async function setChecklistPointCompleted(
+  checklist: Checklist,
+  point: ChecklistItem,
+  completed: boolean,
+  userId: string
+): Promise<void> {
+  const nextCompleted = completed;
   const now = serverTimestamp();
   const batch = writeBatch(db);
 
-  // 1. Opdater listepunkt
   const pointRef = doc(db, "checklists", checklist.id, "items", point.id);
   batch.update(pointRef, {
     isCompleted: nextCompleted,
@@ -639,7 +668,6 @@ export async function toggleChecklistPoint(
     updatedAt: now,
   });
 
-  // 2. Opdater matchende checkpoint hvis det findes
   if (
     point.sourceItemId &&
     point.sourceItemId !== "manual" &&
@@ -660,8 +688,6 @@ export async function toggleChecklistPoint(
 
   await batch.commit();
 
-  // 3. Synkronisér item-status med checkpoints: hvis alle checkpoints er
-  // done → item done; hvis et punkt un-checkes fra en done-sag → in_progress.
   if (point.sourceItemId && point.sourceItemId !== "manual") {
     const checkpoints = await getCheckpointsForItem(point.sourceItemId);
     if (checkpoints.length > 0) {
@@ -673,6 +699,14 @@ export async function toggleChecklistPoint(
       } else if (!allDone && item?.status === "done" && !nextCompleted) {
         await updateItem(point.sourceItemId, { status: "in_progress" });
       }
+    }
+  }
+
+  if (completed && userId) {
+    try {
+      await deleteRemindersForChecklistItem(userId, checklist.id, point.id);
+    } catch (error) {
+      console.error("[setChecklistPointCompleted] failed to cancel reminders:", error);
     }
   }
 }
@@ -937,7 +971,13 @@ export async function shareChecklistText(
   });
 }
 
-export async function deleteChecklist(checklistId: string): Promise<void> {
+export async function deleteChecklist(
+  checklistId: string,
+  userId?: string
+): Promise<void> {
+  if (userId) {
+    await deleteRemindersForChecklist(userId, checklistId);
+  }
   const itemsSnapshot = await getDocs(checklistItemsCollection(checklistId));
   await Promise.all(itemsSnapshot.docs.map((d) => deleteDoc(d.ref)));
   await deleteDoc(doc(db, "checklists", checklistId));

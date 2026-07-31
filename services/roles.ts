@@ -13,16 +13,39 @@ export const ROLE_LABELS: Record<ProjectRole, string> = {
 export function getProjectRole(
   project: Partial<Project> | null | undefined,
   userId: string | null | undefined,
-  members: ProjectMember[]
+  members: ProjectMember[],
+  userEmail?: string | null
 ): ProjectRole | null {
   if (!project || !userId) return null;
   if (project.ownerId === userId) return "owner";
 
-  const member = members.find((m) => m.userId === userId || m.email === userId);
+  const normalizedEmail = userEmail?.trim().toLowerCase() || null;
+
+  // Match medlem-dokument på enten uid eller email.
+  const member = members.find(
+    (m) =>
+      m.userId === userId ||
+      (normalizedEmail && m.email?.trim().toLowerCase() === normalizedEmail)
+  );
   if (member?.role) return member.role;
 
   const projectRole = project.roles?.[userId] as ProjectRole | undefined;
   if (projectRole) return projectRole;
+
+  // Rolle kan også være gemt på email i roles-kortet.
+  if (normalizedEmail) {
+    const roleByEmail = project.roles?.[normalizedEmail] as ProjectRole | undefined;
+    if (roleByEmail) return roleByEmail;
+
+    // Email-inviterede medlemmer uden specifik rolle får editor.
+    if (
+      project.memberEmails?.some(
+        (email) => email.trim().toLowerCase() === normalizedEmail
+      )
+    ) {
+      return "editor";
+    }
+  }
 
   return null;
 }

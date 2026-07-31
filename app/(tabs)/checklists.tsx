@@ -1,10 +1,11 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import NetInfo from "@react-native-community/netinfo";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -15,16 +16,16 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
   Checklist,
-  deleteChecklist,
-  subscribeToChecklistItems,
-  subscribeToProjectChecklists,
+  subscribeToChecklists,
 } from "../../services/checklists";
-import { subscribeToProjects } from "../../services/projects";
-
-interface ItemCounts {
-  open: number;
-  completed: number;
-}
+import {
+  deleteChecklistAndClearCache,
+  flushPendingOps,
+  getPendingOpsCount,
+  isOnline,
+  loadCachedChecklists,
+  saveCachedChecklists,
+} from "../../services/checklistsOffline";
 
 function formatDate(ts: any) {
   if (!ts) return "";
@@ -36,109 +37,77 @@ function formatDate(ts: any) {
   });
 }
 
-function formatTime(ts: any) {
-  if (!ts) return "";
-  const date = typeof ts.toDate === "function" ? ts.toDate() : new Date(ts);
-  return date.toLocaleTimeString("da-DK", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 export default function ChecklistsScreen() {
   const { user } = useAuth();
   const { theme } = useTheme();
   const router = useRouter();
   const [checklists, setChecklists] = useState<Checklist[]>([]);
-  const [itemCounts, setItemCounts] = useState<Record<string, ItemCounts>>({});
   const [loading, setLoading] = useState(true);
-  const checklistsRef = useRef(checklists);
-
-  useEffect(() => {
-    checklistsRef.current = checklists;
-  }, [checklists]);
+  const [online, setOnline] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
   const isDark = theme === "dark";
   const styles = themedStyles(isDark);
-  const checklistIds = checklists.map((c) => c.id).join(",");
+
+  const refreshPendingCount = React.useCallback(async () => {
+    if (!user?.uid) return;
+    const count = await getPendingOpsCount(user.uid);
+    setPendingCount(count);
+  }, [user]);
+
+  useEffect(() => {
+    const check = async () => setOnline(await isOnline());
+    check();
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const connected =
+        state.isConnected === true && state.isInternetReachable !== false;
+      setOnline(connected);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (!user?.uid) return;
+    let unsubscribe: (() => void) | undefined;
 
-    const byProject = new Map<string, Checklist[]>();
-    let projectIds: string[] = [];
-    let unsubscribes: (() => void)[] = [];
-
-    const mergeChecklists = () => {
-      const merged = Array.from(byProject.values())
-        .flat()
-        .reduce<Map<string, Checklist>>((map, list) => {
-          if (!map.has(list.id) || list.updatedAt?.toMillis?.() > map.get(list.id)!.updatedAt?.toMillis?.()) {
-            map.set(list.id, list);
-          }
-          return map;
-        }, new Map());
-      const sorted = Array.from(merged.values()).sort((a, b) => {
-        const aTime = a.updatedAt?.toMillis?.() || 0;
-        const bTime = b.updatedAt?.toMillis?.() || 0;
-        return bTime - aTime;
-      });
-      setChecklists(sorted);
-      setLoading(false);
-    };
-
-    const unsubscribeProjects = subscribeToProjects(
-      user.uid,
-      user.email ?? null,
-      (projects) => {
-        projectIds = projects.map((p) => p.id);
-
-        // Genopret listeners for det nye projektsæt.
-        unsubscribes.forEach((u) => u());
-        unsubscribes = [];
-        byProject.clear();
-
-        if (projectIds.length === 0) {
-          setChecklists([]);
-          setLoading(false);
-          return;
-        }
-
-        projectIds.forEach((projectId) => {
-          const unsubscribe = subscribeToProjectChecklists(projectId, (data) => {
-            byProject.set(projectId, data);
-            mergeChecklists();
-          });
-          unsubscribes.push(unsubscribe);
-        });
+    const bootstrap = async () => {
+      const cached = await loadCachedChecklists(user.uid);
+      if (cached.length > 0) {
+        setChecklists(cached);
+        setLoading(false);
       }
-    );
 
-    return () => {
-      unsubscribeProjects();
-      unsubscribes.forEach((u) => u());
-    };
-  }, [user?.uid, user?.email]);
-
-  useEffect(() => {
-    if (!user?.uid || checklistsRef.current.length === 0) return;
-    const unsubscribes: (() => void)[] = [];
-
-    for (const checklist of checklistsRef.current) {
-      const unsubscribe = subscribeToChecklistItems(checklist.id, (items) => {
-        const open = items.filter((i) => !i.isCompleted).length;
-        const completed = items.filter((i) => i.isCompleted).length;
-        setItemCounts((prev) => ({ ...prev, [checklist.id]: { open, completed } }));
+      unsubscribe = subscribeToChecklists(user.uid, (data) => {
+        setChecklists(data);
+        saveCachedChecklists(user.uid, data);
+        setLoading(false);
       });
-      unsubscribes.push(unsubscribe);
-    }
 
-    return () => {
-      unsubscribes.forEach((u) => u());
+      await refreshPendingCount();
     };
-  }, [checklistIds, user?.uid]);
+
+    bootstrap();
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [user, refreshPendingCount]);
+
+  const handleRefresh = async () => {
+    if (!user?.uid) return;
+    setRefreshing(true);
+    try {
+      await flushPendingOps(user.uid);
+      await refreshPendingCount();
+    } catch (error) {
+      console.log("Refresh checklists error", error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleDelete = (checklist: Checklist) => {
+    if (!user?.uid) return;
     Alert.alert("Slet liste", `Er du sikker på du vil slette "${checklist.name}"?`, [
       { text: "Annuller", style: "cancel" },
       {
@@ -146,7 +115,8 @@ export default function ChecklistsScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            await deleteChecklist(checklist.id);
+            await deleteChecklistAndClearCache(checklist.id, user.uid);
+            await refreshPendingCount();
           } catch (error) {
             console.log("Delete checklist error", error);
             Alert.alert("Fejl", "Kunne ikke slette listen.");
@@ -159,17 +129,21 @@ export default function ChecklistsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.header}>Lister</Text>
-          <Text style={styles.subtitle}>Dine gemte lister og dynamiske søgninger</Text>
+        <View style={styles.headerTitleRow}>
+          <Text style={styles.header}>Aktionslister</Text>
+          {!online ? (
+            <View style={styles.offlineBadge}>
+              <Text style={styles.offlineBadgeText}>Offline</Text>
+            </View>
+          ) : pendingCount > 0 ? (
+            <View style={styles.pendingBadge}>
+              <Text style={styles.pendingBadgeText}>{pendingCount} afventer</Text>
+            </View>
+          ) : null}
         </View>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => router.push("/search")}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="add" size={24} color="#0f172a" />
-        </TouchableOpacity>
+        <Text style={styles.subtitle}>
+          Opret lister fra Søg-fanen
+        </Text>
       </View>
 
       {loading ? (
@@ -180,9 +154,9 @@ export default function ChecklistsScreen() {
         />
       ) : checklists.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>Ingen lister endnu</Text>
+          <Text style={styles.emptyTitle}>Ingen aktionslister endnu</Text>
           <Text style={styles.emptySubtitle}>
-            Gå til Søg-fanen, søg efter noget, og tryk “Opret liste”.
+            Gå til Søg-fanen, søg efter noget, og tryk “Opret aktionsliste”.
           </Text>
         </View>
       ) : (
@@ -190,46 +164,32 @@ export default function ChecklistsScreen() {
           data={checklists}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          }
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={styles.checklistCard}
+              style={[
+                styles.checklistCard,
+                !online && styles.offlineCard,
+              ]}
               onPress={() => router.push(`/checklist?id=${item.id}` as any)}
             >
               <View style={styles.cardHeader}>
                 <Text style={styles.checklistName} numberOfLines={1}>
                   {item.name}
                 </Text>
-                <View style={styles.badgeRow}>
-                  {item.hasNewMatches ? (
-                    <View style={styles.newBadge}>
-                      <Text style={styles.newBadgeText}>Nyt</Text>
-                    </View>
-                  ) : null}
-                  {item.isDynamic ? (
-                    <View style={styles.dynamicBadge}>
-                      <Text style={styles.dynamicBadgeText}>Dynamisk</Text>
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-              <Text style={styles.checklistMeta}>
-                {itemCounts[item.id]?.open ?? 0} åbne ·{" "}
-                {itemCounts[item.id]?.completed ?? 0} udførte · Opdateret{" "}
-                {formatDate(item.updatedAt)} {formatTime(item.updatedAt)}
-              </Text>
-              <View style={styles.cardFooter}>
-                <Text style={styles.cardFooterText}>
-                  {item.isDynamic
-                    ? "Synkroniseres automatisk fra søgning"
-                    : "Manuel liste"}
-                </Text>
                 <TouchableOpacity
                   onPress={() => handleDelete(item)}
+                  disabled={!online}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Text style={styles.deleteButton}>🗑</Text>
+                  <Text style={[styles.deleteButton, !online && styles.disabledButton]}>🗑</Text>
                 </TouchableOpacity>
               </View>
+              <Text style={styles.checklistMeta}>
+                {formatDate(item.updatedAt)} · {item.isDynamic ? "Dynamisk" : "Manuel"}
+              </Text>
             </TouchableOpacity>
           )}
         />
@@ -247,28 +207,44 @@ const themedStyles = (isDark: boolean) =>
       paddingHorizontal: 16,
     },
     headerRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "flex-start",
       marginBottom: 16,
+    },
+    headerTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
     },
     header: {
       fontSize: 28,
       fontWeight: "700",
       color: isDark ? "#f8fafc" : "#0f172a",
     },
+    offlineBadge: {
+      backgroundColor: isDark ? "#7c2d12" : "#fef3c7",
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    offlineBadgeText: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: isDark ? "#fdba74" : "#b45309",
+    },
+    pendingBadge: {
+      backgroundColor: isDark ? "#1e3a8a" : "#dbeafe",
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    pendingBadgeText: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: isDark ? "#93c5fd" : "#1d4ed8",
+    },
     subtitle: {
       fontSize: 14,
       color: isDark ? "#94a3b8" : "#64748b",
       marginTop: 2,
-    },
-    addButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: "#38bdf8",
-      justifyContent: "center",
-      alignItems: "center",
     },
     list: {
       paddingBottom: 24,
@@ -297,10 +273,13 @@ const themedStyles = (isDark: boolean) =>
       borderWidth: 1,
       borderColor: isDark ? "#334155" : "#e2e8f0",
     },
+    offlineCard: {
+      opacity: 0.85,
+    },
     cardHeader: {
       flexDirection: "row",
       justifyContent: "space-between",
-      alignItems: "flex-start",
+      alignItems: "center",
       gap: 10,
     },
     checklistName: {
@@ -309,48 +288,15 @@ const themedStyles = (isDark: boolean) =>
       fontWeight: "600",
       color: isDark ? "#f8fafc" : "#0f172a",
     },
-    badgeRow: {
-      flexDirection: "row",
-      gap: 6,
-    },
-    dynamicBadge: {
-      backgroundColor: "#34d399",
-      borderRadius: 4,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-    },
-    dynamicBadgeText: {
-      fontSize: 10,
-      fontWeight: "700",
-      color: "#0f172a",
-    },
-    newBadge: {
-      backgroundColor: "#f87171",
-      borderRadius: 4,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-    },
-    newBadgeText: {
-      fontSize: 10,
-      fontWeight: "700",
-      color: "#0f172a",
-    },
     checklistMeta: {
       fontSize: 12,
       color: isDark ? "#94a3b8" : "#64748b",
-      marginTop: 6,
-    },
-    cardFooter: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginTop: 10,
-    },
-    cardFooterText: {
-      fontSize: 11,
-      color: isDark ? "#64748b" : "#94a3b8",
+      marginTop: 4,
     },
     deleteButton: {
       fontSize: 16,
+    },
+    disabledButton: {
+      opacity: 0.4,
     },
   });

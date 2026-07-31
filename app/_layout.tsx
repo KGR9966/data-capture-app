@@ -1,12 +1,25 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React from "react";
+import React, { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { AuthProvider } from "../contexts/AuthContext";
+import NotificationResponseHandler from "../components/NotificationResponseHandler";
+import { AuthProvider, useAuth } from "../contexts/AuthContext";
 import { ProjectProvider } from "../contexts/ProjectContext";
 import { ThemeProvider } from "../contexts/ThemeContext";
+import { initializeNetworkListener } from "../services/checklistsOffline";
+
+function NetworkListener() {
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    return initializeNetworkListener(user.uid);
+  }, [user?.uid]);
+
+  return null;
+}
 
 export default function RootLayout() {
   return (
@@ -15,6 +28,8 @@ export default function RootLayout() {
         <ThemeProvider>
           <AuthProvider>
             <ProjectProvider>
+              <NetworkListener />
+              <NotificationResponseHandler />
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" />
                 <Stack.Screen name="(tabs)" />

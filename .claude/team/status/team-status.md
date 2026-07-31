@@ -557,6 +557,27 @@ Før teamet kan designe rettelserne, skal PO tage stilling til:
 | Android (super-nuværende) | `4d7ded64-6118-46c7-98bb-0d137fc8ab8f` | ❌ Forældet | — |
 | iOS (preview v3) | `759b6e99-ff98-470c-885c-b9e8fd503f21` | ✅ Færdig | [Åbn iOS build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/759b6e99-ff98-470c-885c-b9e8fd503f21) |
 | Android (preview v3) | `af2f73c5-4b91-4326-ab53-3e2cf71087eb` | ✅ Færdig | [Åbn Android build](https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/af2f73c5-4b91-4326-ab53-3e2cf71087eb) |
+
+## 9.8 Samlet bug/backlog-runde — status
+
+**Plan:** `.claude/plans/comprehensive-bug-backlog-round.md` (PO-godkendt).  
+**Metode:** Test før build. Ét samlet build. Ingen build uden PO-go.
+
+### Agent-output modtaget og reviewet
+
+| # | Opgave | Dokument | Status | Bemærkning |
+|---|---|---|---|---|
+| 1 | Wildcard/præcis søgning | `.claude/team/design/us-005-wildcard-search.md` | ✅ Reviewet | Design indeholder 3 små beslutningspunkter, der træffes inden for mandat: `*...*` = whole-word wildcard; permanent hint under søgefelt; `*ord` / `ord*` tillades som prefix/suffix. Ingen PO-godkendelse nødvendig. |
+| 2 | UI/UX review Board + liste + kommentar | `.claude/team/ux/ui-review-board-checklist.md` | ✅ Reviewet | Konkrete fix er identificeret; afventer kodefase. |
+| 3 | Push-reminders | `.claude/team/design/us-011-push-reminders.md` | ❌ Tom / ikke leveret | Skal rykkedes / genskrives. |
+| 4 | Offline lister | (mangler fil) | ❌ Mangler | Agent har ikke leveret. |
+| 5 | Slet projekt (B9) | (mangler fil) | ❌ Mangler | Agent har ikke leveret. |
+
+### Næste trin
+1. Ryd op i manglende design-output (push-reminders, offline lister, slet projekt).
+2. Når design er komplet: opdater testplan og start kodefase.
+3. Ingen kode uden komplet design + testplan.
+4. Status næste gang: når de 3 manglende design-dokumenter er på plads eller afvist.
 | iOS (preview v2) | `36614917-4d57-467e-9b13-219d2f5d5346` | ❌ Forældet | — |
 | Android (preview v2) | `9ce2e19b-1c3d-4b97-95eb-12d992b70e6b` | ❌ Forældet | — |
 | iOS (preview v1) | `f60352d4-bb68-4136-824c-23b11055a308` | ❌ Forældet | — |

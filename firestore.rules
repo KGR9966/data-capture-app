@@ -14,36 +14,6 @@ service cloud.firestore {
       return request.auth.uid;
     }
 
-    function getProject(projectId) {
-      return get(/databases/$(database)/documents/projects/$(projectId));
-    }
-
-    function getProjectData(projectId) {
-      return getProject(projectId).data;
-    }
-
-    function isProjectMember(projectId) {
-      return isAuthenticated()
-             && (getProjectData(projectId).ownerId == getUserId()
-                 || getUserId() in getProjectData(projectId).roles
-                 || (request.auth.token.email != null
-                     && request.auth.token.email in getProjectData(projectId).memberEmails));
-    }
-
-    function hasProjectRole(projectId, allowedRoles) {
-      return isAuthenticated()
-             && (getProjectData(projectId).ownerId == getUserId()
-                 || (getUserId() in getProjectData(projectId).roles
-                     && getProjectData(projectId).roles.get(getUserId(), null) in allowedRoles)
-                 || (request.auth.token.email != null
-                     && request.auth.token.email in getProjectData(projectId).memberEmails
-                     && "editor" in allowedRoles));
-    }
-
-    function canCreateInProject(projectId) {
-      return hasProjectRole(projectId, ["owner", "admin", "editor"]);
-    }
-
     // Projekter
     match /projects/{projectId} {
       function projectData() {
@@ -60,48 +30,39 @@ service cloud.firestore {
 
       allow read: if isProjectReader();
 
-      allow create: if isAuthenticated()
-                     && request.resource.data.ownerId == getUserId()
-                     && request.resource.data.name is string
-                     && request.resource.data.name.trim().size() > 0;
+      allow create: if isAuthenticated() && request.resource.data.ownerId == getUserId();
 
       allow update: if isAuthenticated()
                      && (resource.data.ownerId == getUserId()
                          || (getUserId() in resource.data.roles
-                             && request.resource.data.roles.get(getUserId(), null) in ["owner", "admin"]))
-                     && (!request.resource.data.keys().hasAny(["name"])
-                         || (request.resource.data.name is string
-                             && request.resource.data.name.trim().size() > 0));
+                             && request.resource.data.roles.get(getUserId(), null) in ["owner", "admin"]));
 
       allow delete: if isAuthenticated() && resource.data.ownerId == getUserId();
     }
 
     // Projekt-medlemmer
     match /projects/{projectId}/members/{memberId} {
-      // Ved læsning bruges get() på det eksisterende projekt.
-      // Ved create/update/delete bruges getAfter(), så reglerne virker i
-      // batched writes hvor projektet oprettes samtidig med medlemsdokumentet.
-      function projectDataForRead() {
-        return get(/databases/$(database)/documents/projects/$(projectId)).data;
-      }
-
-      function projectDataForWrite() {
+      // Bemærk: Brug getAfter() i stedet for get() her, fordi medlemsdokumentet
+      // ofte oprettes i samme batched write som projekt-dokumentet. getAfter()
+      // ser projektets tilstand efter batchen er anvendt, mens get() ser den
+      // nuværende tilstand før batchen.
+      function projectData() {
         return getAfter(/databases/$(database)/documents/projects/$(projectId)).data;
       }
 
       function isProjectReader() {
         return isAuthenticated()
-               && (projectDataForRead().ownerId == getUserId()
-                   || getUserId() in projectDataForRead().roles
+               && (projectData().ownerId == getUserId()
+                   || getUserId() in projectData().roles
                    || (request.auth.token.email != null
-                       && request.auth.token.email in projectDataForRead().memberEmails));
+                       && request.auth.token.email in projectData().memberEmails));
       }
 
       function isProjectOwnerOrAdmin() {
         return isAuthenticated()
-               && (projectDataForWrite().ownerId == getUserId()
-                   || (getUserId() in projectDataForWrite().roles
-                       && projectDataForWrite().roles.get(getUserId(), null) in ["owner", "admin"]));
+               && (projectData().ownerId == getUserId()
+                   || (getUserId() in projectData().roles
+                       && projectData().roles.get(getUserId(), null) in ["owner", "admin"]));
       }
 
       allow read: if isProjectReader();
@@ -119,86 +80,33 @@ service cloud.firestore {
 
     // Sager / items
     match /items/{itemId} {
-      function itemProjectId() {
-        return resource.data.projectId;
-      }
-
-      function canReadItem() {
-        return isAuthenticated()
-               && exists(/databases/$(database)/documents/projects/$(itemProjectId()))
-               && (getProjectData(itemProjectId()).ownerId == getUserId()
-                   || getUserId() in getProjectData(itemProjectId()).roles
-                   || (request.auth.token.email != null
-                       && request.auth.token.email in getProjectData(itemProjectId()).memberEmails));
-      }
-
-      function canUpdateItem() {
-        return isAuthenticated()
-               && exists(/databases/$(database)/documents/projects/$(itemProjectId()))
-               && (getProjectData(itemProjectId()).ownerId == getUserId()
-                   || (getUserId() in getProjectData(itemProjectId()).roles
-                       && ["owner", "admin", "editor"].hasAny([getProjectData(itemProjectId()).roles.get(getUserId(), null)]))
-                   || (resource.data.assignedTo == getUserId()
-                       && getUserId() in getProjectData(itemProjectId()).roles
-                       && getProjectData(itemProjectId()).roles.get(getUserId(), null) == "editor"));
-      }
-
-      allow read: if canReadItem();
+      allow read: if isAuthenticated()
+                   && exists(/databases/$(database)/documents/projects/$(resource.data.projectId))
+                   && (get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.ownerId == getUserId()
+                       || getUserId() in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.members
+                       || getUserId() in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.roles);
 
       allow create: if isAuthenticated()
                      && request.resource.data.keys().hasAll(["projectId", "createdBy"])
                      && exists(/databases/$(database)/documents/projects/$(request.resource.data.projectId))
-                     && canCreateInProject(request.resource.data.projectId);
+                     && (get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.ownerId == getUserId()
+                         || (getUserId() in get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.roles
+                             && ["owner", "admin", "editor"].hasAny([get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.roles.get(getUserId(), null)])));
 
-      allow update: if canUpdateItem();
+      allow update: if isAuthenticated()
+                     && exists(/databases/$(database)/documents/projects/$(resource.data.projectId))
+                     && (get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.ownerId == getUserId()
+                         || (getUserId() in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.roles
+                             && ["owner", "admin", "editor"].hasAny([get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.roles.get(getUserId(), null)]))
+                         || (resource.data.assignedTo == getUserId()
+                             && getUserId() in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.roles
+                             && get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.roles.get(getUserId(), null) == "editor"));
 
       allow delete: if isAuthenticated()
-                     && exists(/databases/$(database)/documents/projects/$(itemProjectId()))
-                     && (getProjectData(itemProjectId()).ownerId == getUserId()
-                         || (getUserId() in getProjectData(itemProjectId()).roles
-                             && ["owner", "admin"].hasAny([getProjectData(itemProjectId()).roles.get(getUserId(), null)])));
-    }
-
-    // Checkpoints under items
-    match /items/{itemId}/checkpoints/{checkpointId} {
-      function parentItem() {
-        return get(/databases/$(database)/documents/items/$(itemId));
-      }
-
-      function canReadParentItem() {
-        return isAuthenticated()
-               && parentItem().data != null
-               && exists(/databases/$(database)/documents/projects/$(parentItem().data.projectId))
-               && (getProjectData(parentItem().data.projectId).ownerId == getUserId()
-                   || getUserId() in getProjectData(parentItem().data.projectId).roles
-                   || (request.auth.token.email != null
-                       && request.auth.token.email in getProjectData(parentItem().data.projectId).memberEmails));
-      }
-
-      function canUpdateParentItem() {
-        return isAuthenticated()
-               && parentItem().data != null
-               && exists(/databases/$(database)/documents/projects/$(parentItem().data.projectId))
-               && (getProjectData(parentItem().data.projectId).ownerId == getUserId()
-                   || (getUserId() in getProjectData(parentItem().data.projectId).roles
-                       && ["owner", "admin", "editor"].hasAny([getProjectData(parentItem().data.projectId).roles.get(getUserId(), null)]))
-                   || (parentItem().data.assignedTo == getUserId()
-                       && getUserId() in getProjectData(parentItem().data.projectId).roles
-                       && getProjectData(parentItem().data.projectId).roles.get(getUserId(), null) == "editor")
-                   || (request.auth.token.email != null
-                       && request.auth.token.email in getProjectData(parentItem().data.projectId).memberEmails
-                       && "editor" in ["owner", "admin", "editor"]));
-      }
-
-      allow read: if canReadParentItem();
-
-      allow create: if canUpdateParentItem()
-                     && request.resource.data.keys().hasAll(["itemId", "projectId", "sourceField", "text", "status"])
-                     && request.resource.data.itemId == itemId;
-
-      allow update: if canUpdateParentItem();
-
-      allow delete: if canUpdateParentItem();
+                     && exists(/databases/$(database)/documents/projects/$(resource.data.projectId))
+                     && (get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.ownerId == getUserId()
+                         || (getUserId() in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.roles
+                             && ["owner", "admin"].hasAny([get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.roles.get(getUserId(), null)])));
     }
 
     // Kommentarer
@@ -225,81 +133,61 @@ service cloud.firestore {
                                      && ["owner", "admin"].hasAny([get(/databases/$(database)/documents/projects/$(get(/databases/$(database)/documents/items/$(itemId)).data.projectId)).data.roles.get(getUserId(), null)])));
     }
 
+    // Bruger påmindelser / reminders
+    match /users/{userId}/reminders/{reminderId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+
+      allow create: if isAuthenticated()
+                     && request.auth.uid == userId
+                     && request.resource.data.keys().hasAll([
+                         "targetType", "targetId", "title", "scheduledAt", "repeat"
+                       ])
+                     && request.resource.data.userId == userId
+                     && request.resource.data.targetType in ["item", "checklistItem"]
+                     && request.resource.data.scheduledAt is number
+                     && request.resource.data.repeat in ["once", "daily", "weekly"];
+
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+
     // Aktionslister / checklists
     match /checklists/{checklistId} {
-      function checklistData() {
-        return resource.data;
-      }
-
-      function canReadChecklist() {
-        return isAuthenticated()
-               && (checklistData().ownerId == getUserId()
-                   || getUserId() in checklistData().sharedWith
-                   || (checklistData().projectId != null
-                       && isProjectMember(checklistData().projectId)));
-      }
-
-      function canUpdateChecklist() {
-        return isAuthenticated()
-               && (checklistData().ownerId == getUserId()
-                   || (getUserId() in checklistData().sharedWith
-                       && checklistData().sharedWith.get(getUserId(), null) in ["owner", "admin", "editor"])
-                   || (checklistData().projectId != null
-                       && hasProjectRole(checklistData().projectId, ["owner", "admin"])));
-      }
-
-      function canDeleteChecklist() {
-        return isAuthenticated()
-               && (checklistData().ownerId == getUserId()
-                   || (checklistData().projectId != null
-                       && hasProjectRole(checklistData().projectId, ["owner", "admin"])));
-      }
-
-      allow read: if canReadChecklist();
+      allow read: if isAuthenticated()
+                   && (resource.data.ownerId == getUserId()
+                       || getUserId() in resource.data.sharedWith);
 
       allow create: if isAuthenticated()
                      && request.resource.data.keys().hasAll(["name", "ownerId"])
-                     && request.resource.data.ownerId == getUserId()
-                     && (
-                          !request.resource.data.keys().hasAny(["projectId"])
-                          || request.resource.data.projectId == null
-                          || canCreateInProject(request.resource.data.projectId)
-                        );
+                     && request.resource.data.ownerId == getUserId();
 
-      allow update: if canUpdateChecklist();
+      allow update: if isAuthenticated()
+                     && (resource.data.ownerId == getUserId()
+                         || (getUserId() in resource.data.sharedWith
+                             && resource.data.sharedWith.get(getUserId(), null) in ["owner", "admin", "editor"]));
 
-      allow delete: if canDeleteChecklist();
+      allow delete: if isAuthenticated()
+                     && resource.data.ownerId == getUserId();
     }
 
     match /checklists/{checklistId}/items/{itemId} {
-      function parentChecklist() {
-        return get(/databases/$(database)/documents/checklists/$(checklistId));
-      }
+      allow read: if isAuthenticated()
+                   && exists(/databases/$(database)/documents/checklists/$(checklistId))
+                   && (get(/databases/$(database)/documents/checklists/$(checklistId)).data.ownerId == getUserId()
+                       || getUserId() in get(/databases/$(database)/documents/checklists/$(checklistId)).data.sharedWith);
 
-      function canReadChecklistPoint() {
-        return isAuthenticated()
-               && exists(/databases/$(database)/documents/checklists/$(checklistId))
-               && (parentChecklist().data.ownerId == getUserId()
-                   || getUserId() in parentChecklist().data.sharedWith
-                   || (parentChecklist().data.projectId != null
-                       && isProjectMember(parentChecklist().data.projectId)));
-      }
+      allow create: if isAuthenticated()
+                     && exists(/databases/$(database)/documents/checklists/$(checklistId))
+                     && (get(/databases/$(database)/documents/checklists/$(checklistId)).data.ownerId == getUserId()
+                         || (getUserId() in get(/databases/$(database)/documents/checklists/$(checklistId)).data.sharedWith
+                             && get(/databases/$(database)/documents/checklists/$(checklistId)).data.sharedWith.get(getUserId(), null) in ["owner", "admin", "editor"]));
 
-      function canUpdateChecklistPoint() {
-        return isAuthenticated()
-               && exists(/databases/$(database)/documents/checklists/$(checklistId))
-               && (parentChecklist().data.ownerId == getUserId()
-                   || (getUserId() in parentChecklist().data.sharedWith
-                       && parentChecklist().data.sharedWith.get(getUserId(), null) in ["owner", "admin", "editor"])
-                   || (parentChecklist().data.projectId != null
-                       && hasProjectRole(parentChecklist().data.projectId, ["owner", "admin", "editor"])));
-      }
-
-      allow read: if canReadChecklistPoint();
-
-      allow create: if canUpdateChecklistPoint();
-
-      allow update, delete: if canUpdateChecklistPoint();
+      allow update, delete: if isAuthenticated()
+                             && exists(/databases/$(database)/documents/checklists/$(checklistId))
+                             && (get(/databases/$(database)/documents/checklists/$(checklistId)).data.ownerId == getUserId()
+                                 || (getUserId() in get(/databases/$(database)/documents/checklists/$(checklistId)).data.sharedWith
+                                     && get(/databases/$(database)/documents/checklists/$(checklistId)).data.sharedWith.get(getUserId(), null) in ["owner", "admin", "editor"]));
     }
   }
 }

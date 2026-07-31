@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -16,12 +17,21 @@ import {
 
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
+import ReminderModal from "../components/ReminderModal";
 import { Comment, createComment, deleteComment, subscribeToComments } from "../services/comments";
 import { CaptureItem, deleteItem, getItemById, ItemStatus, ItemType, updateItem } from "../services/items";
 import { getProjectById, Project, ProjectMember, subscribeToProjectMembers } from "../services/projects";
 import { copyImageToClipboard, shareImage, shareText } from "../services/share";
 import { canAssignItems, canComment, canDeleteItem, canEditItem, getProjectRole, ProjectRole } from "../services/roles";
 import { copyToClipboard } from "../services/deeplinks";
+import {
+  createReminder,
+  deleteReminder,
+  getRemindersForItem,
+  Reminder,
+  subscribeToReminders,
+  updateReminder,
+} from "../services/reminders";
 
 function formatDate(ts: any) {
   if (!ts) return "Ukendt tidspunkt";
@@ -48,7 +58,7 @@ function currentTimestamp() {
 const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   idea: "Idé",
   observation: "Observation",
-  bug: "Fejl",
+  bug: "Bug",
   note: "Notat",
   photo: "Foto",
   voice: "Stemme",
@@ -99,6 +109,9 @@ export default function ItemDetailScreen() {
   const [shareLoading, setShareLoading] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [textCopied, setTextCopied] = useState(false);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [reminderModalVisible, setReminderModalVisible] = useState(false);
+  const [reminderSaving, setReminderSaving] = useState(false);
   const isImageActionLoading = copyLoading || shareLoading;
   const isDark = theme === "dark";
   const styles = themedStyles(isDark);
@@ -138,6 +151,7 @@ export default function ItemDetailScreen() {
     }
     let unsubscribeMembers: (() => void) | undefined;
     let unsubscribeComments: (() => void) | undefined;
+    let unsubscribeReminders: (() => void) | undefined;
     getItemById(itemId)
       .then(async (data) => {
         setItem(data);
@@ -150,6 +164,18 @@ export default function ItemDetailScreen() {
           setEditTags(data.tags?.join(", ") || "");
           setEditAssignedTo(data.assignedTo || "");
           setEditAssignedToName(data.assignedToName || "");
+          if (user?.uid) {
+            unsubscribeReminders = subscribeToReminders(user.uid, (r) => {
+              setReminders(r.filter((rem) => rem.targetType === "item" && rem.targetId === itemId));
+            });
+            // Load immediately once in case subscription is slow.
+            try {
+              const initialReminders = await getRemindersForItem(user.uid, itemId);
+              setReminders(initialReminders);
+            } catch (err) {
+              console.log("Load reminders error", err);
+            }
+          }
           if (data.projectId) {
             try {
               const projectData = await getProjectById(data.projectId);
@@ -167,8 +193,9 @@ export default function ItemDetailScreen() {
     return () => {
       if (unsubscribeMembers) unsubscribeMembers();
       if (unsubscribeComments) unsubscribeComments();
+      if (unsubscribeReminders) unsubscribeReminders();
     };
-  }, [itemId]);
+  }, [itemId, user?.uid]);
 
   const handleDelete = () => {
     if (!item || !user?.uid || !canDeleteItem(projectRole, item, user.uid)) {
@@ -340,6 +367,50 @@ export default function ItemDetailScreen() {
     if (comment.authorName) return comment.authorName;
     if (comment.authorEmail) return comment.authorEmail.split("@")[0];
     return "Ukendt";
+  };
+
+  const existingItemReminder = reminders[0] || null;
+
+  const handleSaveReminder = async (payload: {
+    scheduledAt: number;
+    repeat: Reminder["repeat"];
+    note?: string;
+  }) => {
+    if (!user?.uid || !item) return;
+    setReminderSaving(true);
+    try {
+      if (existingItemReminder) {
+        await updateReminder(user.uid, existingItemReminder.id, payload);
+      } else {
+        await createReminder({
+          userId: user.uid,
+          targetType: "item",
+          targetId: item.id,
+          title: item.title || "Sag",
+          ...payload,
+        });
+      }
+      setReminderModalVisible(false);
+    } catch (error) {
+      console.log("Save reminder error", error);
+      Alert.alert("Fejl", "Kunne ikke gemme påmindelsen.");
+    } finally {
+      setReminderSaving(false);
+    }
+  };
+
+  const handleDeleteReminder = async () => {
+    if (!user?.uid || !existingItemReminder) return;
+    setReminderSaving(true);
+    try {
+      await deleteReminder(user.uid, existingItemReminder.id);
+      setReminderModalVisible(false);
+    } catch (error) {
+      console.log("Delete reminder error", error);
+      Alert.alert("Fejl", "Kunne ikke slette påmindelsen.");
+    } finally {
+      setReminderSaving(false);
+    }
   };
 
   const handleCopyImage = async () => {
@@ -749,62 +820,87 @@ export default function ItemDetailScreen() {
     !commentText.trim() || submittingComment || commentText.trim().length > 2000;
 
   return (
-    <View style={{ flex: 1 }}>
-      {/* Fast header — rører sig ikke når tastaturet åbner */}
-      <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backText}>← Tilbage</Text>
-        </TouchableOpacity>
-      </View>
-
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
-      >
-        <View style={{ flex: 1 }}>
-          <ScrollView
-            ref={scrollViewRef}
-            contentContainerStyle={styles.scrollContent}
-            onContentSizeChange={(_, h) => setContentHeight(h)}
-            onLayout={(e) => setScrollViewHeight(e.nativeEvent.layout.height)}
-            onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
-            scrollEventThrottle={150}
-          >
-            {editing ? renderEdit() : renderView()}
-          </ScrollView>
-
-          {!editing && canComment(projectRole) ? (
-            <View style={styles.commentInputBar}>
-              <TextInput
-                style={styles.commentInput}
-                placeholder="Skriv en kommentar..."
-                placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-                value={commentText}
-                onChangeText={setCommentText}
-                multiline
-                maxLength={2000}
-                editable={!submittingComment}
-              />
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+    >
+      <View style={{ flex: 1 }}>
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.scrollContent}
+          onContentSizeChange={(_, h) => setContentHeight(h)}
+          onLayout={(e) => setScrollViewHeight(e.nativeEvent.layout.height)}
+          onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
+          scrollEventThrottle={150}
+        >
+          <View style={styles.headerRow}>
+            <TouchableOpacity onPress={() => router.back()}>
+              <Text style={styles.backText}>← Tilbage</Text>
+            </TouchableOpacity>
+            {item ? (
               <TouchableOpacity
-                style={[
-                  styles.sendButton,
-                  isInputDisabled && styles.buttonDisabled,
-                ]}
-                onPress={handleSubmitComment}
-                disabled={isInputDisabled}
+                style={styles.reminderButton}
+                onPress={() => setReminderModalVisible(true)}
+                disabled={reminderSaving}
               >
-                {submittingComment ? (
-                  <ActivityIndicator size="small" color="#0f172a" />
-                ) : (
-                  <Text style={styles.sendButtonText}>Send</Text>
-                )}
+                <Ionicons
+                  name={existingItemReminder ? "notifications" : "notifications-outline"}
+                  size={22}
+                  color={isDark ? "#38bdf8" : "#0284c7"}
+                />
+                {existingItemReminder ? (
+                  <View style={styles.reminderBadge} />
+                ) : null}
               </TouchableOpacity>
-            </View>
-          ) : null}
-        </View>
-      </KeyboardAvoidingView>
-    </View>
+            ) : null}
+          </View>
+
+          {editing ? renderEdit() : renderView()}
+        </ScrollView>
+
+        {!editing && canComment(projectRole) ? (
+          <View style={styles.commentInputBar}>
+            <TextInput
+              style={styles.commentInput}
+              placeholder="Skriv en kommentar..."
+              placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+              value={commentText}
+              onChangeText={setCommentText}
+              multiline
+              maxLength={2000}
+              editable={!submittingComment}
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                isInputDisabled && styles.buttonDisabled,
+              ]}
+              onPress={handleSubmitComment}
+              disabled={isInputDisabled}
+            >
+              {submittingComment ? (
+                <ActivityIndicator size="small" color="#0f172a" />
+              ) : (
+                <Text style={styles.sendButtonText}>Send</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : null}
+      </View>
+      {item ? (
+        <ReminderModal
+          key={reminderModalVisible ? existingItemReminder?.id || "new" : "closed"}
+          visible={reminderModalVisible}
+          title={item.title || "Sag"}
+          existingReminder={existingItemReminder}
+          saving={reminderSaving}
+          onClose={() => setReminderModalVisible(false)}
+          onSave={handleSaveReminder}
+          onDelete={existingItemReminder ? handleDeleteReminder : undefined}
+        />
+      ) : null}
+    </KeyboardAvoidingView>
   );
 }
 
@@ -820,19 +916,33 @@ const themedStyles = (isDark: boolean) =>
     scrollContent: {
       flexGrow: 1,
       backgroundColor: isDark ? "#0f172a" : "#f8fafc",
+      paddingTop: 60,
       paddingHorizontal: 16,
       paddingBottom: 16,
     },
     headerRow: {
-      paddingTop: 60,
-      paddingHorizontal: 16,
-      paddingBottom: 16,
-      backgroundColor: isDark ? "#0f172a" : "#f8fafc",
+      marginBottom: 16,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
     },
     backText: {
       color: "#38bdf8",
       fontSize: 16,
       fontWeight: "600",
+    },
+    reminderButton: {
+      padding: 8,
+      position: "relative",
+    },
+    reminderBadge: {
+      position: "absolute",
+      top: 6,
+      right: 6,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: "#f87171",
     },
     notFound: {
       fontSize: 16,

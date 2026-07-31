@@ -228,7 +228,7 @@ export default function SearchScreen() {
   const availableProjects = useMemo(() => {
     return projects.filter((p) => {
       const members = projectMembers[p.id] || [];
-      const role = getProjectRole(p, user?.uid || null, members);
+      const role = getProjectRole(p, user?.uid || null, members, user?.email || null);
       const canCreate = canCreateItem(role);
       return canCreate && (projectResultCounts[p.id] || 0) > 0;
     });
