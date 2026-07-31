@@ -132,8 +132,15 @@ service cloud.firestore {
 
     // Checkpoints under items (afkrydsningspunkter)
     match /items/{itemId}/checkpoints/{checkpointId} {
+      function checkpointProjectId() {
+        // Ved oprettelse findes resource.data endnu ikke; brug request.resource.data i stedet.
+        return resource.data != null
+               ? resource.data.projectId
+               : (request.resource.data != null ? request.resource.data.projectId : null);
+      }
+
       function checkpointProject() {
-        return get(/databases/$(database)/documents/projects/$(resource.data.projectId));
+        return get(/databases/$(database)/documents/projects/$(checkpointProjectId()));
       }
 
       function checkpointProjectData() {
