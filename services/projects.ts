@@ -1,5 +1,4 @@
 import {
-  addDoc,
   arrayRemove,
   arrayUnion,
   collection,
@@ -15,8 +14,10 @@ import {
   where,
   writeBatch,
 } from "@react-native-firebase/firestore";
+import { deleteObject, listAll, ref } from "@react-native-firebase/storage";
 
-import { db } from "./firebase";
+import { db, storage } from "./firebase";
+import { getItemsForProject } from "./items";
 import type { ProjectRole } from "./roles";
 
 export interface Project {
@@ -42,6 +43,8 @@ const projectsCollection = collection(db, "projects");
 const membersSubcollection = (projectId: string) =>
   collection(doc(db, "projects", projectId), "members");
 
+export const MIN_PROJECT_NAME_LENGTH = 1;
+
 export function isDuplicateProjectName(
   name: string,
   ownedProjects: Project[]
@@ -52,12 +55,40 @@ export function isDuplicateProjectName(
   );
 }
 
+export function validateProjectName(name: string): string | null {
+  const trimmed = name.trim();
+  if (trimmed.length < MIN_PROJECT_NAME_LENGTH) {
+    return "Projektnavn må ikke være tomt";
+  }
+  return null;
+}
+
 export async function createProject(
   name: string,
   ownerId: string,
   ownerEmail?: string,
   description?: string
 ): Promise<Project> {
+  const trimmedName = name.trim();
+  const trimmedDescription = (description || "").trim();
+
+  const validationError = validateProjectName(trimmedName);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  // Server-side duplicate guard: kun ejerens egne projekter.
+  const normalized = trimmedName.toLowerCase();
+  const existing = await getDocs(
+    query(projectsCollection, where("ownerId", "==", ownerId))
+  );
+  const duplicate = existing.docs.find(
+    (d) => (d.data().name as string | undefined)?.trim().toLowerCase() === normalized
+  );
+  if (duplicate) {
+    throw new Error("Der findes allerede et projekt med dette navn.");
+  }
+
   const memberDocId = ownerEmail || ownerId;
   const projectRef = doc(projectsCollection);
   const memberRef = doc(membersSubcollection(projectRef.id), memberDocId);
@@ -65,8 +96,8 @@ export async function createProject(
   const batch = writeBatch(db);
 
   batch.set(projectRef, {
-    name,
-    description: description || "",
+    name: trimmedName,
+    description: trimmedDescription,
     ownerId,
     memberEmails: ownerEmail ? [ownerEmail] : [],
     roles: { [ownerId]: "owner" },
@@ -85,8 +116,8 @@ export async function createProject(
 
   return {
     id: projectRef.id,
-    name,
-    description,
+    name: trimmedName,
+    description: trimmedDescription,
     ownerId,
     memberEmails: ownerEmail ? [ownerEmail] : [],
     roles: { [ownerId]: "owner" },
@@ -205,15 +236,148 @@ export async function updateProject(
   projectId: string,
   updates: Partial<Pick<Project, "name" | "description">>
 ) {
+  const payload: Partial<Pick<Project, "name" | "description">> = {};
+
+  if (updates.name !== undefined) {
+    const trimmed = updates.name.trim();
+    const validationError = validateProjectName(trimmed);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+    payload.name = trimmed;
+  }
+
+  if (updates.description !== undefined) {
+    payload.description = updates.description.trim();
+  }
+
   const projectRef = doc(db, "projects", projectId);
   await updateDoc(projectRef, {
-    ...updates,
+    ...payload,
     updatedAt: serverTimestamp(),
   });
 }
 
 export async function deleteProject(projectId: string) {
   await deleteDoc(doc(db, "projects", projectId));
+}
+
+const MAX_BATCH_OPERATIONS = 400;
+
+async function commitChunkedDeletes(
+  refs: { path: string; ref: ReturnType<typeof doc> }[]
+): Promise<void> {
+  for (let i = 0; i < refs.length; i += MAX_BATCH_OPERATIONS) {
+    const chunk = refs.slice(i, i + MAX_BATCH_OPERATIONS);
+    const batch = writeBatch(db);
+    chunk.forEach(({ ref }) => batch.delete(ref as any));
+    await batch.commit();
+  }
+}
+
+async function deleteStoragePrefix(prefix: string): Promise<number> {
+  let deleted = 0;
+  try {
+    const folderRef = ref(storage, prefix);
+    const list = await listAll(folderRef);
+
+    const fileDeletions = list.items.map(async (item) => {
+      try {
+        await deleteObject(item);
+        return 1;
+      } catch (error) {
+        console.warn(`[deleteStoragePrefix] Kunne ikke slette ${item.fullPath}:`, error);
+        return 0;
+      }
+    });
+
+    const prefixDeletions = list.prefixes.map(async (subPrefix) => {
+      const subDeleted = await deleteStoragePrefix(subPrefix.fullPath);
+      return subDeleted;
+    });
+
+    const results = await Promise.all([...fileDeletions, ...prefixDeletions]);
+    deleted = results.reduce((sum, n) => sum + n, 0);
+  } catch (error) {
+    console.warn(`[deleteStoragePrefix] Kunne ikke liste ${prefix}:`, error);
+  }
+  return deleted;
+}
+
+export interface ProjectDeletionStats {
+  itemCount: number;
+  checklistCount: number;
+  photoCount: number;
+}
+
+export async function getProjectDeletionStats(
+  projectId: string
+): Promise<ProjectDeletionStats> {
+  const [items, checklists, photoCount] = await Promise.all([
+    getItemsForProject(projectId),
+    getDocs(query(collection(db, "checklists"), where("projectId", "==", projectId))),
+    (async () => {
+      try {
+        const folderRef = ref(storage, `projects/${projectId}/items`);
+        const list = await listAll(folderRef);
+        return list.items.length + list.prefixes.length;
+      } catch {
+        return 0;
+      }
+    })(),
+  ]);
+
+  return {
+    itemCount: items.length,
+    checklistCount: checklists.size,
+    photoCount,
+  };
+}
+
+export async function deleteProjectCascade(projectId: string): Promise<void> {
+  const projectSnap = await getProjectById(projectId);
+  if (!projectSnap) {
+    throw new Error("Projektet findes ikke.");
+  }
+
+  // Slet sager + checkpoints + kommentarer.
+  const items = await getItemsForProject(projectId);
+  for (const item of items) {
+    const [checkpointsSnap, commentsSnap] = await Promise.all([
+      getDocs(collection(db, "items", item.id, "checkpoints")),
+      getDocs(collection(db, "items", item.id, "comments")),
+    ]);
+
+    const childRefs = [
+      ...checkpointsSnap.docs.map((d) => ({ path: d.ref.path, ref: d.ref })),
+      ...commentsSnap.docs.map((d) => ({ path: d.ref.path, ref: d.ref })),
+      { path: `items/${item.id}`, ref: doc(db, "items", item.id) },
+    ];
+
+    await commitChunkedDeletes(childRefs);
+  }
+
+  // Slet checklister + listepunkter.
+  const checklistsSnap = await getDocs(
+    query(collection(db, "checklists"), where("projectId", "==", projectId))
+  );
+  for (const checklist of checklistsSnap.docs) {
+    const pointsSnap = await getDocs(collection(db, "checklists", checklist.id, "items"));
+    const pointRefs = pointsSnap.docs.map((d) => ({ path: d.ref.path, ref: d.ref }));
+    await commitChunkedDeletes(pointRefs);
+    await deleteDoc(doc(db, "checklists", checklist.id));
+  }
+
+  // Slet projekt-medlemmer.
+  const membersSnap = await getDocs(membersSubcollection(projectId));
+  const memberRefs = membersSnap.docs.map((d) => ({ path: d.ref.path, ref: d.ref }));
+  await commitChunkedDeletes(memberRefs);
+
+  // Slet selve projektet.
+  await deleteDoc(doc(db, "projects", projectId));
+
+  // Slet fotos i Storage.
+  await deleteStoragePrefix(`projects/${projectId}/items`);
 }
 
 export async function addProjectMemberByEmail(

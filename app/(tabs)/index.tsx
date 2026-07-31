@@ -25,13 +25,17 @@ import {
 import {
   addProjectMemberByEmail,
   createProject,
+  deleteProjectCascade,
+  getProjectDeletionStats,
   isDuplicateProjectName,
   Project,
+  ProjectDeletionStats,
   ProjectMember,
   removeProjectMember,
   subscribeToProjectMembers,
   subscribeToProjects,
   updateProjectMemberRole,
+  validateProjectName,
 } from "../../services/projects";
 import {
   canChangeMemberRole,
@@ -60,6 +64,12 @@ export default function ProjectsScreen() {
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [deleteStats, setDeleteStats] = useState<ProjectDeletionStats | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [inviteProjectId, setInviteProjectId] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -108,9 +118,15 @@ export default function ProjectsScreen() {
   );
 
   const handleCreateProject = async () => {
-    if (!user?.uid || !newProjectName.trim() || creating) return;
+    if (!user?.uid || creating) return;
 
     const trimmedName = newProjectName.trim();
+
+    const validationError = validateProjectName(trimmedName);
+    if (validationError) {
+      setCreateError(validationError);
+      return;
+    }
 
     if (isDuplicateProjectName(trimmedName, ownedProjects)) {
       setCreateError("Der findes allerede et projekt med dette navn.");
@@ -143,6 +159,47 @@ export default function ProjectsScreen() {
   const handleSelectProject = (project: Project) => {
     setActiveProject(project);
     router.push("/(tabs)/board");
+  };
+
+  const handleShowDelete = async (project: Project) => {
+    if (!user?.uid || project.ownerId !== user.uid) return;
+    setProjectToDelete(project);
+    setDeleteConfirmName("");
+    setDeleteStats(null);
+    setDeleteModalVisible(true);
+    try {
+      const stats = await getProjectDeletionStats(project.id);
+      setDeleteStats(stats);
+    } catch (error) {
+      console.warn("[ProjectsScreen] Kunne ikke indlæse sletningsstatistik:", error);
+      setDeleteStats({ itemCount: 0, checklistCount: 0, photoCount: 0 });
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteModalVisible(false);
+    setProjectToDelete(null);
+    setDeleteConfirmName("");
+    setDeleteStats(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!projectToDelete || !user?.uid || deleting) return;
+    if (deleteConfirmName.trim() !== projectToDelete.name) return;
+
+    setDeleting(true);
+    try {
+      await deleteProjectCascade(projectToDelete.id);
+      if (activeProject?.id === projectToDelete.id) {
+        setActiveProject(null);
+      }
+      handleCancelDelete();
+    } catch (error) {
+      console.error("Delete project error", error);
+      Alert.alert("Fejl", "Kunne ikke slette projektet. Prøv igen.");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleInviteMember = (project: Project) => {
@@ -261,6 +318,9 @@ export default function ProjectsScreen() {
     ? getProjectRole(inviteProject, user.uid, inviteProjectMembers)
     : null;
 
+  const createNameError = validateProjectName(newProjectName);
+  const createButtonDisabled = !newProjectName.trim() || creating || !!createNameError;
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -310,25 +370,40 @@ export default function ProjectsScreen() {
           const isActive = activeProject?.id === item.id;
           const members = membersByProject[item.id] || [];
           const role = user?.uid ? getProjectRole(item, user.uid, members) : null;
+          const isOwner = item.ownerId === user?.uid;
           return (
-            <TouchableOpacity
+            <View
               style={[styles.projectCard, isActive && styles.projectCardActive]}
-              onPress={() => handleSelectProject(item)}
-              onLongPress={() => handleInviteMember(item)}
             >
-              <Text style={styles.projectName}>{item.name}</Text>
-              {item.description ? (
-                <Text style={styles.projectDescription} numberOfLines={2}>
-                  {item.description}
-                </Text>
+              <TouchableOpacity
+                style={styles.projectCardContent}
+                onPress={() => handleSelectProject(item)}
+                onLongPress={() => handleInviteMember(item)}
+              >
+                <Text style={styles.projectName}>{item.name}</Text>
+                {item.description ? (
+                  <Text style={styles.projectDescription} numberOfLines={2}>
+                    {item.description}
+                  </Text>
+                ) : null}
+                {role ? (
+                  <Text style={styles.roleBadge}>{ROLE_LABELS[role]}</Text>
+                ) : null}
+                {canInviteMembers(role) ? (
+                  <Text style={styles.inviteHint}>Hold inde for at invitere</Text>
+                ) : null}
+              </TouchableOpacity>
+              {isOwner ? (
+                <TouchableOpacity
+                  style={styles.deleteMenuButton}
+                  onPress={() => handleShowDelete(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Slet projekt ${item.name}`}
+                >
+                  <Text style={styles.deleteMenuButtonText}>⋯</Text>
+                </TouchableOpacity>
               ) : null}
-              {role ? (
-                <Text style={styles.roleBadge}>{ROLE_LABELS[role]}</Text>
-              ) : null}
-              {canInviteMembers(role) ? (
-                <Text style={styles.inviteHint}>Hold inde for at invitere</Text>
-              ) : null}
-            </TouchableOpacity>
+            </View>
           );
         }}
       />
@@ -386,10 +461,10 @@ export default function ProjectsScreen() {
                   style={[
                     styles.button,
                     styles.buttonPrimary,
-                    (!newProjectName.trim() || creating) && styles.buttonDisabled,
+                    createButtonDisabled && styles.buttonDisabled,
                   ]}
                   onPress={handleCreateProject}
-                  disabled={!newProjectName.trim() || creating}
+                  disabled={createButtonDisabled}
                 >
                   <Text style={styles.buttonPrimaryText}>
                     {creating ? "Opretter..." : "Opret"}
@@ -587,6 +662,91 @@ export default function ProjectsScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <Modal
+        visible={deleteModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={handleCancelDelete}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <ScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.modalContent}>
+              <Text style={styles.modalHeader}>Slet projekt</Text>
+              {projectToDelete ? (
+                <>
+                  <Text style={styles.deleteWarningTitle}>
+                    Du er ved at slette projektet “{projectToDelete.name}”.
+                  </Text>
+                  <Text style={styles.deleteWarningBody}>
+                    Dette sletter:
+                  </Text>
+                  <Text style={styles.deleteWarningBody}>
+                    • {deleteStats?.itemCount ?? "…"} sager og tilhørende noter
+                  </Text>
+                  <Text style={styles.deleteWarningBody}>
+                    • {deleteStats?.checklistCount ?? "…"} aktionslister
+                  </Text>
+                  <Text style={styles.deleteWarningBody}>
+                    • {deleteStats?.photoCount ?? "…"} fotos
+                  </Text>
+                  <Text style={styles.deleteWarningBody}>
+                    Alle medlemmer mister adgang. Handlingen kan ikke fortrydes.
+                  </Text>
+
+                  <Text style={styles.deleteConfirmLabel}>
+                    Skriv projektets navn for at bekræfte:
+                  </Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder={projectToDelete.name}
+                    placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+                    value={deleteConfirmName}
+                    onChangeText={setDeleteConfirmName}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoFocus
+                  />
+                </>
+              ) : null}
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.button, styles.buttonSecondary]}
+                  onPress={handleCancelDelete}
+                  disabled={deleting}
+                >
+                  <Text style={styles.buttonSecondaryText}>Annuller</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    styles.buttonDanger,
+                    (deleting ||
+                      deleteConfirmName.trim() !== (projectToDelete?.name ?? "")) &&
+                      styles.buttonDisabled,
+                  ]}
+                  onPress={handleConfirmDelete}
+                  disabled={
+                    deleting ||
+                    deleteConfirmName.trim() !== (projectToDelete?.name ?? "")
+                  }
+                >
+                  <Text style={styles.buttonDangerText}>
+                    {deleting ? "Sletter..." : "Slet projekt"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -657,6 +817,21 @@ const themedStyles = (isDark: boolean) =>
     projectCardActive: {
       borderColor: "#38bdf8",
       borderWidth: 2,
+    },
+    projectCardContent: {
+      flex: 1,
+    },
+    deleteMenuButton: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      marginLeft: 8,
+      alignSelf: "flex-start",
+    },
+    deleteMenuButtonText: {
+      fontSize: 20,
+      lineHeight: 22,
+      color: isDark ? "#94a3b8" : "#64748b",
+      fontWeight: "700",
     },
     projectName: {
       fontSize: 17,
@@ -742,6 +917,31 @@ const themedStyles = (isDark: boolean) =>
     buttonSecondaryText: {
       color: isDark ? "#e2e8f0" : "#0f172a",
       fontWeight: "600",
+    },
+    buttonDanger: {
+      backgroundColor: "#ef4444",
+    },
+    buttonDangerText: {
+      color: "#ffffff",
+      fontWeight: "600",
+    },
+    deleteWarningTitle: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: isDark ? "#f8fafc" : "#0f172a",
+      marginBottom: 12,
+    },
+    deleteWarningBody: {
+      fontSize: 14,
+      color: isDark ? "#e2e8f0" : "#1e293b",
+      marginBottom: 6,
+    },
+    deleteConfirmLabel: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: isDark ? "#f8fafc" : "#0f172a",
+      marginTop: 16,
+      marginBottom: 8,
     },
     membersModalContent: {
       maxHeight: "85%",

@@ -60,12 +60,18 @@ service cloud.firestore {
 
       allow read: if isProjectReader();
 
-      allow create: if isAuthenticated() && request.resource.data.ownerId == getUserId();
+      allow create: if isAuthenticated()
+                     && request.resource.data.ownerId == getUserId()
+                     && request.resource.data.name is string
+                     && request.resource.data.name.trim().size() > 0;
 
       allow update: if isAuthenticated()
                      && (resource.data.ownerId == getUserId()
                          || (getUserId() in resource.data.roles
-                             && request.resource.data.roles.get(getUserId(), null) in ["owner", "admin"]));
+                             && request.resource.data.roles.get(getUserId(), null) in ["owner", "admin"]))
+                     && (!request.resource.data.keys().hasAny(["name"])
+                         || (request.resource.data.name is string
+                             && request.resource.data.name.trim().size() > 0));
 
       allow delete: if isAuthenticated() && resource.data.ownerId == getUserId();
     }
@@ -178,7 +184,10 @@ service cloud.firestore {
                        && ["owner", "admin", "editor"].hasAny([getProjectData(parentItem().data.projectId).roles.get(getUserId(), null)]))
                    || (parentItem().data.assignedTo == getUserId()
                        && getUserId() in getProjectData(parentItem().data.projectId).roles
-                       && getProjectData(parentItem().data.projectId).roles.get(getUserId(), null) == "editor"));
+                       && getProjectData(parentItem().data.projectId).roles.get(getUserId(), null) == "editor")
+                   || (request.auth.token.email != null
+                       && request.auth.token.email in getProjectData(parentItem().data.projectId).memberEmails
+                       && "editor" in ["owner", "admin", "editor"]));
       }
 
       allow read: if canReadParentItem();
