@@ -333,6 +333,9 @@ export default function BoardScreen() {
               }
               setVoiceModalVisible(true);
             }}
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Optag sag med stemme"
           >
             <Text style={styles.addButtonText}>🎤 Optag</Text>
           </TouchableOpacity>
@@ -340,6 +343,9 @@ export default function BoardScreen() {
             style={[styles.addButton, !canAssignItems(projectRole) && styles.buttonDisabled]}
             onPress={openManualModal}
             disabled={!canAssignItems(projectRole)}
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Tilføj sag manuelt"
           >
             <Text style={styles.addButtonText}>+ Tilføj</Text>
           </TouchableOpacity>
@@ -596,7 +602,7 @@ const themedStyles = (isDark: boolean) =>
       paddingHorizontal: 14,
       paddingVertical: 8,
       borderRadius: 8,
-      minWidth: 96,
+      width: 96,
       alignItems: "center",
       justifyContent: "center",
     },

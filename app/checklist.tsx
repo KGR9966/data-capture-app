@@ -57,6 +57,12 @@ function formatDate(ts: any) {
   });
 }
 
+function formatAssigneeName(item: ChecklistItem, projectItems: CaptureItem[]): string | null {
+  if (item.sourceItemId === "manual" || !item.sourceItemId) return null;
+  const source = projectItems.find((pi) => pi.id === item.sourceItemId);
+  return source?.assignedToName || null;
+}
+
 function sortChecklistItems(
   items: ChecklistItem[],
   sortBy: ChecklistSortBy
@@ -502,6 +508,14 @@ export default function ChecklistDetailScreen() {
                       {item.staleNote || "Kilden matcher ikke længere søgningen"}
                     </Text>
                   ) : null}
+                  {(() => {
+                    const assigneeName = formatAssigneeName(item, projectItems);
+                    return assigneeName ? (
+                      <View style={styles.assigneeRow}>
+                        <Text style={styles.assigneeText}>👤 {assigneeName}</Text>
+                      </View>
+                    ) : null;
+                  })()}
                   {item.sourceItemId && item.sourceItemId !== "manual" ? (
                     <TouchableOpacity
                       onPress={() =>
@@ -843,6 +857,15 @@ const themedStyles = (isDark: boolean) =>
       color: "#38bdf8",
       fontWeight: "600",
       marginTop: 2,
+    },
+    assigneeRow: {
+      marginTop: 4,
+      marginBottom: 2,
+    },
+    assigneeText: {
+      fontSize: 12,
+      color: "#38bdf8",
+      fontWeight: "600",
     },
     completedMeta: {
       fontSize: 11,

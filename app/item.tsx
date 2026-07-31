@@ -749,60 +749,62 @@ export default function ItemDetailScreen() {
     !commentText.trim() || submittingComment || commentText.trim().length > 2000;
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
-    >
-      <View style={{ flex: 1 }}>
-        {/* Fixed header — Tilbage-knap scroller ikke væk */}
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.backText}>← Tilbage</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          ref={scrollViewRef}
-          contentContainerStyle={styles.scrollContent}
-          onContentSizeChange={(_, h) => setContentHeight(h)}
-          onLayout={(e) => setScrollViewHeight(e.nativeEvent.layout.height)}
-          onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
-          scrollEventThrottle={150}
-        >
-          {editing ? renderEdit() : renderView()}
-        </ScrollView>
-
-        {!editing && canComment(projectRole) ? (
-          <View style={styles.commentInputBar}>
-            <TextInput
-              style={styles.commentInput}
-              placeholder="Skriv en kommentar..."
-              placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
-              value={commentText}
-              onChangeText={setCommentText}
-              multiline
-              maxLength={2000}
-              editable={!submittingComment}
-            />
-            <TouchableOpacity
-              style={[
-                styles.sendButton,
-                isInputDisabled && styles.buttonDisabled,
-              ]}
-              onPress={handleSubmitComment}
-              disabled={isInputDisabled}
-            >
-              {submittingComment ? (
-                <ActivityIndicator size="small" color="#0f172a" />
-              ) : (
-                <Text style={styles.sendButtonText}>Send</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        ) : null}
+    <View style={{ flex: 1 }}>
+      {/* Fast header — rører sig ikke når tastaturet åbner */}
+      <View style={styles.headerRow}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Text style={styles.backText}>← Tilbage</Text>
+        </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+      >
+        <View style={{ flex: 1 }}>
+          <ScrollView
+            ref={scrollViewRef}
+            contentContainerStyle={styles.scrollContent}
+            onContentSizeChange={(_, h) => setContentHeight(h)}
+            onLayout={(e) => setScrollViewHeight(e.nativeEvent.layout.height)}
+            onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
+            scrollEventThrottle={150}
+          >
+            {editing ? renderEdit() : renderView()}
+          </ScrollView>
+
+          {!editing && canComment(projectRole) ? (
+            <View style={styles.commentInputBar}>
+              <TextInput
+                style={styles.commentInput}
+                placeholder="Skriv en kommentar..."
+                placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+                value={commentText}
+                onChangeText={setCommentText}
+                multiline
+                maxLength={2000}
+                editable={!submittingComment}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.sendButton,
+                  isInputDisabled && styles.buttonDisabled,
+                ]}
+                onPress={handleSubmitComment}
+                disabled={isInputDisabled}
+              >
+                {submittingComment ? (
+                  <ActivityIndicator size="small" color="#0f172a" />
+                ) : (
+                  <Text style={styles.sendButtonText}>Send</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
