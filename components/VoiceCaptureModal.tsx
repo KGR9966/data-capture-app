@@ -584,7 +584,7 @@ export default function VoiceCaptureModal({
   }, [isRecording]);
 
   const projectRole: ProjectRole | null = project
-    ? getProjectRole(project, user?.uid, members)
+    ? getProjectRole(project, user?.uid, members, user?.email)
     : null;
 
   const handleToggleRecording = () => {

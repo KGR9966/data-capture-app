@@ -3,7 +3,7 @@
 > Master-liste over alle aftalte ændringer. Ingen "klar til build" før 100% grøn/godkendt.  
 > Opdateret: 2026-07-15  
 > Branch: `fix/us004-voice-redesign`  
-> Seneste commit: `d295dd8 fix(firestore.rules): checkpoints create brugte resource.data.projectId`
+> Seneste commit: `1970042 docs: opdater build-ready-checkliste og QA-testplan for US-004`
 
 ---
 
@@ -11,13 +11,13 @@
 
 | # | Område | ID | Implementeret | Test/QA | Audit | Bemærkning |
 |---|---|---|---|---|---|---|
-| 1 | Offline understøttelse af lister | B3 / US-005 | ✅ Done | ✅ Plan klar | ⏳ Venter re-audit | `services/checklistsOffline.ts`, NetInfo-sync, offline afkrydsning |
-| 2 | Push-påmindelser på sager/lister | B4 / US-011 | ✅ Done | ✅ Plan klar | ⏳ Venter re-audit | `services/reminders.ts`, `ReminderModal.tsx`, `NotificationResponseHandler.tsx` |
-| 3 | US-006 tomt-navn + server-side dubletter | B8 | ✅ Done | ✅ Plan klar | ⏳ Venter re-audit | Cloud Function + client validering |
-| 4 | Slet projekt | B9 / US-001 | ✅ Done | ✅ Plan klar | ⏳ Venter re-audit | Hard delete + Cloud Function + tekstbekræftelse |
-| 5 | Fjern "Åben"/"åbn"-residu efter foto-kommando | D1 / US-004 | ✅ Done | ✅ Plan klar | ⏳ Venter re-audit | `stripPhotoCommand()` + modal simplificeret |
-| 6 | Auto-titel bug i tilføj-flow | D3 / US-004 | ✅ Done | ✅ Plan klar | ⏳ Venter re-audit | Rettelse implementeret |
-| 7 | Firestore-regelrettelse: checkpoints + lister accepterer email-medlemmer | REG-001 | ✅ Done/deployet | ✅ Plan klar | ⏳ Venter re-audit | PO bekræftede deploy 2026-07-15; `getProjectRole` bruger nu `memberEmails`; checkpoint create-fix committed i `d295dd8` |
+| 1 | Offline understøttelse af lister | B3 / US-005 | ✅ Done | ✅ Plan klar | ✅ Go | `services/checklistsOffline.ts`, NetInfo-sync, offline afkrydsning |
+| 2 | Push-påmindelser på sager/lister | B4 / US-011 | ✅ Done | ✅ Plan klar | ✅ Go | `services/reminders.ts`, `ReminderModal.tsx`, `NotificationResponseHandler.tsx` |
+| 3 | US-006 tomt-navn + server-side dubletter | B8 | ✅ Done | ✅ Plan klar | ✅ Go | Cloud Function + client validering |
+| 4 | Slet projekt | B9 / US-001 | ✅ Done | ✅ Plan klar | ✅ Go | Hard delete + Cloud Function + tekstbekræftelse |
+| 5 | Fjern "Åben"/"åbn"-residu efter foto-kommando | D1 / US-004 | ✅ Done | ✅ Plan klar | ✅ Go | `stripPhotoCommand()` + modal simplificeret |
+| 6 | Auto-titel bug i tilføj-flow | D3 / US-004 | ✅ Done | ✅ Plan klar | ✅ Go | Rettelse implementeret |
+| 7 | Firestore-regelrettelse: checkpoints + lister accepterer email-medlemmer | REG-001 | ✅ Done/deployet | ✅ Plan klar | ✅ Go | PO bekræftede deploy 2026-07-15; checkpoint create-fix i `d295dd8` |
 
 ---
 
@@ -36,28 +36,34 @@
 |---|---|---|
 | 1. Komplet design | 100% af punkterne har design/review done | ✅ Grøn |
 | 2. Kodefase | Alle aftalte punkter implementeret og committed | ✅ Grøn |
-| 3. QA-testplan | Dækker alle aftalte punkter | ✅ Grøn — `qa-testplan-us004.md` oprettet |
-| 4. Typecheck/lint | Ingen blockers | ⏳ Igang — re-audit agent verificerer |
-| 5. QA-verifikation | Manuel/kritisk sti testet | ⏌ Ikke startet |
-| 6. Audit-gate | Governance-check + uafhængig kodegennemgang | ⏳ Re-audit igang |
-| 7. PO-go til build | Skriftligt go fra PO | ⏌ Ikke startet |
-| 8. Build & deploy | EAS build + Firestore deploy | ⏌ Ikke startet |
+| 3. QA-testplan | Dækker alle aftalte punkter | ✅ Grøn |
+| 4. Typecheck/lint | Ingen blockers | ✅ Grøn |
+| 5. Audit-gate | Governance-check + uafhængig kodegennemgang | ✅ Go |
+| 6. PO-go til build | Skriftligt go fra PO | ✅ Modtaget |
+| 7. Build & deploy | EAS build + Firestore deploy | ⏳ Igang / afventer credentials |
+| 8. Fysisk QA | P0-cases testet på iOS + Android | ⏌ Ikke startet |
+
+---
+
+## Næste handlinger
+
+1. **EAS build** — kræver login. Kommando:
+   ```bash
+   cd /c/Users/kimgr/data-capture-app
+   npx eas login
+   npx eas build --platform all --profile preview --non-interactive
+   ```
+   PO eller en med EAS-adgang skal køre dette.
+
+2. **Firestore deploy** — kommando:
+   ```bash
+   firebase deploy --only firestore:rules
+   ```
+
+3. **QA start** — når build + deploy er klar, startes QA Agent på fysisk test ifølge `.claude/team/test/qa-testplan-us004.md`.
 
 ---
 
 ## Aktuelle blokere
 
 Ingen kritiske blokere.
-
-**Lukkede blockers:**
-1. **Listecreation permissions** — løst via Firestore-rules deploy + `memberEmails`-logik i `services/roles.ts`.
-2. **Offline-afkrydsning + reminder-annullering** — løst ved at fjerne `!online` fra disabled-prop og lade `toggleChecklistPoint`/`toggleChecklistItemComplete` delegerer til `setChecklistPointCompleted`.
-3. **Checkpoint create permission-denied** — løst i `d295dd8`: checkpoints-reglen brugte `resource.data.projectId` ved create, men `resource.data` findes ikke før dokumentet er oprettet. Nu bruges `request.resource.data.projectId` ved create.
-
----
-
-## Næste statusupdate
-
-Audit Agent (re-run) rapporterer tilbage med go/no-go.  
-- Hvis **go**: QA-verifikation startes, derefter PO-go til build.  
-- Hvis **no-go**: Master Agent delegerer rettelser til Dev Agent uden yderligere godkendelser inden for mandat, og der gives ny status hurtigst muligt.

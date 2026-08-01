@@ -97,7 +97,7 @@ export default function ProjectsScreen() {
     if (!user?.uid) return;
     const unsubscribes: (() => void)[] = [];
     projects.forEach((project) => {
-      const role = getProjectRole(project, user.uid, membersByProject[project.id] || []);
+      const role = getProjectRole(project, user.uid, membersByProject[project.id] || [], user?.email || null);
       if (canInviteMembers(role)) {
         const unsubscribe = subscribeToProjectMembers(project.id, (members) => {
           setMembersByProject((prev) => ({ ...prev, [project.id]: members }));
@@ -203,7 +203,7 @@ export default function ProjectsScreen() {
   };
 
   const handleInviteMember = (project: Project) => {
-    if (!user?.uid || !canInviteMembers(getProjectRole(project, user.uid, membersByProject[project.id] || []))) return;
+    if (!user?.uid || !canInviteMembers(getProjectRole(project, user.uid, membersByProject[project.id] || [], user?.email || null))) return;
     setInviteProjectId(project.id);
     setInviteEmail("");
     setInviteRole("editor");
@@ -315,7 +315,7 @@ export default function ProjectsScreen() {
     ? membersByProject[inviteProjectId] || []
     : [];
   const myRole = inviteProject && user?.uid
-    ? getProjectRole(inviteProject, user.uid, inviteProjectMembers)
+    ? getProjectRole(inviteProject, user.uid, inviteProjectMembers, user?.email || null)
     : null;
 
   const createNameError = validateProjectName(newProjectName);
@@ -369,7 +369,7 @@ export default function ProjectsScreen() {
         renderItem={({ item }) => {
           const isActive = activeProject?.id === item.id;
           const members = membersByProject[item.id] || [];
-          const role = user?.uid ? getProjectRole(item, user.uid, members) : null;
+          const role = user?.uid ? getProjectRole(item, user.uid, members, user?.email || null) : null;
           const isOwner = item.ownerId === user?.uid;
           return (
             <View
@@ -504,7 +504,7 @@ export default function ProjectsScreen() {
               ) : (
                 ownedProjects.map((project) => {
                   const role = user?.uid
-                    ? getProjectRole(project, user.uid, membersByProject[project.id] || [])
+                    ? getProjectRole(project, user.uid, membersByProject[project.id] || [], user?.email || null)
                     : null;
                   if (!canInviteMembers(role)) return null;
                   return (

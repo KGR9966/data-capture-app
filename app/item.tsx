@@ -127,7 +127,7 @@ export default function ItemDetailScreen() {
   const AUTO_SCROLL_THRESHOLD = 80;
 
   const projectRole: ProjectRole | null = project
-    ? getProjectRole(project, user?.uid, members)
+    ? getProjectRole(project, user?.uid, members, user?.email)
     : null;
 
   const assignmentOptions = useMemo(() => {

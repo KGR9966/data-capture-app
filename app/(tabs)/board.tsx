@@ -96,7 +96,7 @@ export default function BoardScreen() {
   const styles = themedStyles(isDark);
 
   const projectRole: ProjectRole | null = activeProject
-    ? getProjectRole(activeProject, user?.uid, members)
+    ? getProjectRole(activeProject, user?.uid, members, user?.email)
     : null;
 
   const filterCategory =
