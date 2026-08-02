@@ -2,8 +2,8 @@
 
 **Dato:** 2026-08-02  
 **Branch:** `fix/us004-items-subcollection`  
-**Seneste commit:** `e0b4515 chore(us004): add wipe and emulator recreate scripts`  
-**Working tree:** har uncommitted ændringer fra Cloud Agent + min firestore.rules-rettelse  
+**Seneste commit:** `103be90 feat(us004): Solution A + A2 user-scoped personal checklists and shared discovery index`  
+**Working tree:** clean  
 **Java:** Temurin 21.0.12 installeret under `C:\tools\jdk-21.0.12+8` og `C:\Program Files\Eclipse Adoptium\jdk-21.0.12.8-hotspot`
 
 ---
@@ -29,11 +29,14 @@
 - [x] **Top-level personal/shared checklists regel erstattet** med `/users/{userId}/checklists/{checklistId}` + `/users/{recipientUserId}/sharedChecklists/{checklistId}`.
 - [ ] **services/checklists.ts + UI opdateres** af Backend/UI Agent (baggrund).
 - [ ] **scripts/test-rules.js opdateres** af QA/Security Agent (baggrund).
-- [x] **G4 emulator-tests:** 107/107 passed (scripts/test-rules.js opdateret med user-scoped checklist + shared discovery tests).
-- [x] **G5 Cloud Function-tests:** All tests passed (deleteProject owner/admin/editor/unauthenticated cases).
-- [ ] **services/checklists.ts + UI opdateres** af Backend/UI Agent (baggrund).
-- [ ] Commit alle ændringer når UI-agent er færdig.
-- [ ] PO-go til data wipe + recreate.
+- [x] **G4 emulator-tests:** 107/107 passed.
+- [x] **G5 Cloud Function-tests:** All tests passed.
+- [x] **services/checklists.ts + UI opdateret** af Backend/UI Agent; typecheck + lint grønne.
+- [x] Commit `103be90` med alle ændringer.
+- [ ] **PO GO til data wipe + recreate** (gate åben).
+- [ ] G6 manuel E2E E1–E9 efter wipe.
+- [ ] G7 QA-rapport.
+- [ ] PO GO til Build 1 (iOS-only preview).
 
 ---
 
