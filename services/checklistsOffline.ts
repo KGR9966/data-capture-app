@@ -219,14 +219,14 @@ async function executePendingOp(op: PendingOp): Promise<void> {
 
   switch (op.type) {
     case "updateChecklist": {
-      const { checklistId, updates } = op.payload as {
+      const { checklistId, updates, userId } = op.payload as {
         checklistId: string;
         updates: Partial<Omit<Checklist, "id" | "createdAt">>;
+        userId?: string;
       };
       const { updateChecklist } = await import("./checklists");
-      // The service function resolves whether the checklist is project-scoped
-      // (projects/{projectId}/checklists) or personal (/checklists) by id.
-      await updateChecklist(checklistId, updates);
+      // userId is used as ownerId fallback for personal/shared paths.
+      await updateChecklist(checklistId, updates, userId);
       break;
     }
     case "deleteChecklist": {

@@ -1,9 +1,10 @@
-# Team status: B+C redesign fase 2 — US-004, US-005, US-006
+# Team status: US-004 Solution B + A — items/checkpoints/comments + checklists migration
 
-**Dato:** 2026-07-15  
-**Planlagt af:** Flowagent / Master Agent  
-**Seneste opdatering:** Task #87 påbegyndt — Developer Agent implementerer reduceret scope for søgning og lister (Dag 1/3).  
-**Forudsætning:** PO har godkendt redesign-plan og inddragelse af UX/UI Agent.
+**Dato:** 2026-08-02  
+**Planlagt af:** Master Agent  
+**Seneste opdatering:** Solution B kode committed; Solution A (user-scoped personal checklists) aktiveret pga. Security Agent NO-GO på top-level `list`-regel.  
+**Forudsætning:** PO har bekræftet go til Solution B + Solution A + wipe af testdata + max 2 builds.  
+**Genetablering ved context-loss:** Læs `decisions-us004-solution-b-a.md` og `working-state-us004.md`.
 
 ---
 

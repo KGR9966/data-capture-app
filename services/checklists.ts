@@ -5,6 +5,7 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   query,
@@ -78,6 +79,13 @@ export interface ChecklistItem {
   localOnly?: boolean;
 }
 
+export interface SharedChecklistIndex {
+  checklistId: string;
+  ownerId: string;
+  name: string;
+  sharedAt: any;
+}
+
 export interface CreateDynamicChecklistOptions {
   /** Påkrævet ved oprettelse fra søgning. */
   projectId: string;
@@ -89,28 +97,32 @@ export function projectChecklistsCollection(projectId: string) {
   return collection(db, "projects", projectId, "checklists");
 }
 
-export function personalChecklistsCollection() {
-  return collection(db, "checklists");
+export function personalChecklistsCollection(userId: string) {
+  return collection(db, "users", userId, "checklists");
+}
+
+export function sharedChecklistsCollection(userId: string) {
+  return collection(db, "users", userId, "sharedChecklists");
 }
 
 export function projectChecklistItemsCollection(projectId: string, checklistId: string) {
   return collection(db, "projects", projectId, "checklists", checklistId, "items");
 }
 
-export function personalChecklistItemsCollection(checklistId: string) {
-  return collection(db, "checklists", checklistId, "items");
+export function personalChecklistItemsCollection(userId: string, checklistId: string) {
+  return collection(db, "users", userId, "checklists", checklistId, "items");
 }
 
-function checklistCollection(checklist: Pick<Checklist, "projectId" | "id">) {
+function checklistCollection(checklist: Pick<Checklist, "projectId" | "id" | "ownerId">) {
   return checklist.projectId
     ? projectChecklistsCollection(checklist.projectId)
-    : personalChecklistsCollection();
+    : personalChecklistsCollection(checklist.ownerId);
 }
 
-function checklistItemsCollection(checklist: Pick<Checklist, "projectId" | "id">) {
+function checklistItemsCollection(checklist: Pick<Checklist, "projectId" | "id" | "ownerId">) {
   return checklist.projectId
     ? projectChecklistItemsCollection(checklist.projectId, checklist.id)
-    : personalChecklistItemsCollection(checklist.id);
+    : personalChecklistItemsCollection(checklist.ownerId, checklist.id);
 }
 
 function stripUndefined(obj: Record<string, unknown>): Record<string, unknown> {
@@ -339,7 +351,7 @@ export async function createChecklist(
 
   const col = options.projectId
     ? projectChecklistsCollection(options.projectId)
-    : personalChecklistsCollection();
+    : personalChecklistsCollection(ownerId);
   const docRef = await addDoc(col, payload);
   return { id: docRef.id, ...(payload as Omit<Checklist, "id">) };
 }
@@ -523,7 +535,7 @@ export async function createDynamicChecklistFromSearch(
 }
 
 async function addChecklistItem(
-  checklist: Pick<Checklist, "id" | "projectId">,
+  checklist: Pick<Checklist, "id" | "projectId" | "ownerId">,
   point: Omit<ChecklistItem, "id" | "checklistId" | "createdAt" | "updatedAt">
 ): Promise<ChecklistItem> {
   const payload = {
@@ -541,13 +553,14 @@ export async function deleteChecklistItem(
   itemId: string,
   userId?: string
 ): Promise<void> {
-  const checklist = await getChecklistById(checklistId);
+  const checklist = await getChecklistById(checklistId, undefined, userId);
+  if (!checklist) throw new Error(`Liste ikke fundet: ${checklistId}`);
   if (userId) {
     await deleteRemindersForChecklistItem(userId, checklistId, itemId);
   }
-  const itemRef = checklist?.projectId
+  const itemRef = checklist.projectId
     ? doc(db, "projects", checklist.projectId, "checklists", checklistId, "items", itemId)
-    : doc(db, "checklists", checklistId, "items", itemId);
+    : doc(db, "users", checklist.ownerId, "checklists", checklistId, "items", itemId);
   await deleteDoc(itemRef);
 }
 
@@ -556,27 +569,78 @@ export function subscribeToChecklists(
   callback: (checklists: Checklist[]) => void
 ) {
   // Personal/shared checklists only. Project-scoped checklists are subscribed via subscribeToProjectChecklists.
-  const q = query(personalChecklistsCollection(), where("ownerId", "==", userId));
-  return onSnapshot(
-    q,
+  // Own checklists live under /users/{userId}/checklists. Shared-with-me discovery lives under
+  // /users/{userId}/sharedChecklists and resolves to the owner's /users/{ownerId}/checklists/{checklistId}.
+  let personal: Checklist[] = [];
+  let shared: Checklist[] = [];
+  let personalUnsub: (() => void) | undefined;
+  let sharedUnsub: (() => void) | undefined;
+
+  const emit = () => {
+    callback(
+      [...personal, ...shared].sort((a, b) => {
+        const aTime = a.updatedAt?.toMillis?.() || 0;
+        const bTime = b.updatedAt?.toMillis?.() || 0;
+        return bTime - aTime;
+      })
+    );
+  };
+
+  const resolveShared = async (indexDocs: SharedChecklistIndex[]) => {
+    const resolved: Checklist[] = [];
+    for (const index of indexDocs) {
+      if (!index.ownerId) continue;
+      try {
+        const snap = await getDoc(
+          doc(db, "users", index.ownerId, "checklists", index.checklistId)
+        );
+        if (snap.exists()) {
+          resolved.push({ id: snap.id, ...(snap.data() as Omit<Checklist, "id">) });
+        }
+      } catch (error) {
+        console.error("[subscribeToChecklists] resolve shared error:", error);
+      }
+    }
+    shared = resolved;
+    emit();
+  };
+
+  personalUnsub = onSnapshot(
+    query(personalChecklistsCollection(userId)),
     (snapshot) => {
-      const checklists = snapshot.docs
-        .map((d) => ({
-          id: d.id,
-          ...(d.data() as Omit<Checklist, "id">),
-        }))
-        .sort((a, b) => {
-          const aTime = a.updatedAt?.toMillis?.() || 0;
-          const bTime = b.updatedAt?.toMillis?.() || 0;
-          return bTime - aTime;
-        });
-      callback(checklists);
+      personal = snapshot.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<Checklist, "id">),
+      }));
+      emit();
     },
     (error) => {
-      console.error("[subscribeToChecklists] error:", error);
-      callback([]);
+      console.error("[subscribeToChecklists] personal error:", error);
+      personal = [];
+      emit();
     }
   );
+
+  sharedUnsub = onSnapshot(
+    query(sharedChecklistsCollection(userId)),
+    (snapshot) => {
+      const indexDocs = snapshot.docs.map((d) => ({
+        checklistId: d.id,
+        ...(d.data() as Omit<SharedChecklistIndex, "checklistId">),
+      }));
+      resolveShared(indexDocs);
+    },
+    (error) => {
+      console.error("[subscribeToChecklists] shared error:", error);
+      shared = [];
+      emit();
+    }
+  );
+
+  return () => {
+    personalUnsub?.();
+    sharedUnsub?.();
+  };
 }
 
 /** Alias for personal/shared checklists. */
@@ -585,6 +649,53 @@ export function subscribeToPersonalChecklists(
   callback: (checklists: Checklist[]) => void
 ) {
   return subscribeToChecklists(userId, callback);
+}
+
+export function subscribeToSharedChecklists(
+  userId: string,
+  callback: (checklists: Checklist[]) => void
+) {
+  return onSnapshot(
+    query(sharedChecklistsCollection(userId)),
+    (snapshot) => {
+      const indexDocs = snapshot.docs.map((d) => ({
+        checklistId: d.id,
+        ...(d.data() as Omit<SharedChecklistIndex, "checklistId">),
+      }));
+      resolveSharedChecklists(indexDocs, callback);
+    },
+    (error) => {
+      console.error("[subscribeToSharedChecklists] error:", error);
+      callback([]);
+    }
+  );
+}
+
+async function resolveSharedChecklists(
+  indexDocs: SharedChecklistIndex[],
+  callback: (checklists: Checklist[]) => void
+) {
+  const resolved: Checklist[] = [];
+  for (const index of indexDocs) {
+    if (!index.ownerId) continue;
+    try {
+      const snap = await getDoc(
+        doc(db, "users", index.ownerId, "checklists", index.checklistId)
+      );
+      if (snap.exists()) {
+        resolved.push({ id: snap.id, ...(snap.data() as Omit<Checklist, "id">) });
+      }
+    } catch (error) {
+      console.error("[subscribeToSharedChecklists] resolve error:", error);
+    }
+  }
+  callback(
+    resolved.sort((a, b) => {
+      const aTime = a.updatedAt?.toMillis?.() || 0;
+      const bTime = b.updatedAt?.toMillis?.() || 0;
+      return bTime - aTime;
+    })
+  );
 }
 
 export function subscribeToProjectChecklists(
@@ -617,13 +728,34 @@ export function subscribeToProjectChecklists(
 export function subscribeToChecklistItems(
   checklistId: string,
   callback: (items: ChecklistItem[]) => void,
-  projectId?: string
+  projectId?: string,
+  ownerId?: string
 ) {
   // If projectId is known (e.g. passed from the list screen), subscribe to the project-scoped path.
+  // If ownerId is known for a personal/shared checklist, subscribe directly under /users/{ownerId}.
   // Otherwise, fetch the checklist doc to determine its scope. This preserves the legacy signature
   // while supporting both personal and project-scoped checklists.
   if (projectId) {
     const q = query(projectChecklistItemsCollection(projectId, checklistId));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const items = snapshot.docs.map((d) => ({
+          id: d.id,
+          checklistId,
+          ...(d.data() as Omit<ChecklistItem, "id" | "checklistId">),
+        }));
+        callback(items);
+      },
+      (error) => {
+        console.error("[subscribeToChecklistItems] error:", error);
+        callback([]);
+      }
+    );
+  }
+
+  if (ownerId) {
+    const q = query(personalChecklistItemsCollection(ownerId, checklistId));
     return onSnapshot(
       q,
       (snapshot) => {
@@ -646,7 +778,14 @@ export function subscribeToChecklistItems(
 
   getChecklistById(checklistId).then((checklist) => {
     if (!active) return;
-    const q = query(checklistItemsCollection({ id: checklistId, projectId: checklist?.projectId }));
+    const resolvedOwnerId = checklist?.ownerId || getUserId() || undefined;
+    if (!resolvedOwnerId) {
+      callback([]);
+      return;
+    }
+    const q = checklist?.projectId
+      ? query(projectChecklistItemsCollection(checklist.projectId, checklistId))
+      : query(personalChecklistItemsCollection(resolvedOwnerId, checklistId));
     unsubscribe = onSnapshot(
       q,
       (snapshot) => {
@@ -679,15 +818,17 @@ export function subscribeToProjectChecklistItems(
 }
 
 export function subscribeToPersonalChecklistItems(
+  userId: string,
   checklistId: string,
   callback: (items: ChecklistItem[]) => void
 ) {
-  return subscribeToChecklistItems(checklistId, callback);
+  return subscribeToChecklistItems(checklistId, callback, undefined, userId);
 }
 
 export async function getChecklistById(
   checklistId: string,
-  projectId?: string
+  projectId?: string,
+  ownerId?: string
 ): Promise<Checklist | null> {
   if (projectId) {
     const snap = await getDocs(
@@ -695,29 +836,69 @@ export async function getChecklistById(
     );
     const doc_ = snap.docs[0];
     if (doc_) return { id: doc_.id, ...(doc_.data() as Omit<Checklist, "id">) };
+    return null;
   }
 
-  // Fallback: personal/shared top-level checklists.
-  const snap = await getDocs(
-    query(personalChecklistsCollection(), where("__name__", "==", checklistId))
-  );
-  const doc_ = snap.docs[0];
-  if (!doc_) return null;
-  return { id: doc_.id, ...(doc_.data() as Omit<Checklist, "id">) };
+  // Personal/shared checklists live under /users/{ownerId}/checklists/{checklistId}.
+  // If caller supplies ownerId, try that path first.
+  if (ownerId) {
+    const ref = doc(db, "users", ownerId, "checklists", checklistId);
+    const snap = await getDoc(ref);
+    if (snap.exists()) return { id: snap.id, ...(snap.data() as Omit<Checklist, "id">) };
+  }
+
+  // Fallback for deep links / legacy callers: try current user's own path, then look up
+  // the checklist id in the current user's sharedChecklists index to find the owner.
+  const currentUserId = getUserId();
+  if (currentUserId) {
+    const ownRef = doc(db, "users", currentUserId, "checklists", checklistId);
+    const ownSnap = await getDoc(ownRef);
+    if (ownSnap.exists()) return { id: ownSnap.id, ...(ownSnap.data() as Omit<Checklist, "id">) };
+
+    const indexRef = doc(db, "users", currentUserId, "sharedChecklists", checklistId);
+    const indexSnap = await getDoc(indexRef);
+    if (indexSnap.exists()) {
+      const index = indexSnap.data() as SharedChecklistIndex;
+      if (index.ownerId) {
+        const sourceRef = doc(db, "users", index.ownerId, "checklists", checklistId);
+        const sourceSnap = await getDoc(sourceRef);
+        if (sourceSnap.exists()) {
+          return { id: sourceSnap.id, ...(sourceSnap.data() as Omit<Checklist, "id">) };
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 export async function updateChecklist(
   checklistId: string,
-  updates: Partial<Omit<Checklist, "id" | "createdAt">>
+  updates: Partial<Omit<Checklist, "id" | "createdAt">>,
+  userId?: string
 ) {
-  const checklist = await getChecklistById(checklistId);
-  const ref = checklist?.projectId
+  const checklist = await getChecklistById(checklistId, undefined, userId);
+  if (!checklist) throw new Error(`Liste ikke fundet: ${checklistId}`);
+
+  const batch = writeBatch(db);
+  const ref = checklist.projectId
     ? doc(db, "projects", checklist.projectId, "checklists", checklistId)
-    : doc(db, "checklists", checklistId);
-  await updateDoc(ref, {
+    : doc(db, "users", checklist.ownerId, "checklists", checklistId);
+  batch.update(ref, {
     ...prepareUpdateFields(updates as Record<string, unknown>),
     updatedAt: serverTimestamp(),
   });
+
+  // Sync renamed personal lists to every recipient's sharedChecklists discovery document.
+  if (updates.name !== undefined && !checklist.projectId && checklist.sharedWith) {
+    const recipients = Object.keys(checklist.sharedWith);
+    for (const recipientUserId of recipients) {
+      const discoveryRef = doc(db, "users", recipientUserId, "sharedChecklists", checklistId);
+      batch.update(discoveryRef, { name: updates.name });
+    }
+  }
+
+  await batch.commit();
 }
 
 export async function updateChecklistItem(
@@ -726,10 +907,11 @@ export async function updateChecklistItem(
   updates: Partial<Omit<ChecklistItem, "id" | "checklistId" | "createdAt">>,
   userId?: string
 ) {
-  const checklist = await getChecklistById(checklistId);
-  const ref = checklist?.projectId
+  const checklist = await getChecklistById(checklistId, undefined, userId);
+  if (!checklist) throw new Error(`Liste ikke fundet: ${checklistId}`);
+  const ref = checklist.projectId
     ? doc(db, "projects", checklist.projectId, "checklists", checklistId, "items", itemId)
-    : doc(db, "checklists", checklistId, "items", itemId);
+    : doc(db, "users", checklist.ownerId, "checklists", checklistId, "items", itemId);
   await updateDoc(ref, {
     ...prepareUpdateFields(updates as Record<string, unknown>),
     updatedAt: serverTimestamp(),
@@ -768,7 +950,7 @@ export async function setChecklistPointCompleted(
 
   const pointRef = checklist.projectId
     ? doc(db, "projects", checklist.projectId, "checklists", checklist.id, "items", point.id)
-    : doc(db, "checklists", checklist.id, "items", point.id);
+    : doc(db, "users", checklist.ownerId, "checklists", checklist.id, "items", point.id);
   batch.update(pointRef, {
     isCompleted: nextCompleted,
     completedAt: nextCompleted ? now : deleteField(),
@@ -832,22 +1014,24 @@ export async function toggleChecklistItemComplete(
   return toggleChecklistPoint(checklist, item, userId);
 }
 
-export async function markChecklistAsViewed(checklistId: string): Promise<void> {
-  const checklist = await getChecklistById(checklistId);
+export async function markChecklistAsViewed(
+  checklistId: string,
+  userId?: string
+): Promise<void> {
+  const checklist = await getChecklistById(checklistId, undefined, userId);
+  if (!checklist) throw new Error(`Liste ikke fundet: ${checklistId}`);
   const now = serverTimestamp();
   const batch = writeBatch(db);
-  const checklistRef = checklist?.projectId
+  const checklistRef = checklist.projectId
     ? doc(db, "projects", checklist.projectId, "checklists", checklistId)
-    : doc(db, "checklists", checklistId);
+    : doc(db, "users", checklist.ownerId, "checklists", checklistId);
   batch.update(checklistRef, {
     hasNewMatches: false,
     lastViewedAt: now,
     updatedAt: now,
   });
 
-  const itemsSnap = await getDocs(
-    checklistItemsCollection({ id: checklistId, projectId: checklist?.projectId })
-  );
+  const itemsSnap = await getDocs(checklistItemsCollection(checklist));
   for (const itemDoc of itemsSnap.docs) {
     if (itemDoc.data().isNewMatch) {
       batch.update(itemDoc.ref, { isNewMatch: false, updatedAt: now });
@@ -977,20 +1161,23 @@ export async function synchronizeDynamicChecklist(
   await batch.commit();
 }
 
-function checklistRef(checklist: Pick<Checklist, "id" | "projectId">) {
+function checklistRef(checklist: Pick<Checklist, "id" | "projectId" | "ownerId">) {
   return checklist.projectId
     ? doc(db, "projects", checklist.projectId, "checklists", checklist.id)
-    : doc(db, "checklists", checklist.id);
+    : doc(db, "users", checklist.ownerId, "checklists", checklist.id);
 }
 
 function checklistItemRef(
   checklistId: string,
   itemId: string,
-  projectId?: string
+  projectId?: string,
+  ownerId?: string
 ) {
-  return projectId
-    ? doc(db, "projects", projectId, "checklists", checklistId, "items", itemId)
-    : doc(db, "checklists", checklistId, "items", itemId);
+  if (projectId) {
+    return doc(db, "projects", projectId, "checklists", checklistId, "items", itemId);
+  }
+  if (!ownerId) throw new Error("ownerId kræves for personlige listepunkter.");
+  return doc(db, "users", ownerId, "checklists", checklistId, "items", itemId);
 }
 
 export async function addManualItemToChecklist(
@@ -1061,9 +1248,65 @@ export async function deleteChecklistItemAndTrack(
   if (deletedKeys.has(key)) return;
 
   deletedKeys.add(key);
-  await updateChecklist(checklist.id, {
-    deletedItemKeys: Array.from(deletedKeys),
+  await updateChecklist(
+    checklist.id,
+    {
+      deletedItemKeys: Array.from(deletedKeys),
+    },
+    checklist.ownerId
+  );
+}
+
+export async function shareChecklist(
+  checklist: Checklist,
+  recipientUserId: string,
+  role: "admin" | "editor" | "viewer"
+): Promise<void> {
+  const batch = writeBatch(db);
+  const sourceRef = checklistRef(checklist);
+  batch.update(sourceRef, {
+    [`sharedWith.${recipientUserId}`]: role,
+    updatedAt: serverTimestamp(),
   });
+
+  const discoveryRef = doc(
+    db,
+    "users",
+    recipientUserId,
+    "sharedChecklists",
+    checklist.id
+  );
+  batch.set(discoveryRef, {
+    checklistId: checklist.id,
+    ownerId: checklist.ownerId,
+    name: checklist.name,
+    sharedAt: serverTimestamp(),
+  });
+
+  await batch.commit();
+}
+
+export async function unshareChecklist(
+  checklist: Checklist,
+  recipientUserId: string
+): Promise<void> {
+  const batch = writeBatch(db);
+  const sourceRef = checklistRef(checklist);
+  batch.update(sourceRef, {
+    [`sharedWith.${recipientUserId}`]: deleteField(),
+    updatedAt: serverTimestamp(),
+  });
+
+  const discoveryRef = doc(
+    db,
+    "users",
+    recipientUserId,
+    "sharedChecklists",
+    checklist.id
+  );
+  batch.delete(discoveryRef);
+
+  await batch.commit();
 }
 
 export async function shareChecklistText(
@@ -1104,13 +1347,15 @@ export async function deleteChecklist(
   checklistId: string,
   userId?: string
 ): Promise<void> {
-  const checklist = await getChecklistById(checklistId);
+  const checklist = await getChecklistById(checklistId, undefined, userId);
+  if (!checklist) {
+    // Hvis listen allerede er væk, er der ikke mere at rydde op.
+    return;
+  }
   if (userId) {
     await deleteRemindersForChecklist(userId, checklistId);
   }
-  const itemsSnapshot = await getDocs(
-    checklistItemsCollection({ id: checklistId, projectId: checklist?.projectId })
-  );
+  const itemsSnapshot = await getDocs(checklistItemsCollection(checklist));
   await Promise.all(itemsSnapshot.docs.map((d) => deleteDoc(d.ref)));
-  await deleteDoc(checklistRef({ id: checklistId, projectId: checklist?.projectId }));
+  await deleteDoc(checklistRef(checklist));
 }

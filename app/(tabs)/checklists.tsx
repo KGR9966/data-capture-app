@@ -202,7 +202,15 @@ export default function ChecklistsScreen() {
                 styles.checklistCard,
                 !online && styles.offlineCard,
               ]}
-              onPress={() => router.push(`/checklist?id=${item.id}` as any)}
+              onPress={() => {
+                if (item.projectId) {
+                  router.push(`/checklist?id=${item.id}` as any);
+                } else {
+                  router.push(
+                    `/checklist?id=${item.id}&userId=${item.ownerId || user?.uid}` as any
+                  );
+                }
+              }}
             >
               <View style={styles.cardHeader}>
                 <Text style={styles.checklistName} numberOfLines={1}>

@@ -14,7 +14,8 @@
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "test": "cd .. && npx firebase emulators:exec --project demo-test --only functions,firestore,auth,storage \"cd functions && npm run build && node lib/deleteProject.test.js\""
   },
   "dependencies": {
     "firebase-admin": "^13.0.0",

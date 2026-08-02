@@ -199,47 +199,106 @@ service cloud.firestore {
     }
 
     // Personal/shared checklists (projectId == null)
-    match /checklists/{checklistId} {
-      function canReadPersonalChecklist() {
+    match /users/{userId}/checklists/{checklistId} {
+      function personalChecklistData() {
+        return resource.data;
+      }
+
+      function isPersonalChecklistOwner() {
         return isAuthenticated()
-               && (
-                    resource.data.ownerId == getUserId()
-                    || getUserId() in resource.data.sharedWith
-                  );
+               && personalChecklistData().ownerId == getUserId();
+      }
+
+      function isPersonalChecklistSharedWithMe() {
+        return isAuthenticated()
+               && getUserId() in personalChecklistData().sharedWith;
+      }
+
+      function canReadPersonalChecklist() {
+        return isPersonalChecklistOwner()
+               || isPersonalChecklistSharedWithMe();
       }
 
       function canWritePersonalChecklist() {
-        return isAuthenticated()
-               && (
-                    resource.data.ownerId == getUserId()
-                    || getUserId() in resource.data.sharedWith
-                  );
+        return isPersonalChecklistOwner()
+               || isPersonalChecklistSharedWithMe();
       }
 
-      allow get, list: if canReadPersonalChecklist();
+      allow get: if canReadPersonalChecklist();
+
+      allow list: if isAuthenticated()
+                    && userId == getUserId();
 
       allow create: if isAuthenticated()
+                     && userId == getUserId()
                      && request.resource.data.keys().hasAll(["name", "ownerId"])
                      && request.resource.data.ownerId == getUserId()
                      && request.resource.data.projectId == null;
 
-      allow update: if canWritePersonalChecklist();
+      allow update: if canWritePersonalChecklist()
+                     && request.resource.data.projectId == null
+                     && (!request.resource.data.keys().hasAll(["ownerId"])
+                         || request.resource.data.ownerId == resource.data.ownerId)
+                     && (!request.resource.data.keys().hasAll(["sharedWith"])
+                         || isPersonalChecklistOwner());
 
-      allow delete: if resource.data.ownerId == getUserId();
+      allow delete: if isPersonalChecklistOwner();
     }
 
-    match /checklists/{checklistId}/items/{itemId} {
+    match /users/{userId}/checklists/{checklistId}/items/{itemId} {
       function parentPersonalChecklistData() {
-        return get(/databases/$(database)/documents/checklists/$(checklistId)).data;
+        return get(/databases/$(database)/documents/users/$(userId)/checklists/$(checklistId)).data;
+      }
+
+      function canAccessPersonalChecklistItems() {
+        return isAuthenticated()
+               && (parentPersonalChecklistData().ownerId == getUserId()
+                   || getUserId() in parentPersonalChecklistData().sharedWith);
+      }
+
+      allow read: if canAccessPersonalChecklistItems();
+
+      allow create, update, delete: if canAccessPersonalChecklistItems();
+    }
+
+    // Shared-with-me discovery index (A2)
+    match /users/{userId}/sharedChecklists/{checklistId} {
+      function sourcePersonalChecklistData(ownerId) {
+        return get(/databases/$(database)/documents/users/$(ownerId)/checklists/$(checklistId)).data;
       }
 
       allow read: if isAuthenticated()
-                     && (parentPersonalChecklistData().ownerId == getUserId()
-                         || getUserId() in parentPersonalChecklistData().sharedWith);
+                     && userId == getUserId();
 
-      allow create, update, delete: if isAuthenticated()
-                                       && (parentPersonalChecklistData().ownerId == getUserId()
-                                           || getUserId() in parentPersonalChecklistData().sharedWith);
+      allow create: if isAuthenticated()
+                     && request.resource.data.keys().hasAll(["ownerId", "name", "checklistId"])
+                     && request.resource.data.keys().hasOnly(["ownerId", "name", "checklistId", "sharedAt"])
+                     && request.resource.data.checklistId == checklistId
+                     && (
+                          sourcePersonalChecklistData(request.resource.data.ownerId).ownerId == getUserId()
+                          || (
+                               userId == getUserId()
+                               && getUserId() in sourcePersonalChecklistData(request.resource.data.ownerId).sharedWith
+                             )
+                        );
+
+      allow update: if isAuthenticated()
+                     && request.resource.data.keys().hasAll(["ownerId", "name", "checklistId"])
+                     && request.resource.data.keys().hasOnly(["ownerId", "name", "checklistId", "sharedAt"])
+                     && request.resource.data.checklistId == checklistId
+                     && (
+                          sourcePersonalChecklistData(request.resource.data.ownerId).ownerId == getUserId()
+                          || (
+                               userId == getUserId()
+                               && getUserId() in sourcePersonalChecklistData(request.resource.data.ownerId).sharedWith
+                             )
+                        );
+
+      allow delete: if isAuthenticated()
+                     && (
+                          userId == getUserId()
+                          || resource.data.ownerId == getUserId()
+                        );
     }
   }
 }

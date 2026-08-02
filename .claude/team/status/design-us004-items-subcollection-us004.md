@@ -3,10 +3,10 @@
 **Doc ID:** `design-us004-items-subcollection-us004`  
 **App:** Data Capture (`C:\Users\kimgr\data-capture-app`)  
 **Branch:** `fix/us004-items-subcollection` (from `fix/us004-voice-redesign`)  
-**Date:** 2026-07-15  
+**Date:** 2026-08-02 (updated for Solution A + A2 shared-checklist discovery index)  
 **Solution Design Agent:** Solution Design Agent  
-**Status:** Awaiting PO / Master Agent / Security approval before Dev Agent start  
-**Version:** 1.0
+**Status:** PO-approved Solution A and A2 for personal/shared checklists with `sharedChecklists` discovery index; awaiting Master Agent / Security approval before Dev Agent start  
+**Version:** 1.2
 
 ---
 
@@ -18,7 +18,9 @@ This design selects **Solution B** from `rca-items-read-us004.md`: move `items`,
 
 **Key structural decisions already taken in this design:**
 - Items/checkpoints/comments are subcollections under `projects/{projectId}`.
-- Project-scoped checklists are moved to subcollections under `/projects/{projectId}/checklists/{checklistId}` because Firestore `list` rules cannot reference `resource.data`. Personal/shared checklists (no projectId) may remain top-level `/checklists/{checklistId}`.
+- Project-scoped checklists are moved to subcollections under `/projects/{projectId}/checklists/{checklistId}` because Firestore `list` rules cannot reference `resource.data.projectId`. Personal/shared checklists (no projectId) are moved to `/users/{userId}/checklists/{checklistId}` (Solution A) so `list` rules can use the deterministic `userId` path variable.
+- Personal/shared checklist items are subcollections under `/users/{userId}/checklists/{checklistId}/items/{itemId}`.
+- **A2 addition:** A discovery index `/users/{recipientUserId}/sharedChecklists/{checklistId}` is added so shared-with-me checklists can be listed without scanning another user's collection.
 - Project deletion becomes a single callable Cloud Function `deleteProject({ projectId })` using Admin SDK `recursiveDelete`.
 - Migration is **wipe-and-recreate of test data only**; no production user data exists yet.
 - Maximum two EAS builds: Build 1 is the primary build after all local gates are green; Build 2 is reserved for iOS E2E regression fixes only.
@@ -49,8 +51,9 @@ This design selects **Solution B** from `rca-items-read-us004.md`: move `items`,
 |---|---|---|
 | Project-scoped checklist | `/projects/{projectId}/checklists/{checklistId}` | Required: Firestore `list` rules cannot reference `resource.data.projectId`, so project-scoped lists must be addressed via path variable. |
 | Project-scoped checklist item | `/projects/{projectId}/checklists/{checklistId}/items/{itemId}` | Nested under project-scoped checklist; rules use `projectId` path variable. |
-| Personal/shared checklist | `/checklists/{checklistId}` | Remains top-level; `list` rule uses `request.query.ownerId` or `request.query.sharedWith` only. |
-| Personal/shared checklist item | `/checklists/{checklistId}/items/{itemId}` | Remains top-level; rules based on parent checklist `ownerId`/`sharedWith`. |
+| Personal/shared checklist | `/users/{userId}/checklists/{checklistId}` | Solution A: moved under user so `list` rules use deterministic `userId` path variable; `ownerId`/`sharedWith` remain on the document for get/update checks. |
+| Personal/shared checklist item | `/users/{userId}/checklists/{checklistId}/items/{itemId}` | Nested under the personal/shared checklist; rules use `userId` path variable and parent checklist `ownerId`/`sharedWith`. |
+| Shared-with-me discovery index | `/users/{recipientUserId}/sharedChecklists/{checklistId}` | A2: minimal metadata index so recipients can list checklists shared with them without querying another user's `/users/{ownerId}/checklists` collection. |
 
 ---
 
@@ -195,7 +198,13 @@ export function projectChecklistsCollection(
   projectId: string
 ): CollectionReference<Checklist>;
 
-export function personalChecklistsCollection(): CollectionReference<Checklist>;
+export function personalChecklistsCollection(
+  userId: string
+): CollectionReference<Checklist>;
+
+export function sharedChecklistsCollection(
+  userId: string
+): CollectionReference<SharedChecklistIndex>;
 
 export function projectChecklistItemsCollection(
   projectId: string,
@@ -203,6 +212,7 @@ export function projectChecklistItemsCollection(
 ): CollectionReference<ChecklistItem>;
 
 export function personalChecklistItemsCollection(
+  userId: string,
   checklistId: string
 ): CollectionReference<ChecklistItem>;
 
@@ -238,12 +248,28 @@ export async function addManualItemToChecklist(
   userId: string
 ): Promise<void>;
 
+export async function shareChecklist(
+  checklist: Checklist,
+  recipientUserId: string,
+  role: "admin" | "editor" | "viewer"
+): Promise<void>;
+
+export async function unshareChecklist(
+  checklist: Checklist,
+  recipientUserId: string
+): Promise<void>;
+
 export function subscribeToProjectChecklists(
   projectId: string,
   callback: (checklists: Checklist[]) => void
 ): Unsubscribe;
 
 export function subscribeToPersonalChecklists(
+  userId: string,
+  callback: (checklists: Checklist[]) => void
+): Unsubscribe;
+
+export function subscribeToSharedChecklists(
   userId: string,
   callback: (checklists: Checklist[]) => void
 ): Unsubscribe;
@@ -255,6 +281,7 @@ export function subscribeToProjectChecklistItems(
 ): Unsubscribe;
 
 export function subscribeToPersonalChecklistItems(
+  userId: string,
   checklistId: string,
   callback: (items: ChecklistItem[]) => void
 ): Unsubscribe;
@@ -262,16 +289,34 @@ export function subscribeToPersonalChecklistItems(
 
 **Rules:**
 - `projectChecklistsCollection(projectId)` returns `collection(db, "projects", projectId, "checklists")`.
-- `personalChecklistsCollection()` returns `collection(db, "checklists")` for checklists where `projectId` is null.
+- `personalChecklistsCollection(userId)` returns `collection(db, "users", userId, "checklists")` for checklists where `projectId` is null.
+- `sharedChecklistsCollection(userId)` returns `collection(db, "users", userId, "sharedChecklists")`.
 - `projectChecklistItemsCollection(projectId, checklistId)` returns `collection(db, "projects", projectId, "checklists", checklistId, "items")`.
-- `personalChecklistItemsCollection(checklistId)` returns `collection(db, "checklists", checklistId, "items")`.
+- `personalChecklistItemsCollection(userId, checklistId)` returns `collection(db, "users", userId, "checklists", checklistId, "items")`.
+- `subscribeToPersonalChecklistItems(userId, checklistId, callback)` subscribes to `personalChecklistItemsCollection(userId, checklistId)`.
+- `subscribeToSharedChecklists(userId, callback)` subscribes to `sharedChecklistsCollection(userId)` and, for each index document, fetches the actual checklist via `getDoc(doc(personalChecklistsCollection(ownerUserId), checklistId))`. The callback receives the merged `Checklist[]`.
+- `shareChecklist(checklist, recipientUserId, role)` must, in a single batch:
+  1. Update the source checklist document at `/users/{ownerId}/checklists/{checklistId}` to set `sharedWith[recipientUserId] = role`.
+  2. Create or update the discovery document at `/users/{recipientUserId}/sharedChecklists/{checklistId}` with `{ ownerId, name, checklistId, sharedAt }`.
+- `unshareChecklist(checklist, recipientUserId)` must, in a single batch:
+  1. Remove `sharedWith[recipientUserId]` from the source checklist document.
+  2. Delete the discovery document at `/users/{recipientUserId}/sharedChecklists/{checklistId}` if it exists.
 - `setChecklistPointCompleted` must resolve checkpoint and source item using `point.sourceProjectId` (or `checklist.projectId` as fallback), `point.sourceItemId`, and `point.sourceCheckpointId`. It must call:
   - `getCheckpointsForItem(sourceProjectId, sourceItemId)`
   - `getItemById(sourceProjectId, sourceItemId)`
   - `updateItem(sourceProjectId, sourceItemId, { status: ... })`
 - `extractPointsFromItem`, `parseSourceTextIntoPoints` and `addManualItemToChecklist` must set `sourceItemPath` to `projects/${item.projectId}/items/${item.id}`.
-- `createChecklistFromItems` and `createDynamicChecklistFromSearch` must write project-scoped checklists to `projectChecklistsCollection(projectId)` and project-scoped items to `projectChecklistItemsCollection(projectId, checklistId)`. Personal checklists use `personalChecklistsCollection()`.
+- `createChecklistFromItems` and `createDynamicChecklistFromSearch` must write project-scoped checklists to `projectChecklistsCollection(projectId)` and project-scoped items to `projectChecklistItemsCollection(projectId, checklistId)`. Personal checklists use `personalChecklistsCollection(ownerId)` and `personalChecklistItemsCollection(ownerId, checklistId)`.
 - `Checklist` and `ChecklistItem` interfaces are unchanged; `sourceProjectId` is already present on `ChecklistItem`.
+- New `SharedChecklistIndex` interface (exported from `services/checklists.ts`):
+  ```ts
+  export interface SharedChecklistIndex {
+    checklistId: string;
+    ownerId: string;
+    name: string;
+    sharedAt: Timestamp;
+  }
+  ```
 
 ### 3.5 `services/checklistsOffline.ts`
 
@@ -365,13 +410,21 @@ export async function updateReminder(
 
 ### 4.2 `/checklist` route
 
-**The checklist route itself is unchanged:**
+**New optional query parameter for personal/shared checklists:**
 
 ```
-/checklist?checklistId={checklistId}
+/checklist?checklistId={checklistId}&userId={userId}
 ```
 
-No new parameters are required at the route level. Internal source-item links inside the checklist screen use the new `/item?itemId=...&projectId=...` format (see 4.1).
+- For **personal/shared checklists**, `userId` is **required**. The screen loads from `/users/{userId}/checklists/{checklistId}` using `personalChecklistsCollection(userId)` / `personalChecklistItemsCollection(userId, checklistId)`.
+- For **project-scoped checklists**, `userId` must be omitted. The screen resolves the checklist from `/projects/{projectId}/checklists/{checklistId}` using `projectChecklistsCollection(projectId)` / `projectChecklistItemsCollection(projectId, checklistId)`.
+
+**Changed call sites:**
+- `app/(tabs)/checklists.tsx` personal card: `router.push(\`/checklist?checklistId=${checklist.id}&userId=${userId}\`)`
+- `app/(tabs)/checklists.tsx` project card: `router.push(\`/checklist?checklistId=${checklist.id}\`)` (unchanged)
+- `app/(tabs)/checklists.tsx` shared-with-me card: `router.push(\`/checklist?checklistId=${checklist.id}&userId=${checklist.ownerId}\`)`
+
+Internal source-item links inside the checklist screen use the new `/item?itemId=...&projectId=...` format (see 4.1).
 
 ### 4.3 Deeplinks
 
@@ -408,6 +461,7 @@ Delete entirely:
 - `match /items/{itemId}` (existing lines ~101-131)
 - `match /items/{itemId}/checkpoints/{checkpointId}` (existing lines ~134-161)
 - `match /items/{itemId}/comments/{commentId}` (existing lines ~164-192)
+- `match /checklists/{checklistId}` and `match /checklists/{checklistId}/items/{itemId}` (old top-level personal/shared checklist paths, replaced by `/users/{userId}/checklists/...` per Solution A).
 
 ### 5.2 New subcollection rules for items/checkpoints/comments
 
@@ -508,12 +562,14 @@ Project-scoped checklists are stored under the project subcollection. This avoid
     }
 ```
 
-### 5.4 Personal/shared checklists (top-level)
+### 5.4 Personal/shared checklists under user (Solution A + A2)
 
-Personal or shared checklists where `projectId` is null remain at the top level. Their `list` rule must use only `request.query` filters, never `resource.data`.
+Personal or shared checklists where `projectId` is null are stored under `/users/{userId}/checklists/{checklistId}`. Their `list` rule uses the `userId` path variable, which is deterministic for the query. `ownerId` and `sharedWith` remain on the document for `get`, `create`, `update`, and `delete` checks.
+
+Discovery of checklists shared **with** a user is handled by the `sharedChecklists` index under `/users/{recipientUserId}/sharedChecklists/{checklistId}`.
 
 ```firestore
-    match /checklists/{checklistId} {
+    match /users/{userId}/checklists/{checklistId} {
       function canReadPersonalChecklist() {
         return isAuthenticated()
                && (
@@ -533,45 +589,95 @@ Personal or shared checklists where `projectId` is null remain at the top level.
       allow get: if canReadPersonalChecklist();
 
       allow list: if isAuthenticated()
-                    && (
-                         request.query.ownerId == getUserId()
-                         || (request.query.sharedWith != null
-                             && request.query.sharedWith.hasAny([getUserId()]))
-                       );
+                    && userId == getUserId();
 
       allow create: if isAuthenticated()
+                     && userId == getUserId()
                      && request.resource.data.keys().hasAll(["name", "ownerId"])
                      && request.resource.data.ownerId == getUserId()
                      && request.resource.data.projectId == null;
 
       allow update: if canWritePersonalChecklist();
 
-      allow delete: if resource.data.ownerId == getUserId();
+      allow delete: if isAuthenticated()
+                     && resource.data.ownerId == getUserId();
     }
 
-    match /checklists/{checklistId}/items/{itemId} {
+    match /users/{userId}/checklists/{checklistId}/items/{itemId} {
       function parentPersonalChecklistData() {
-        return get(/databases/$(database)/documents/checklists/$(checklistId)).data;
+        return get(/databases/$(database)/documents/users/$(userId)/checklists/$(checklistId)).data;
       }
 
       allow read: if isAuthenticated()
+                     && userId == getUserId()
                      && (parentPersonalChecklistData().ownerId == getUserId()
                          || getUserId() in parentPersonalChecklistData().sharedWith);
 
       allow create, update, delete: if isAuthenticated()
+                                       && userId == getUserId()
                                        && (parentPersonalChecklistData().ownerId == getUserId()
                                            || getUserId() in parentPersonalChecklistData().sharedWith);
     }
+
+    // Shared-with-me discovery index (A2)
+    match /users/{userId}/sharedChecklists/{checklistId} {
+      // The source checklist lives under the owner's user collection, not under the recipient's.
+      function sourceChecklistData(ownerId) {
+        return get(/databases/$(database)/documents/users/$(ownerId)/checklists/$(checklistId)).data;
+      }
+
+      allow read: if isAuthenticated()
+                     && userId == getUserId();
+
+      allow create: if isAuthenticated()
+                     && request.resource.data.keys().hasAll(["ownerId", "name", "checklistId"])
+                     && request.resource.data.checklistId == checklistId
+                     && (
+                          // Owner creates the index entry when sharing with the recipient
+                          sourceChecklistData(request.resource.data.ownerId).ownerId == getUserId()
+                          // Recipient may recreate the entry only if already shared with them
+                          || (
+                               userId == getUserId()
+                               && getUserId() in sourceChecklistData(request.resource.data.ownerId).sharedWith
+                             )
+                        );
+
+      allow update: if isAuthenticated()
+                     && request.resource.data.keys().hasAll(["ownerId", "name", "checklistId"])
+                     && request.resource.data.checklistId == checklistId
+                     && (
+                          // Owner updates the index entry on the recipient's behalf
+                          sourceChecklistData(request.resource.data.ownerId).ownerId == getUserId()
+                          // Recipient may update their own copy only if already shared with them
+                          || (
+                               userId == getUserId()
+                               && getUserId() in sourceChecklistData(request.resource.data.ownerId).sharedWith
+                             )
+                        );
+
+      allow delete: if isAuthenticated()
+                     && (
+                          // Recipient may remove the index entry from their own view
+                          userId == getUserId()
+                          // Owner may remove the index entry when revoking sharing
+                          || resource.data.ownerId == getUserId()
+                        );
+    }
 ```
 
-**Why this works:** `checklistId` is a path variable, so `get(/checklists/$(checklistId))` is deterministic for the entire subcollection query. Firestore can prove the `list` safe without reading result documents.
+**Why this works:** `userId` is a path variable, so both the top-level `list` on `/users/{userId}/checklists`, the subcollection `list` on `/users/{userId}/checklists/{checklistId}/items`, and the `list` on `/users/{userId}/sharedChecklists` are deterministic. Firestore can prove the `list` safe without reading result documents, while `get`/`create`/`update`/`delete` continue to use `ownerId` and `sharedWith` on the checklist document.
+
+**Security note for `sharedChecklists`:** The `sourceChecklistData(ownerId)` helper reads the source checklist at `/users/{ownerId}/checklists/{checklistId}`. Both `ownerId` (taken from the request or existing document) and `checklistId` are known path variables, so the rule engine treats the `get()` as deterministic for the query. The owner may create/update/delete the index entry when sharing or revoking; the recipient may read or delete their own index entry, and may create/update it only if already present in the source checklist's `sharedWith` map.
 
 **Emulator validation required before approval:**
 The following query shapes must be proven to work in the Firestore emulator:
 1. `query(collection(db, "projects", projectId, "checklists"))` — project checklists.
-2. `query(collection(db, "checklists"), where("ownerId", "==", uid))` — personal checklists.
-3. `query(collection(db, "checklists"), where("sharedWith", "array-contains", uid))` — shared checklists.
-4. Negative case: a non-member running query #1 is denied.
+2. `query(collection(db, "users", uid, "checklists"))` — personal checklists by owner.
+3. `query(collection(db, "users", uid, "checklists", checklistId, "items"))` — personal checklist items.
+4. `query(collection(db, "users", uid, "sharedChecklists"))` — shared-with-me discovery index.
+5. Negative case: a non-member running query #1 is denied.
+6. Negative case: an authenticated user running query #2 for a different `userId` is denied.
+7. Negative case: an authenticated user running query #4 for a different `userId` is denied.
 
 ---
 
@@ -672,18 +778,34 @@ Rationale: Firestore `list` rules cannot reference `resource.data`. The only way
 
 ### 7.2 Personal/shared checklists
 
-Checklists with `projectId == null` remain top-level:
+Checklists with `projectId == null` are stored under the owning user:
 
 ```
-/checklists/{checklistId}
-/checklists/{checklistId}/items/{itemId}
+/users/{userId}/checklists/{checklistId}
+/users/{userId}/checklists/{checklistId}/items/{itemId}
 ```
 
-Their `list` rules rely on `request.query` filters for `ownerId`/`sharedWith` on the parent checklist collection. Their item subcollection rules use `get(/checklists/$(checklistId))` where `checklistId` is a path variable, which Firestore can evaluate deterministically for the query.
+Their `list` rules use the `userId` path variable, which Firestore can evaluate deterministically for the query. Their item subcollection rules use `get(/users/$(userId)/checklists/$(checklistId))` where both `userId` and `checklistId` are path variables.
+
+**A2 discovery index:** Because the `list` rule on `/users/{userId}/checklists` is scoped to `userId == getUserId()`, a user who is only in `sharedWith` cannot list another owner's personal checklists by path. Shared-with-me discovery is handled by a separate index collection:
+
+```
+/users/{recipientUserId}/sharedChecklists/{checklistId}
+```
+
+Each index document stores minimal metadata (`ownerId`, `name`, `checklistId`, `sharedAt`). When a personal checklist is shared, the app (or a Cloud Function) writes the recipient's index document. When sharing is revoked, the index document is deleted. The `app/(tabs)/checklists.tsx` screen subscribes to both `/users/{currentUserId}/checklists` (own) and `/users/{currentUserId}/sharedChecklists` (shared with me), then resolves each shared checklist by `getDoc` against `/users/{ownerId}/checklists/{checklistId}`.
+
+### 7.2.1 A2 design decisions locked (2026-08-02)
+
+The following implementation details were confirmed with PO and are now locked:
+
+1. **Name synchronisation:** When the owner renames a personal checklist, the new name is written to every recipient's `/users/{recipientUserId}/sharedChecklists/{checklistId}` discovery document. Recipients see the updated name immediately without re-fetching the source checklist.
+2. **Two-sided unshare:** `unshareChecklist` removes the recipient from the source checklist's `sharedWith` array **and** deletes the recipient's discovery document. A recipient-initiated unshare performs the same two-sided removal.
+3. **sharedAt metadata:** `sharedAt` is client-written metadata stored in the discovery document. Security rules do not enforce its presence or value.
 
 ### 7.3 No fallback
 
-There is no fallback. Both path models are core requirements of this design and must be implemented before Build 1.
+There is no fallback. Both path models and the shared discovery index are core requirements of this design and must be implemented before Build 1.
 
 ---
 
@@ -704,10 +826,11 @@ There is no fallback. Both path models are core requirements of this design and 
 
 In Firebase Console or via a one-off admin script:
 1. Delete all `/projects/{projectId}` documents and subcollections (`members`, `items`, `items/{itemId}/checkpoints`, `items/{itemId}/comments`, `checklists`, `checklists/{checklistId}/items`).
-2. Delete all remaining `/checklists/{checklistId}` documents and subcollections (`items`) that are **personal/shared** (not project-scoped).
-3. Delete any orphaned top-level `/items/{itemId}` documents and subcollections.
-4. Delete Storage prefix `projects/`.
-5. Optionally retain `/users/{userId}/reminders`; old reminders will lack `targetProjectId` and must be handled by the fallback Alert in `NotificationResponseHandler.tsx`.
+2. Delete all **top-level** `/checklists/{checklistId}` documents and subcollections (`items`) — these are the old personal/shared paths and must be wiped under Solution A.
+3. Delete all **legacy sharing data**, including any top-level `/sharedChecklists/{checklistId}` or per-user sharing documents that predate the A2 index.
+4. Delete any orphaned top-level `/items/{itemId}` documents and subcollections.
+5. Delete Storage prefix `projects/`.
+6. Optionally retain `/users/{userId}/reminders`; old reminders will lack `targetProjectId` and must be handled by the fallback Alert in `NotificationResponseHandler.tsx`.
 
 ### 8.4 Recreate operations
 
@@ -715,9 +838,12 @@ In Firebase Console or via a one-off admin script:
 2. Invite one email-member and one UID-member (different projects).
 3. Create items manually and via voice.
 4. Add comments and checkpoints.
-5. Create dynamic checklists from search.
-6. Create reminders on items.
-7. Run regression scenarios E1-E9 (see `impl-plan-items-subcollection-us004.md` section 6.3).
+5. Create dynamic checklists from search (project-scoped).
+6. Create personal/shared checklists under `/users/{userId}/checklists` and add manual items.
+7. Share a personal checklist with another test user; verify `/users/{recipientUserId}/sharedChecklists/{checklistId}` is created and the recipient sees the checklist in `app/(tabs)/checklists.tsx`.
+8. Revoke sharing; verify the index document is deleted and the checklist disappears from the recipient's view.
+9. Create reminders on items.
+10. Run regression scenarios E1-E9 (see `impl-plan-items-subcollection-us004.md` section 6.3).
 
 ---
 
@@ -733,7 +859,7 @@ Trigger: all of the following are green locally:
 - `npm run typecheck`
 - `npm run lint`
 - `npm run pre-test-check`
-- Firestore emulator rule tests for items/checkpoints/comments, project-scoped checklists, and personal/shared checklists
+- Firestore emulator rule tests for items/checkpoints/comments, project-scoped checklists, personal/shared checklists under `/users/{userId}/checklists`, and the `sharedChecklists` discovery index
 - Cloud Function `deleteProject` unit/integration tests in emulator
 
 Build 1 is the primary build. It is submitted to EAS only after these gates pass.
@@ -744,7 +870,7 @@ Build 2 is reserved **only** for issues discovered during iOS E2E regression tes
 
 ### 9.4 Emulator gate before Build 1
 
-All rule sets in sections 5.2–5.4 (items, checkpoints, comments, project-scoped checklists, personal/shared checklists) must pass Firestore emulator tests before Build 1 is ordered. There is no fallback strategy; both checklist path models are required.
+All rule sets in sections 5.2–5.4 (items, checkpoints, comments, project-scoped checklists, personal/shared checklists under `/users/{userId}`, and the `sharedChecklists` discovery index) must pass Firestore emulator tests before Build 1 is ordered. There is no fallback strategy; all checklist path models and the shared discovery index are required.
 
 ---
 
@@ -752,13 +878,13 @@ All rule sets in sections 5.2–5.4 (items, checkpoints, comments, project-scope
 
 The Dev Agent must not write any code touching items, checkpoints, comments, checklists, project deletion, reminders or deeplinks until all of the following are true:
 
-1. PO has approved this design document, the data-model change, and the test-data wipe.
+1. PO has approved this design document, the data-model change, the `sharedChecklists` discovery index, and the test-data wipe.
 2. Master Agent has approved the 2-build strategy and the branch plan.
 3. Compliance/Security Agent has approved the `firestore.rules` snippets in sections 5.2-5.4 and the Cloud Function security model in section 6.
 4. Flowagent has delivered an implementation plan with tasks, file order, dependencies and estimates for this design.
-5. Test Manager Agent has updated the baseline test plan with migration and security test cases for the new paths.
+5. Test Manager Agent has updated the baseline test plan with migration and security test cases for the new paths, including shared-checklist discovery.
 6. All exact service signatures in section 3 are final and signed off.
-7. Emulator rule tests (sections 5.2–5.4) are green locally for items, checkpoints, comments, project-scoped checklists, and personal/shared checklists.
+7. Emulator rule tests (sections 5.2–5.4) are green locally for items, checkpoints, comments, project-scoped checklists, personal/shared checklists, and the `sharedChecklists` index.
 8. No active feature coding is in progress on the affected files.
 
 ---
@@ -782,8 +908,8 @@ The Dev Agent must not write any code touching items, checkpoints, comments, che
 - `C:\Users\kimgr\data-capture-app\app\(tabs)\board.tsx`
 - `C:\Users\kimgr\data-capture-app\app\(tabs)\search.tsx`
 - `C:\Users\kimgr\data-capture-app\app\item.tsx`
-- `C:\Users\kimgr\data-capture-app\app\checklist.tsx`
-- `C:\Users\kimgr\data-capture-app\app\(tabs)\checklists.tsx` (subscribe to both project-scoped and personal checklists)
+- `C:\Users\kimgr\data-capture-app\app\checklist.tsx` (read optional `userId` query param and load from personal path when present, project-scoped path otherwise)
+- `C:\Users\kimgr\data-capture-app\app\(tabs)\checklists.tsx` (subscribe to own personal checklists, project checklists, and shared-with-me `sharedChecklists`, then fetch each shared checklist by `getDoc`)
 - `C:\Users\kimgr\data-capture-app\components\NotificationResponseHandler.tsx`
 
 ### 11.3 Infrastructure files to be modified
@@ -812,7 +938,8 @@ The Dev Agent must not write any code touching items, checkpoints, comments, che
 
 | Role | Name / Agent | Decision | Date |
 |---|---|---|---|
-| Product Owner | | Approve / Reject / Comment | |
+| Product Owner | | Approved Solution A for personal/shared checklists; wipe-and-recreate approved | 2026-08-02 |
+| Product Owner | | Approved A2 shared-checklist discovery index (`/users/{recipientUserId}/sharedChecklists/{checklistId}`) | 2026-08-02 |
 | Master Agent | | Approve / Reject / Comment | |
 | Compliance/Security Agent | | Approve / Reject / Comment | |
 | Solution Design Agent | | Approved for review | 2026-07-15 |

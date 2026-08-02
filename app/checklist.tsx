@@ -58,7 +58,7 @@ function formatDate(ts: any) {
 }
 
 export default function ChecklistDetailScreen() {
-  const { id } = useLocalSearchParams();
+  const { id, userId } = useLocalSearchParams();
   const router = useRouter();
   const { user } = useAuth();
   const { theme } = useTheme();
@@ -73,6 +73,7 @@ export default function ChecklistDetailScreen() {
   const [reminderTargetItem, setReminderTargetItem] = useState<ChecklistItem | null>(null);
   const [reminderSaving, setReminderSaving] = useState(false);
   const checklistId = typeof id === "string" ? id : undefined;
+  const ownerIdParam = typeof userId === "string" ? userId : undefined;
   const pendingOpsRef = React.useRef<PendingOp[]>(pendingOps);
 
   const isDark = theme === "dark";
@@ -138,7 +139,11 @@ export default function ChecklistDetailScreen() {
       }
 
       try {
-        const data = await getChecklistById(checklistId);
+        const data = await getChecklistById(
+          checklistId,
+          undefined,
+          ownerIdParam || user?.uid
+        );
         setChecklist(data);
         if (data) {
           unsubscribeItems = subscribeToChecklistItems(
@@ -148,7 +153,8 @@ export default function ChecklistDetailScreen() {
               const merged = applyPendingOps(listItems, pendingOpsRef.current);
               setItems(merged);
             },
-            data.projectId
+            data.projectId,
+            data.ownerId || ownerIdParam || user?.uid
           );
         }
       } catch {
@@ -182,7 +188,7 @@ export default function ChecklistDetailScreen() {
       if (unsubscribeItems) unsubscribeItems();
       if (unsubscribeReminders) unsubscribeReminders();
     };
-  }, [checklistId, user?.uid]);
+  }, [checklistId, ownerIdParam, user?.uid]);
 
   const openItems = useMemo(
     () =>

@@ -102,23 +102,31 @@ async function seedData() {
     name: "Project checklist item 1",
   });
 
-  // Personal/shared checklists
-  await setDoc(doc(db, "checklists", "checklist2"), {
+  // Personal/shared checklists under /users/{userId}/checklists
+  await setDoc(doc(db, "users", "user_owner", "checklists", "checklist2"), {
     ownerId: "user_owner",
     name: "Shared Checklist",
     sharedWith: { user_editor: "editor" },
     projectId: null,
   });
-  await setDoc(doc(db, "checklists", "checklist2", "items", "cli1"), {
+  await setDoc(doc(db, "users", "user_owner", "checklists", "checklist2", "items", "cli1"), {
     name: "Shared checklist item 1",
   });
 
   const otherDb = contexts.other.firestore();
-  await setDoc(doc(otherDb, "checklists", "checklist3"), {
+  await setDoc(doc(otherDb, "users", "user_other", "checklists", "checklist3"), {
     ownerId: "user_other",
     name: "Other Personal Checklist",
     sharedWith: {},
     projectId: null,
+  });
+
+  // Shared-with-me discovery index
+  await setDoc(doc(db, "users", "user_editor", "sharedChecklists", "checklist2"), {
+    ownerId: "user_owner",
+    name: "Shared Checklist",
+    checklistId: "checklist2",
+    sharedAt: Date.now(),
   });
 }
 
@@ -590,108 +598,223 @@ async function main() {
   });
 
   // ─────────────────────────────────────────────────────────────
-  // Personal/shared checklists: /checklists/{checklistId}
+  // Personal/shared checklists: /users/{userId}/checklists/{checklistId}
   // ─────────────────────────────────────────────────────────────
 
-  await runCase("CH-L-1", async () => {
-    await expectAllow(
-      getDocs(query(collection(db("owner"), "checklists"), where("ownerId", "==", "user_owner")))
-    );
+  await runCase("UCH-L-1", async () => {
+    await expectAllow(getDocs(query(collection(db("owner"), "users", "user_owner", "checklists"))));
   });
-  await runCase("CH-L-2", async () => {
-    await expectAllow(
-      getDocs(query(collection(db("editor"), "checklists"), where("sharedWith", "array-contains", "user_editor")))
-    );
-  });
-  await runCase("CH-L-3", async () => {
-    await expectDeny(
-      getDocs(query(collection(db("nonMember"), "checklists"), where("ownerId", "==", "user_owner")))
-    );
+  await runCase("UCH-L-2", async () => {
+    await expectDeny(getDocs(query(collection(db("nonMember"), "users", "user_owner", "checklists"))));
   });
 
-  await runCase("CH-G-1", async () => {
-    await expectAllow(getDoc(doc(db("owner"), "checklists", "checklist2")));
+  await runCase("UCH-G-1", async () => {
+    await expectAllow(getDoc(doc(db("owner"), "users", "user_owner", "checklists", "checklist2")));
   });
-  await runCase("CH-G-2", async () => {
-    await expectAllow(getDoc(doc(db("editor"), "checklists", "checklist2")));
+  await runCase("UCH-G-2", async () => {
+    await expectAllow(getDoc(doc(db("editor"), "users", "user_owner", "checklists", "checklist2")));
   });
-  await runCase("CH-G-3", async () => {
-    await expectDeny(getDoc(doc(db("nonMember"), "checklists", "checklist2")));
+  await runCase("UCH-G-3", async () => {
+    await expectDeny(getDoc(doc(db("nonMember"), "users", "user_owner", "checklists", "checklist2")));
   });
 
-  await runCase("CH-C-1", async () => {
+  await runCase("UCH-C-1", async () => {
     await expectAllow(
-      addDoc(collection(db("owner"), "checklists"), {
-        ownerId: "user_owner",
+      setDoc(doc(db("owner"), "users", "user_owner", "checklists", "newChecklist"), {
         name: "New personal checklist",
-        sharedWith: {},
+        ownerId: "user_owner",
         projectId: null,
       })
     );
   });
-
-  await runCase("CH-UP-1", async () => {
-    await expectAllow(
-      updateDoc(doc(db("editor"), "checklists", "checklist2"), { name: "Updated by shared editor" })
+  await runCase("UCH-C-2", async () => {
+    await expectDeny(
+      setDoc(doc(db("owner"), "users", "user_owner", "checklists", "badChecklist"), {
+        name: "Bad checklist",
+        ownerId: "user_owner",
+        projectId: "projectA",
+      })
     );
   });
-  await runCase("CH-UP-2", async () => {
-    await expectDeny(updateDoc(doc(db("nonMember"), "checklists", "checklist2"), { name: "Hacked" }));
+
+  await runCase("UCH-UP-1", async () => {
+    await expectAllow(
+      updateDoc(doc(db("owner"), "users", "user_owner", "checklists", "checklist2"), { name: "Renamed by owner" })
+    );
+  });
+  await runCase("UCH-UP-2", async () => {
+    await expectAllow(
+      updateDoc(doc(db("owner"), "users", "user_owner", "checklists", "checklist2"), {
+        sharedWith: { user_editor: "editor", user_viewer: "viewer" },
+      })
+    );
+  });
+  await runCase("UCH-UP-3", async () => {
+    await expectDeny(
+      updateDoc(doc(db("owner"), "users", "user_owner", "checklists", "checklist2"), { ownerId: "user_other" })
+    );
+  });
+  await runCase("UCH-UP-4", async () => {
+    await expectDeny(
+      updateDoc(doc(db("editor"), "users", "user_owner", "checklists", "checklist2"), {
+        sharedWith: { user_editor: "editor", user_non_member: "viewer" },
+      })
+    );
   });
 
-  await runCase("CH-D-1", async () => {
-    await expectAllow(deleteDoc(doc(db("owner"), "checklists", "checklist2")));
+  await runCase("UCH-D-1", async () => {
+    await expectAllow(deleteDoc(doc(db("owner"), "users", "user_owner", "checklists", "checklist2")));
   });
-  await runCase("CH-D-2", async () => {
-    await expectDeny(deleteDoc(doc(db("editor"), "checklists", "checklist2")));
+  await runCase("UCH-D-2", async () => {
+    await expectDeny(deleteDoc(doc(db("editor"), "users", "user_owner", "checklists", "checklist2")));
   });
 
   // ─────────────────────────────────────────────────────────────
-  // Personal/shared checklist items: /checklists/{checklistId}/items/{itemId}
+  // Personal/shared checklist items: /users/{userId}/checklists/{checklistId}/items/{itemId}
   // ─────────────────────────────────────────────────────────────
 
-  await runCase("CLI-L-1", async () => {
+  await runCase("UCLI-L-1", async () => {
     await expectAllow(
-      getDocs(query(collection(db("owner"), "checklists", "checklist2", "items")))
+      getDocs(query(collection(db("owner"), "users", "user_owner", "checklists", "checklist2", "items")))
     );
   });
-  await runCase("CLI-L-2", async () => {
+  await runCase("UCLI-L-2", async () => {
     await expectAllow(
-      getDocs(query(collection(db("editor"), "checklists", "checklist2", "items")))
+      getDocs(query(collection(db("editor"), "users", "user_owner", "checklists", "checklist2", "items")))
     );
   });
-  await runCase("CLI-L-3", async () => {
+  await runCase("UCLI-L-3", async () => {
     await expectDeny(
-      getDocs(query(collection(db("nonMember"), "checklists", "checklist2", "items")))
+      getDocs(query(collection(db("nonMember"), "users", "user_owner", "checklists", "checklist2", "items")))
     );
   });
 
-  await runCase("CLI-G-1", async () => {
-    await expectAllow(getDoc(doc(db("owner"), "checklists", "checklist2", "items", "cli1")));
+  await runCase("UCLI-G-1", async () => {
+    await expectAllow(getDoc(doc(db("editor"), "users", "user_owner", "checklists", "checklist2", "items", "cli1")));
+  });
+  await runCase("UCLI-G-2", async () => {
+    await expectDeny(getDoc(doc(db("nonMember"), "users", "user_owner", "checklists", "checklist2", "items", "cli1")));
   });
 
-  await runCase("CLI-C-1", async () => {
+  await runCase("UCLI-C-1", async () => {
     await expectAllow(
-      addDoc(collection(db("owner"), "checklists", "checklist2", "items"), { name: "New shared item" })
+      addDoc(collection(db("editor"), "users", "user_owner", "checklists", "checklist2", "items"), {
+        name: "New item by shared editor",
+      })
     );
   });
-  await runCase("CLI-C-2", async () => {
+  await runCase("UCLI-C-2", async () => {
     await expectDeny(
-      addDoc(collection(db("nonMember"), "checklists", "checklist2", "items"), { name: "Hacked" })
+      addDoc(collection(db("nonMember"), "users", "user_owner", "checklists", "checklist2", "items"), {
+        name: "Hacked item",
+      })
     );
   });
 
-  await runCase("CLI-UP-1", async () => {
+  await runCase("UCLI-UP-1", async () => {
     await expectAllow(
-      updateDoc(doc(db("editor"), "checklists", "checklist2", "items", "cli1"), { name: "Updated by shared editor" })
+      updateDoc(doc(db("editor"), "users", "user_owner", "checklists", "checklist2", "items", "cli1"), {
+        name: "Updated by shared editor",
+      })
+    );
+  });
+  await runCase("UCLI-UP-2", async () => {
+    await expectDeny(
+      updateDoc(doc(db("nonMember"), "users", "user_owner", "checklists", "checklist2", "items", "cli1"), {
+        name: "Hacked",
+      })
     );
   });
 
-  await runCase("CLI-D-1", async () => {
-    await expectAllow(deleteDoc(doc(db("owner"), "checklists", "checklist2", "items", "cli1")));
+  await runCase("UCLI-D-1", async () => {
+    await expectAllow(deleteDoc(doc(db("editor"), "users", "user_owner", "checklists", "checklist2", "items", "cli1")));
   });
-  await runCase("CLI-D-2", async () => {
-    await expectDeny(deleteDoc(doc(db("nonMember"), "checklists", "checklist2", "items", "cli1")));
+  await runCase("UCLI-D-2", async () => {
+    await expectDeny(deleteDoc(doc(db("nonMember"), "users", "user_owner", "checklists", "checklist2", "items", "cli1")));
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // Shared-with-me discovery index: /users/{userId}/sharedChecklists/{checklistId}
+  // ─────────────────────────────────────────────────────────────
+
+  await runCase("SCD-L-1", async () => {
+    await expectAllow(getDocs(query(collection(db("editor"), "users", "user_editor", "sharedChecklists"))));
+  });
+  await runCase("SCD-L-2", async () => {
+    await expectDeny(getDocs(query(collection(db("nonMember"), "users", "user_editor", "sharedChecklists"))));
+  });
+
+  await runCase("SCD-C-1", async () => {
+    await expectAllow(
+      setDoc(doc(db("owner"), "users", "user_viewer", "sharedChecklists", "checklist2"), {
+        ownerId: "user_owner",
+        name: "Shared Checklist",
+        checklistId: "checklist2",
+      })
+    );
+  });
+  await runCase("SCD-C-2", async () => {
+    await expectAllow(
+      setDoc(doc(db("editor"), "users", "user_editor", "sharedChecklists", "checklist2"), {
+        ownerId: "user_owner",
+        name: "Shared Checklist",
+        checklistId: "checklist2",
+        sharedAt: Date.now(),
+      })
+    );
+  });
+  await runCase("SCD-C-3", async () => {
+    await expectDeny(
+      setDoc(doc(db("nonMember"), "users", "user_non_member", "sharedChecklists", "checklist2"), {
+        ownerId: "user_owner",
+        name: "Shared Checklist",
+        checklistId: "checklist2",
+      })
+    );
+  });
+  await runCase("SCD-C-4", async () => {
+    await expectDeny(
+      setDoc(doc(db("owner"), "users", "user_viewer", "sharedChecklists", "checklist2"), {
+        ownerId: "user_owner",
+        name: "Shared Checklist",
+        checklistId: "checklist2",
+        extra: "not allowed",
+      })
+    );
+  });
+  await runCase("SCD-C-5", async () => {
+    await expectDeny(
+      setDoc(doc(db("owner"), "users", "user_viewer", "sharedChecklists", "checklist2"), {
+        ownerId: "user_owner",
+        name: "Shared Checklist",
+        checklistId: "wrong-checklist-id",
+      })
+    );
+  });
+  await runCase("SCD-C-6", async () => {
+    await expectDeny(
+      setDoc(doc(db("owner"), "users", "user_viewer", "sharedChecklists", "checklist2"), {
+        ownerId: "user_owner",
+        name: "Shared Checklist",
+      })
+    );
+  });
+
+  await runCase("SCD-UP-1", async () => {
+    await expectAllow(
+      updateDoc(doc(db("owner"), "users", "user_editor", "sharedChecklists", "checklist2"), {
+        ownerId: "user_owner",
+        name: "Renamed by owner",
+        checklistId: "checklist2",
+      })
+    );
+  });
+
+  await runCase("SCD-D-1", async () => {
+    await expectAllow(deleteDoc(doc(db("editor"), "users", "user_editor", "sharedChecklists", "checklist2")));
+  });
+  await runCase("SCD-D-2", async () => {
+    await expectDeny(deleteDoc(doc(db("nonMember"), "users", "user_editor", "sharedChecklists", "checklist2")));
   });
 
   // ─────────────────────────────────────────────────────────────
