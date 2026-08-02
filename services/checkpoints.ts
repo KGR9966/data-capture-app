@@ -25,8 +25,9 @@ export interface Checkpoint {
   updatedAt?: any;
 }
 
-const checkpointsCollection = (itemId: string) =>
-  collection(db, "items", itemId, "checkpoints");
+export function checkpointsCollection(projectId: string, itemId: string) {
+  return collection(db, "projects", projectId, "items", itemId, "checkpoints");
+}
 
 function parseContentLines(content: string): string[] {
   if (!content || !content.trim()) return [];
@@ -78,9 +79,10 @@ export function deriveCheckpointsFromItem(
 }
 
 export async function getCheckpointsForItem(
+  projectId: string,
   itemId: string
 ): Promise<Checkpoint[]> {
-  const snap = await getDocs(checkpointsCollection(itemId));
+  const snap = await getDocs(checkpointsCollection(projectId, itemId));
   return snap.docs.map((d) => ({
     id: d.id,
     ...(d.data() as Omit<Checkpoint, "id">),
@@ -88,10 +90,11 @@ export async function getCheckpointsForItem(
 }
 
 export async function getOrCreateCheckpointsForItem(
+  projectId: string,
   item: CaptureItem,
   sourceFields: SourceField[]
 ): Promise<Checkpoint[]> {
-  const existing = await getCheckpointsForItem(item.id);
+  const existing = await getCheckpointsForItem(projectId, item.id);
 
   // Sikr at eksisterende checkpoints dækker alle ønskede sourceFields.
   // Hvis ikke, tilføj de manglende (fx hvis et item tidligere kun fik title).
@@ -110,18 +113,19 @@ export async function getOrCreateCheckpointsForItem(
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-    const docRef = await addDoc(checkpointsCollection(item.id), payload);
+    const docRef = await addDoc(checkpointsCollection(projectId, item.id), payload);
     created.push({ id: docRef.id, ...payload });
   }
   return created;
 }
 
 export async function updateCheckpoint(
+  projectId: string,
   itemId: string,
   checkpointId: string,
-  updates: Partial<Omit<Checkpoint, "id" | "itemId" | "projectId" | "createdAt">>
+  updates: Partial<Omit<Checkpoint, "id" | "itemId" | "projectId" | "createdAt" | "updatedAt">>
 ): Promise<void> {
-  const ref = doc(db, "items", itemId, "checkpoints", checkpointId);
+  const ref = doc(db, "projects", projectId, "items", itemId, "checkpoints", checkpointId);
   await updateDoc(ref, {
     ...updates,
     updatedAt: serverTimestamp(),
@@ -129,14 +133,17 @@ export async function updateCheckpoint(
 }
 
 export async function createCheckpoint(
+  projectId: string,
   itemId: string,
-  point: Omit<Checkpoint, "id" | "createdAt" | "updatedAt">
+  point: Omit<Checkpoint, "id" | "itemId" | "projectId" | "createdAt" | "updatedAt">
 ): Promise<Checkpoint> {
   const payload = {
     ...point,
+    itemId,
+    projectId,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
-  const docRef = await addDoc(checkpointsCollection(itemId), payload);
+  const docRef = await addDoc(checkpointsCollection(projectId, itemId), payload);
   return { id: docRef.id, ...payload };
 }

@@ -1,5 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
+import { Alert } from "react-native";
 import { useEffect, useRef } from "react";
 
 Notifications.setNotificationHandler({
@@ -58,12 +59,17 @@ function handleResponse(
 
   const targetType = data.targetType as string | undefined;
   const targetId = data.targetId as string | undefined;
+  const targetProjectId = data.targetProjectId as string | undefined;
   const targetSubId = data.targetSubId as string | undefined;
 
   if (!targetType || !targetId) return;
 
   if (targetType === "item") {
-    router.push(`/item?itemId=${targetId}` as any);
+    if (!targetProjectId) {
+      Alert.alert("Påmindelsen peger på en sag uden projekt-id.");
+      return;
+    }
+    router.push(`/item?itemId=${targetId}&projectId=${targetProjectId}` as any);
   } else if (targetType === "checklistItem") {
     router.push(`/checklist?id=${targetId}` as any);
   } else if (targetType === "checklist" && targetSubId) {

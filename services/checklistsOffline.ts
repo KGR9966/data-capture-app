@@ -197,7 +197,26 @@ export async function flushPendingOps(userId: string): Promise<void> {
   }
 }
 
+function isStalePendingOp(op: PendingOp): boolean {
+  if (op.type !== "toggleChecklistItem") return false;
+  const item = op.payload.item as ChecklistItem | undefined;
+  if (!item?.sourceItemPath) return false;
+  // Pre-migration source items lived at top-level /items/{itemId} or
+  // /items/{itemId}/checkpoints/{checkpointId}. After the US-004 migration
+  // they are under projects/{projectId}/items/{itemId}. Discard old paths
+  // so the app does not try to write to a non-existent location.
+  return /^\/?items\//.test(item.sourceItemPath);
+}
+
 async function executePendingOp(op: PendingOp): Promise<void> {
+  if (isStalePendingOp(op)) {
+    console.warn(
+      "[checklistsOffline] discarding stale pending op referencing old top-level item path:",
+      op
+    );
+    return;
+  }
+
   switch (op.type) {
     case "updateChecklist": {
       const { checklistId, updates } = op.payload as {
@@ -205,6 +224,8 @@ async function executePendingOp(op: PendingOp): Promise<void> {
         updates: Partial<Omit<Checklist, "id" | "createdAt">>;
       };
       const { updateChecklist } = await import("./checklists");
+      // The service function resolves whether the checklist is project-scoped
+      // (projects/{projectId}/checklists) or personal (/checklists) by id.
       await updateChecklist(checklistId, updates);
       break;
     }
@@ -241,6 +262,10 @@ async function executePendingOp(op: PendingOp): Promise<void> {
         item: ChecklistItem;
         userId: string;
       };
+      // `toggleChecklistPoint` -> `setChecklistPointCompleted` resolves the
+      // source item/checkpoint paths from `item.sourceProjectId` (falling back
+      // to `checklist.projectId`). The checklist scope is read from the
+      // payload checklist object (project-scoped vs personal).
       await toggleChecklistPoint(checklist, item, userId);
       break;
     }

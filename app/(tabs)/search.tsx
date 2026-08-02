@@ -427,7 +427,7 @@ export default function SearchScreen() {
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.itemCard}
-            onPress={() => router.push(`/item?itemId=${item.id}`)}
+            onPress={() => router.push(`/item?itemId=${item.id}&projectId=${item.projectId}`)}
           >
             <View style={styles.itemHeader}>
               <Text style={styles.typeText}>{ITEM_TYPE_LABELS[item.type] || item.type}</Text>

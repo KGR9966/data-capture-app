@@ -25,6 +25,7 @@ export interface Reminder {
   userId: string;
   targetType: ReminderTargetType;
   targetId: string;
+  targetProjectId?: string;
   targetSubId?: string;
   title: string;
   note?: string;
@@ -39,6 +40,7 @@ export interface ReminderInput {
   userId: string;
   targetType: ReminderTargetType;
   targetId: string;
+  targetProjectId?: string;
   targetSubId?: string;
   title: string;
   note?: string;
@@ -65,6 +67,18 @@ function buildNotificationBody(reminder: Reminder | ReminderInput): string {
   return reminder.targetType === "item"
     ? "Påmindelse om sagen."
     : "Påmindelse om listepunktet.";
+}
+
+function buildNotificationData(
+  reminder: Reminder | ReminderInput
+): Record<string, unknown> {
+  return {
+    reminderId: (reminder as Reminder).id,
+    targetType: reminder.targetType,
+    targetId: reminder.targetId,
+    targetProjectId: reminder.targetProjectId,
+    targetSubId: reminder.targetSubId,
+  };
 }
 
 export function subscribeToReminders(
@@ -156,12 +170,7 @@ export async function createReminder(input: ReminderInput): Promise<Reminder> {
       reminder.title,
       buildNotificationBody(reminder),
       reminder.scheduledAt,
-      {
-        reminderId: reminder.id,
-        targetType: reminder.targetType,
-        targetId: reminder.targetId,
-        targetSubId: reminder.targetSubId,
-      }
+      buildNotificationData(reminder)
     );
   } catch (error) {
     console.error("[createReminder] failed to schedule local notification:", error);
@@ -202,6 +211,7 @@ export async function updateReminder(
           reminderId,
           targetType: current.targetType,
           targetId: current.targetId,
+          targetProjectId: current.targetProjectId,
           targetSubId: current.targetSubId,
         }
       );

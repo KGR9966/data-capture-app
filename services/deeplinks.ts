@@ -10,8 +10,8 @@ export function buildBoardUrl(
   return `${APP_SCHEME}://tabs/board${queryString ? `?${queryString}` : ""}`;
 }
 
-export function buildItemUrl(itemId: string): string {
-  return `${APP_SCHEME}://item?itemId=${encodeURIComponent(itemId)}`;
+export function buildItemUrl(itemId: string, projectId: string): string {
+  return `${APP_SCHEME}://item?itemId=${encodeURIComponent(itemId)}&projectId=${encodeURIComponent(projectId)}`;
 }
 
 export function buildChecklistUrl(checklistId: string): string {

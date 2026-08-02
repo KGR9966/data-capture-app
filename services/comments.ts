@@ -26,8 +26,8 @@ export interface Comment {
 
 const MAX_COMMENT_LENGTH = 2000;
 
-function commentsCollection(itemId: string) {
-  return collection(db, "items", itemId, "comments");
+export function commentsCollection(projectId: string, itemId: string) {
+  return collection(db, "projects", projectId, "items", itemId, "comments");
 }
 
 function stripUndefined(obj: Record<string, unknown>): Record<string, unknown> {
@@ -81,7 +81,7 @@ export async function createComment(
   });
 
   try {
-    const docRef = await addDoc(commentsCollection(itemId), payload);
+    const docRef = await addDoc(commentsCollection(projectId, itemId), payload);
     return { id: docRef.id, ...payload } as Comment;
   } catch (error) {
     const code = (error as { code?: string })?.code || "unknown";
@@ -119,7 +119,7 @@ export function subscribeToComments(
   itemId: string,
   callback: (comments: Comment[]) => void
 ) {
-  const q = query(commentsCollection(itemId));
+  const q = query(commentsCollection(projectId, itemId));
   return onSnapshot(
     q,
     (snapshot) => {
@@ -143,12 +143,14 @@ export async function deleteComment(
   itemId: string,
   commentId: string
 ): Promise<void> {
-  await deleteDoc(doc(db, "items", itemId, "comments", commentId));
+  await deleteDoc(doc(db, "projects", projectId, "items", itemId, "comments", commentId));
 }
 
-export async function deleteAllCommentsForItem(itemId: string): Promise<number> {
-  const snapshot = await getDocs(commentsCollection(itemId));
-  if (snapshot.empty) return 0;
+export async function deleteAllCommentsForItem(
+  projectId: string,
+  itemId: string
+): Promise<void> {
+  const snapshot = await getDocs(commentsCollection(projectId, itemId));
+  if (snapshot.empty) return;
   await Promise.all(snapshot.docs.map((d) => deleteDoc(d.ref)));
-  return snapshot.docs.length;
 }

@@ -14,6 +14,7 @@ import {
   where,
   writeBatch,
 } from "@react-native-firebase/firestore";
+import { getFunctions, httpsCallable } from "@react-native-firebase/functions";
 import { deleteObject, listAll, ref } from "@react-native-firebase/storage";
 
 import { db, storage } from "./firebase";
@@ -258,64 +259,49 @@ export async function updateProject(
   });
 }
 
-export async function deleteProject(projectId: string) {
-  await deleteDoc(doc(db, "projects", projectId));
-}
-
-const MAX_BATCH_OPERATIONS = 400;
-
-async function commitChunkedDeletes(
-  refs: { path: string; ref: ReturnType<typeof doc> }[]
-): Promise<void> {
-  for (let i = 0; i < refs.length; i += MAX_BATCH_OPERATIONS) {
-    const chunk = refs.slice(i, i + MAX_BATCH_OPERATIONS);
-    const batch = writeBatch(db);
-    chunk.forEach(({ ref }) => batch.delete(ref as any));
-    await batch.commit();
-  }
-}
-
-async function deleteStoragePrefix(prefix: string): Promise<number> {
-  let deleted = 0;
-  try {
-    const folderRef = ref(storage, prefix);
-    const list = await listAll(folderRef);
-
-    const fileDeletions = list.items.map(async (item) => {
-      try {
-        await deleteObject(item);
-        return 1;
-      } catch (error) {
-        console.warn(`[deleteStoragePrefix] Kunne ikke slette ${item.fullPath}:`, error);
-        return 0;
-      }
-    });
-
-    const prefixDeletions = list.prefixes.map(async (subPrefix) => {
-      const subDeleted = await deleteStoragePrefix(subPrefix.fullPath);
-      return subDeleted;
-    });
-
-    const results = await Promise.all([...fileDeletions, ...prefixDeletions]);
-    deleted = results.reduce((sum, n) => sum + n, 0);
-  } catch (error) {
-    console.warn(`[deleteStoragePrefix] Kunne ikke liste ${prefix}:`, error);
-  }
-  return deleted;
+export async function deleteProject(projectId: string): Promise<void> {
+  const fn = httpsCallable<{ projectId: string }, { success: boolean }>(
+    getFunctions(),
+    "deleteProject"
+  );
+  await fn({ projectId });
 }
 
 export interface ProjectDeletionStats {
-  itemCount: number;
-  checklistCount: number;
-  photoCount: number;
+  items: number;
+  checkpoints: number;
+  comments: number;
+  checklists: number;
+  photos: number;
 }
 
 export async function getProjectDeletionStats(
   projectId: string
 ): Promise<ProjectDeletionStats> {
-  const [items, checklists, photoCount] = await Promise.all([
-    getItemsForProject(projectId),
-    getDocs(query(collection(db, "checklists"), where("projectId", "==", projectId))),
+  const items = await getItemsForProject(projectId);
+
+  const [checkpoints, comments, checklists, photos] = await Promise.all([
+    (async () => {
+      let count = 0;
+      for (const item of items) {
+        const snap = await getDocs(
+          collection(db, "projects", projectId, "items", item.id, "checkpoints")
+        );
+        count += snap.size;
+      }
+      return count;
+    })(),
+    (async () => {
+      let count = 0;
+      for (const item of items) {
+        const snap = await getDocs(
+          collection(db, "projects", projectId, "items", item.id, "comments")
+        );
+        count += snap.size;
+      }
+      return count;
+    })(),
+    getDocs(query(collection(db, "projects", projectId, "checklists"))),
     (async () => {
       try {
         const folderRef = ref(storage, `projects/${projectId}/items`);
@@ -328,56 +314,12 @@ export async function getProjectDeletionStats(
   ]);
 
   return {
-    itemCount: items.length,
-    checklistCount: checklists.size,
-    photoCount,
+    items: items.length,
+    checkpoints,
+    comments,
+    checklists: checklists.size,
+    photos,
   };
-}
-
-export async function deleteProjectCascade(projectId: string): Promise<void> {
-  const projectSnap = await getProjectById(projectId);
-  if (!projectSnap) {
-    throw new Error("Projektet findes ikke.");
-  }
-
-  // Slet sager + checkpoints + kommentarer.
-  const items = await getItemsForProject(projectId);
-  for (const item of items) {
-    const [checkpointsSnap, commentsSnap] = await Promise.all([
-      getDocs(collection(db, "items", item.id, "checkpoints")),
-      getDocs(collection(db, "items", item.id, "comments")),
-    ]);
-
-    const childRefs = [
-      ...checkpointsSnap.docs.map((d) => ({ path: d.ref.path, ref: d.ref })),
-      ...commentsSnap.docs.map((d) => ({ path: d.ref.path, ref: d.ref })),
-      { path: `items/${item.id}`, ref: doc(db, "items", item.id) },
-    ];
-
-    await commitChunkedDeletes(childRefs);
-  }
-
-  // Slet checklister + listepunkter.
-  const checklistsSnap = await getDocs(
-    query(collection(db, "checklists"), where("projectId", "==", projectId))
-  );
-  for (const checklist of checklistsSnap.docs) {
-    const pointsSnap = await getDocs(collection(db, "checklists", checklist.id, "items"));
-    const pointRefs = pointsSnap.docs.map((d) => ({ path: d.ref.path, ref: d.ref }));
-    await commitChunkedDeletes(pointRefs);
-    await deleteDoc(doc(db, "checklists", checklist.id));
-  }
-
-  // Slet projekt-medlemmer.
-  const membersSnap = await getDocs(membersSubcollection(projectId));
-  const memberRefs = membersSnap.docs.map((d) => ({ path: d.ref.path, ref: d.ref }));
-  await commitChunkedDeletes(memberRefs);
-
-  // Slet selve projektet.
-  await deleteDoc(doc(db, "projects", projectId));
-
-  // Slet fotos i Storage.
-  await deleteStoragePrefix(`projects/${projectId}/items`);
 }
 
 export async function addProjectMemberByEmail(

@@ -45,31 +45,35 @@ export interface CaptureItem {
   updatedAt?: any;
 }
 
-const itemsCollection = collection(db, "items");
+export function itemsCollection(projectId: string) {
+  return collection(db, "projects", projectId, "items");
+}
 
 function stripUndefined(obj: Record<string, any>): Record<string, any> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
 }
 
 export async function createItem(
-  item: Omit<CaptureItem, "id" | "createdAt" | "updatedAt">
+  projectId: string,
+  item: Omit<CaptureItem, "id" | "projectId" | "createdAt" | "updatedAt">
 ): Promise<CaptureItem> {
   const payload = stripUndefined({
     ...item,
+    projectId,
     status: item.status || "new",
     mediaUrl: item.mediaUrl ?? null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-  const docRef = await addDoc(itemsCollection, payload);
-  return { id: docRef.id, ...item };
+  const docRef = await addDoc(itemsCollection(projectId), payload);
+  return { id: docRef.id, projectId, ...item };
 }
 
 export function subscribeToItems(
   projectId: string,
   callback: (items: CaptureItem[]) => void
 ) {
-  const q = query(itemsCollection, where("projectId", "==", projectId));
+  const q = query(itemsCollection(projectId));
 
   return onSnapshot(
     q,
@@ -99,7 +103,7 @@ export function subscribeToItems(
 }
 
 export async function getItemsForProject(projectId: string): Promise<CaptureItem[]> {
-  const q = query(itemsCollection, where("projectId", "==", projectId));
+  const q = query(itemsCollection(projectId));
   const snapshot = await getDocs(q);
   return snapshot.docs
     .map((d) => ({
@@ -124,23 +128,27 @@ function prepareUpdateFields(updates: Record<string, unknown>): Record<string, u
 }
 
 export async function updateItem(
+  projectId: string,
   itemId: string,
-  updates: Partial<Omit<CaptureItem, "id" | "createdAt" | "updatedAt">>
+  updates: Partial<Omit<CaptureItem, "id" | "projectId" | "createdAt" | "updatedAt">>
 ) {
-  const itemRef = doc(db, "items", itemId);
+  const itemRef = doc(db, "projects", projectId, "items", itemId);
   await updateDoc(itemRef, {
     ...prepareUpdateFields(updates as Record<string, unknown>),
     updatedAt: serverTimestamp(),
   });
 }
 
-export async function deleteItem(itemId: string) {
-  await deleteAllCommentsForItem(itemId);
-  await deleteDoc(doc(db, "items", itemId));
+export async function deleteItem(projectId: string, itemId: string) {
+  await deleteAllCommentsForItem(projectId, itemId);
+  await deleteDoc(doc(db, "projects", projectId, "items", itemId));
 }
 
-export async function getItemById(itemId: string): Promise<CaptureItem | null> {
-  const snap = await getDoc(doc(db, "items", itemId));
+export async function getItemById(
+  projectId: string,
+  itemId: string
+): Promise<CaptureItem | null> {
+  const snap = await getDoc(doc(db, "projects", projectId, "items", itemId));
   if (!snap.exists) return null;
   const data = snap.data() as Omit<CaptureItem, "id" | "type"> & { type?: string };
   return { id: snap.id, ...data, type: normalizeItemType(data.type) };
@@ -151,8 +159,7 @@ export async function getItemsByAssignee(
   assigneeId: string
 ): Promise<CaptureItem[]> {
   const q = query(
-    itemsCollection,
-    where("projectId", "==", projectId),
+    itemsCollection(projectId),
     where("assignedTo", "==", assigneeId)
   );
   const snapshot = await getDocs(q);
@@ -166,19 +173,18 @@ export async function getItemsByAssignee(
 export async function unassignItemsFromMember(
   projectId: string,
   assigneeId: string
-): Promise<number> {
+): Promise<void> {
   const items = await getItemsByAssignee(projectId, assigneeId);
-  if (items.length === 0) return 0;
+  if (items.length === 0) return;
   await Promise.all(
     items.map((item) =>
-      updateDoc(doc(db, "items", item.id), {
+      updateDoc(doc(db, "projects", projectId, "items", item.id), {
         assignedTo: deleteField(),
         assignedToName: deleteField(),
         updatedAt: serverTimestamp(),
       })
     )
   );
-  return items.length;
 }
 
 /** Tjekker om der allerede findes en sag med samme titel i projektet.
@@ -190,8 +196,7 @@ export async function isTitleDuplicate(
 ): Promise<boolean> {
   if (!title.trim()) return false;
   const q = query(
-    itemsCollection,
-    where("projectId", "==", projectId),
+    itemsCollection(projectId),
     where("title", "==", title.trim())
   );
   const snapshot = await getDocs(q);

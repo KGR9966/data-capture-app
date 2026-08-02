@@ -4,8 +4,8 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   RefreshControl,
+  SectionList,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -13,10 +13,12 @@ import {
 } from "react-native";
 
 import { useAuth } from "../../contexts/AuthContext";
+import { useProject } from "../../contexts/ProjectContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
   Checklist,
   subscribeToChecklists,
+  subscribeToProjectChecklists,
 } from "../../services/checklists";
 import {
   deleteChecklistAndClearCache,
@@ -39,13 +41,21 @@ function formatDate(ts: any) {
 
 export default function ChecklistsScreen() {
   const { user } = useAuth();
+  const { activeProject } = useProject();
   const { theme } = useTheme();
   const router = useRouter();
-  const [checklists, setChecklists] = useState<Checklist[]>([]);
+  const [projectChecklistsById, setProjectChecklistsById] = useState<
+    Record<string, Checklist[]>
+  >({});
+  const [personalChecklists, setPersonalChecklists] = useState<Checklist[]>([]);
   const [loading, setLoading] = useState(true);
   const [online, setOnline] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+
+  const projectChecklists = activeProject?.id
+    ? projectChecklistsById[activeProject.id] || []
+    : [];
 
   const isDark = theme === "dark";
   const styles = themedStyles(isDark);
@@ -69,29 +79,42 @@ export default function ChecklistsScreen() {
 
   useEffect(() => {
     if (!user?.uid) return;
-    let unsubscribe: (() => void) | undefined;
+    const unsubscribes: (() => void)[] = [];
+    let mounted = true;
 
     const bootstrap = async () => {
       const cached = await loadCachedChecklists(user.uid);
-      if (cached.length > 0) {
-        setChecklists(cached);
+      if (cached.length > 0 && mounted) {
+        setPersonalChecklists(cached);
         setLoading(false);
       }
 
-      unsubscribe = subscribeToChecklists(user.uid, (data) => {
-        setChecklists(data);
-        saveCachedChecklists(user.uid, data);
-        setLoading(false);
-      });
+      unsubscribes.push(
+        subscribeToChecklists(user.uid, (data) => {
+          if (!mounted) return;
+          setPersonalChecklists(data);
+          saveCachedChecklists(user.uid, data);
+          setLoading(false);
+        })
+      );
 
       await refreshPendingCount();
     };
 
     bootstrap();
     return () => {
-      if (unsubscribe) unsubscribe();
+      mounted = false;
+      unsubscribes.forEach((unsubscribe) => unsubscribe());
     };
   }, [user, refreshPendingCount]);
+
+  useEffect(() => {
+    if (!activeProject?.id) return;
+    const unsubscribe = subscribeToProjectChecklists(activeProject.id, (data) => {
+      setProjectChecklistsById((prev) => ({ ...prev, [activeProject.id]: data }));
+    });
+    return () => unsubscribe();
+  }, [activeProject?.id]);
 
   const handleRefresh = async () => {
     if (!user?.uid) return;
@@ -152,7 +175,7 @@ export default function ChecklistsScreen() {
           color={isDark ? "#38bdf8" : "#0284c7"}
           style={{ marginTop: 40 }}
         />
-      ) : checklists.length === 0 ? (
+      ) : projectChecklists.length === 0 && personalChecklists.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>Ingen aktionslister endnu</Text>
           <Text style={styles.emptySubtitle}>
@@ -160,13 +183,19 @@ export default function ChecklistsScreen() {
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={checklists}
+        <SectionList
+          sections={[
+            { title: activeProject?.name ? `Projekt: ${activeProject.name}` : "Projekt", data: projectChecklists },
+            { title: "Personlige / delte", data: personalChecklists },
+          ].filter((section) => section.data.length > 0)}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
+          renderSectionHeader={({ section }) => (
+            <Text style={styles.sectionHeader}>{section.title}</Text>
+          )}
           renderItem={({ item }) => (
             <TouchableOpacity
               style={[
@@ -192,6 +221,14 @@ export default function ChecklistsScreen() {
               </Text>
             </TouchableOpacity>
           )}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>Ingen aktionslister endnu</Text>
+              <Text style={styles.emptySubtitle}>
+                Gå til Søg-fanen, søg efter noget, og tryk “Opret aktionsliste”.
+              </Text>
+            </View>
+          }
         />
       )}
     </View>
@@ -245,6 +282,13 @@ const themedStyles = (isDark: boolean) =>
       fontSize: 14,
       color: isDark ? "#94a3b8" : "#64748b",
       marginTop: 2,
+    },
+    sectionHeader: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: isDark ? "#94a3b8" : "#64748b",
+      marginTop: 8,
+      marginBottom: 8,
     },
     list: {
       paddingBottom: 24,

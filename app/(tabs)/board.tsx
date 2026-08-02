@@ -170,24 +170,25 @@ export default function BoardScreen() {
     try {
       const finalCategory =
         category || suggestCategory({ title: finalTitle, content: finalContent, type: itemType });
-      await createItem({
-        projectId: activeProject.id,
-        createdBy: user.uid,
-        createdByName: user.displayName || user.name || undefined,
-        createdByEmail: user.email || user.storedEmail || undefined,
-        type: itemType,
-        title: finalTitle,
-        content: finalContent,
-        category: finalCategory,
-        status: "new",
-        mediaUrl: mediaUrl || undefined,
-        assignedTo: assignedTo || undefined,
-        assignedToName: assignedToName || undefined,
-      });
+      await createItem(
+        activeProject.id,
+        {
+          createdBy: user.uid,
+          createdByName: user.displayName || user.name || undefined,
+          createdByEmail: user.email || user.storedEmail || undefined,
+          type: itemType,
+          title: finalTitle,
+          content: finalContent,
+          category: finalCategory,
+          status: "new",
+          mediaUrl: mediaUrl || undefined,
+          assignedTo: assignedTo || undefined,
+          assignedToName: assignedToName || undefined,
+        }
+      );
       setModalVisible(false);
       resetManualForm();
     } catch (error) {
-       
       console.log("Create item error", error);
       Alert.alert("Fejl", "Kunne ikke oprette notatet.");
     } finally {
@@ -260,22 +261,23 @@ export default function BoardScreen() {
       return;
     }
     try {
-      await createItem({
-        projectId: activeProject.id,
-        createdBy: user.uid,
-        createdByName: user.displayName || user.name || undefined,
-        createdByEmail: user.email || user.storedEmail || undefined,
-        type: voiceItem.type,
-        title: voiceItem.title,
-        content: voiceItem.content,
-        category: voiceItem.category,
-        status: "new",
-        mediaUrl: voiceItem.mediaUrl,
-        assignedTo: voiceItem.assignedTo,
-        assignedToName: voiceItem.assignedToName,
-      });
+      await createItem(
+        activeProject.id,
+        {
+          createdBy: user.uid,
+          createdByName: user.displayName || user.name || undefined,
+          createdByEmail: user.email || user.storedEmail || undefined,
+          type: voiceItem.type,
+          title: voiceItem.title,
+          content: voiceItem.content,
+          category: voiceItem.category,
+          status: "new",
+          mediaUrl: voiceItem.mediaUrl,
+          assignedTo: voiceItem.assignedTo,
+          assignedToName: voiceItem.assignedToName,
+        }
+      );
     } catch (error) {
-       
       console.log("Voice save error", error);
       Alert.alert("Fejl", "Kunne ikke gemme optagelsen.");
     }
@@ -410,7 +412,7 @@ export default function BoardScreen() {
           renderItem={({ item }) => (
             <TouchableOpacity
               style={[styles.itemCard, item.status === "archived" && styles.archivedCard]}
-              onPress={() => router.push(`/item?itemId=${item.id}`)}
+              onPress={() => router.push(`/item?itemId=${item.id}&projectId=${activeProject.id}`)}
             >
               <View style={styles.itemHeader}>
                 <View

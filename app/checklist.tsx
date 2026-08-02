@@ -141,11 +141,15 @@ export default function ChecklistDetailScreen() {
         const data = await getChecklistById(checklistId);
         setChecklist(data);
         if (data) {
-          unsubscribeItems = subscribeToChecklistItems(checklistId, (listItems) => {
-            saveCachedItems(checklistId, listItems);
-            const merged = applyPendingOps(listItems, pendingOpsRef.current);
-            setItems(merged);
-          });
+          unsubscribeItems = subscribeToChecklistItems(
+            checklistId,
+            (listItems) => {
+              saveCachedItems(checklistId, listItems);
+              const merged = applyPendingOps(listItems, pendingOpsRef.current);
+              setItems(merged);
+            },
+            data.projectId
+          );
         }
       } catch {
       } finally {
@@ -483,7 +487,12 @@ export default function ChecklistDetailScreen() {
                       <Text style={styles.pendingLabel}>Afventer synkronisering</Text>
                     ) : null}
                     <TouchableOpacity
-                      onPress={() => router.push(`/item?itemId=${item.sourceItemId}` as any)}
+                      onPress={() =>
+                        router.push(
+                          `/item?itemId=${item.sourceItemId}&projectId=${item.sourceProjectId}` as any
+                        )
+                      }
+                      disabled={!item.sourceProjectId}
                     >
                       <Text style={styles.sourceLink}>Åbn sag →</Text>
                     </TouchableOpacity>

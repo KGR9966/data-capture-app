@@ -76,8 +76,18 @@ const ITEM_TYPE_COLORS: Record<ItemType, string> = {
 };
 
 export default function ItemDetailScreen() {
-  const { itemId } = useLocalSearchParams();
+  const { itemId, projectId } = useLocalSearchParams();
   const router = useRouter();
+  const effectiveProjectId =
+    typeof projectId === "string" && projectId ? projectId : undefined;
+
+  useEffect(() => {
+    if (!effectiveProjectId) {
+      Alert.alert("Påmindelsen peger på en sag uden projekt-id.");
+      router.back();
+    }
+  }, [effectiveProjectId, router]);
+
   const { theme } = useTheme();
   const { user } = useAuth();
   const [item, setItem] = useState<CaptureItem | null>(null);
@@ -149,10 +159,11 @@ export default function ItemDetailScreen() {
     if (!itemId || typeof itemId !== "string") {
       return;
     }
+    if (!effectiveProjectId) return;
     let unsubscribeMembers: (() => void) | undefined;
     let unsubscribeComments: (() => void) | undefined;
     let unsubscribeReminders: (() => void) | undefined;
-    getItemById(itemId)
+    getItemById(effectiveProjectId, itemId)
       .then(async (data) => {
         setItem(data);
         if (data) {
@@ -176,15 +187,15 @@ export default function ItemDetailScreen() {
               console.log("Load reminders error", err);
             }
           }
-          if (data.projectId) {
+          if (effectiveProjectId) {
             try {
-              const projectData = await getProjectById(data.projectId);
+              const projectData = await getProjectById(effectiveProjectId);
               setProject(projectData);
             } catch (err) {
               console.log("Load project error", err);
             }
-            unsubscribeMembers = subscribeToProjectMembers(data.projectId, (m) => setMembers(m));
-            unsubscribeComments = subscribeToComments(data.projectId, itemId, (c) => setComments(c));
+            unsubscribeMembers = subscribeToProjectMembers(effectiveProjectId, (m) => setMembers(m));
+            unsubscribeComments = subscribeToComments(effectiveProjectId, itemId, (c) => setComments(c));
           }
         }
       })
@@ -195,7 +206,7 @@ export default function ItemDetailScreen() {
       if (unsubscribeComments) unsubscribeComments();
       if (unsubscribeReminders) unsubscribeReminders();
     };
-  }, [itemId, user?.uid]);
+  }, [itemId, effectiveProjectId, user?.uid]);
 
   const handleDelete = () => {
     if (!item || !user?.uid || !canDeleteItem(projectRole, item, user.uid)) {
@@ -209,8 +220,9 @@ export default function ItemDetailScreen() {
         style: "destructive",
         onPress: async () => {
           if (!itemId || typeof itemId !== "string") return;
+          if (!effectiveProjectId) return;
           try {
-            await deleteItem(itemId);
+            await deleteItem(effectiveProjectId, itemId);
             router.back();
           } catch (error) {
             console.log("Delete item error", error);
@@ -223,6 +235,7 @@ export default function ItemDetailScreen() {
 
   const handleSave = async () => {
     if (!itemId || typeof itemId !== "string" || !item || !user?.uid) return;
+    if (!effectiveProjectId) return;
     if (!canEditItem(projectRole, item, user.uid)) {
       Alert.alert("Begrænset adgang", "Du har ikke rettighed til at redigere dette indlæg.");
       return;
@@ -242,7 +255,7 @@ export default function ItemDetailScreen() {
         assignedTo: editAssignedTo || undefined,
         assignedToName: editAssignedTo ? editAssignedToName : undefined,
       };
-      await updateItem(itemId, updates);
+      await updateItem(effectiveProjectId, itemId, updates);
       setItem({ ...item, ...updates });
       setEditing(false);
     } catch (error) {
@@ -300,7 +313,7 @@ export default function ItemDetailScreen() {
   }, [comments.length, contentHeight, scrollViewHeight, scrollY]);
 
   const handleSubmitComment = async () => {
-    if (!item || !item.projectId || !user?.uid) return;
+    if (!item || !effectiveProjectId || !user?.uid) return;
     const trimmed = commentText.trim();
     if (!trimmed) return;
     if (trimmed.length > 2000) {
@@ -331,7 +344,7 @@ export default function ItemDetailScreen() {
     setSubmittingComment(true);
     lastSendTimeRef.current = now;
     try {
-      await createComment(item.projectId, itemId, trimmed);
+      await createComment(effectiveProjectId, itemId, trimmed);
       recentCommentTimestampsRef.current[itemId] = [...recent, now];
       setCommentText("");
       scrollToBottomIfNearEnd(true);
@@ -345,7 +358,7 @@ export default function ItemDetailScreen() {
   };
 
   const handleDeleteComment = (comment: Comment) => {
-    if (!item || !item.projectId || !canDeleteCurrentComment(comment)) return;
+    if (!item || !effectiveProjectId || !canDeleteCurrentComment(comment)) return;
     Alert.alert("Slet kommentar", "Er du sikker?", [
       { text: "Annuller", style: "cancel" },
       {
@@ -353,7 +366,7 @@ export default function ItemDetailScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            await deleteComment(item.projectId, item.id, comment.id);
+            await deleteComment(effectiveProjectId, item.id, comment.id);
           } catch (error) {
             console.log("Delete comment error", error);
             Alert.alert("Fejl", "Kunne ikke slette kommentaren.");
@@ -376,7 +389,7 @@ export default function ItemDetailScreen() {
     repeat: Reminder["repeat"];
     note?: string;
   }) => {
-    if (!user?.uid || !item) return;
+    if (!user?.uid || !item || !effectiveProjectId) return;
     setReminderSaving(true);
     try {
       if (existingItemReminder) {
@@ -386,6 +399,7 @@ export default function ItemDetailScreen() {
           userId: user.uid,
           targetType: "item",
           targetId: item.id,
+          targetProjectId: effectiveProjectId,
           title: item.title || "Sag",
           ...payload,
         });
@@ -558,7 +572,8 @@ export default function ItemDetailScreen() {
                   style: "destructive",
                   onPress: async () => {
                     try {
-                      await updateItem(item.id, { mediaUrl: "" });
+                      if (!effectiveProjectId) return;
+                      await updateItem(effectiveProjectId, item.id, { mediaUrl: "" });
                       setItem({ ...item, mediaUrl: undefined });
                     } catch (error) {
                       console.log("Remove image error", error);

@@ -25,7 +25,7 @@ import {
 import {
   addProjectMemberByEmail,
   createProject,
-  deleteProjectCascade,
+  deleteProject,
   getProjectDeletionStats,
   isDuplicateProjectName,
   Project,
@@ -172,7 +172,7 @@ export default function ProjectsScreen() {
       setDeleteStats(stats);
     } catch (error) {
       console.warn("[ProjectsScreen] Kunne ikke indlæse sletningsstatistik:", error);
-      setDeleteStats({ itemCount: 0, checklistCount: 0, photoCount: 0 });
+      setDeleteStats({ items: 0, checkpoints: 0, comments: 0, checklists: 0, photos: 0 });
     }
   };
 
@@ -189,7 +189,7 @@ export default function ProjectsScreen() {
 
     setDeleting(true);
     try {
-      await deleteProjectCascade(projectToDelete.id);
+      await deleteProject(projectToDelete.id);
       if (activeProject?.id === projectToDelete.id) {
         setActiveProject(null);
       }
@@ -688,13 +688,13 @@ export default function ProjectsScreen() {
                     Dette sletter:
                   </Text>
                   <Text style={styles.deleteWarningBody}>
-                    • {deleteStats?.itemCount ?? "…"} sager og tilhørende noter
+                    • {deleteStats?.items ?? "…"} sager og tilhørende noter
                   </Text>
                   <Text style={styles.deleteWarningBody}>
-                    • {deleteStats?.checklistCount ?? "…"} aktionslister
+                    • {deleteStats?.checklists ?? "…"} aktionslister
                   </Text>
                   <Text style={styles.deleteWarningBody}>
-                    • {deleteStats?.photoCount ?? "…"} fotos
+                    • {deleteStats?.photos ?? "…"} fotos
                   </Text>
                   <Text style={styles.deleteWarningBody}>
                     Alle medlemmer mister adgang. Handlingen kan ikke fortrydes.
