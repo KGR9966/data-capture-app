@@ -32,9 +32,13 @@
 - [x] **G4 emulator-tests:** 107/107 passed.
 - [x] **G5 Cloud Function-tests:** All tests passed.
 - [x] **services/checklists.ts + UI opdateret** af Backend/UI Agent; typecheck + lint grønne.
-- [x] Commit `103be90` med alle ændringer.
-- [ ] **PO GO til data wipe + recreate** (gate åben).
-- [ ] G6 manuel E2E E1–E9 efter wipe.
+- [x] Commit `6be800a` med deploy-fixes, seed-script og opdateret wipe-script.
+- [x] **PO GO til data wipe + recreate** givet 2026-08-02.
+- [x] W1: Pre-wipe screenshots — sprunget over; PO bekræfter vi starter på ny.
+- [x] W2–W4: Wipe dev/test Firestore + Storage (9 projekter, 46 items, 5 checklists, 175 storage objects).
+- [x] Genskab testdata (`scripts/seed-us004-testdata.js`).
+- [x] Deploy `firestore.rules` + `deleteProject` Cloud Function.
+- [ ] G6 manuel E2E E1–E9.
 - [ ] G7 QA-rapport.
 - [ ] PO GO til Build 1 (iOS-only preview).
 
