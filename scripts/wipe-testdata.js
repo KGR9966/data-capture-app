@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Wipe testdata script for US-004 Solution B.
+ * Wipe testdata script for US-004 Solution B + A + A2.
  *
  * Requires Firebase Admin SDK credentials via GOOGLE_APPLICATION_CREDENTIALS
  * or default application credentials.
@@ -8,12 +8,13 @@
  * Deletes:
  * - All /projects/{projectId} docs + recursive subcollections
  * - All obsolete top-level /items/{itemId} docs + recursive subcollections
- * - All /checklists/{checklistId} docs that have projectId != null (project-scoped)
+ * - All obsolete top-level /checklists/{checklistId} docs + recursive subcollections
  * - Storage prefix projects/ (all project item photos)
  *
  * Leaves:
  * - /users/{userId} and /users/{userId}/reminders (handled gracefully by app fallback)
- * - Top-level /checklists/{checklistId} where projectId == null (personal/shared)
+ * - New user-scoped personal checklists at /users/{userId}/checklists are NOT touched
+ *   (this script targets the obsolete top-level collection only)
  *
  * Usage:
  *   export GOOGLE_APPLICATION_CREDENTIALS=/path/to/serviceAccountKey.json
@@ -31,6 +32,21 @@ function requireEnvOrCred() {
   return null;
 }
 
+async function deleteCollectionRecursive(db, path) {
+  const col = db.collection(path);
+  let batch = db.batch();
+  let count = 0;
+  let deleted = 0;
+
+  const snapshot = await col.get();
+  for (const doc of snapshot.docs) {
+    await db.recursiveDelete(doc.ref);
+    deleted++;
+    console.log(`[wipe] Deleted ${path}/${doc.id}`);
+  }
+  return deleted;
+}
+
 async function main() {
   if (getApps().length === 0) {
     const credPath = requireEnvOrCred();
@@ -43,40 +59,27 @@ async function main() {
 
   const db = getFirestore();
   const storage = getStorage();
-  const bucket = storage.bucket();
+  const bucketName = process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET;
+  if (!bucketName) {
+    console.error(
+      "[wipe] Error: EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET is not set. " +
+        "Load your .env or set it manually, e.g.:\n" +
+        "  $env:EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET='data-capture-506bd.firebasestorage.app'"
+    );
+    process.exit(1);
+  }
+  const bucket = storage.bucket(bucketName);
 
   console.log("[wipe] Starting testdata wipe...");
 
   // 1. Delete all /projects/{projectId} documents (recursiveDelete handles subcollections).
-  const projectsSnap = await db.collection("projects").get();
-  console.log(`[wipe] Found ${projectsSnap.size} projects to delete.`);
-  for (const doc of projectsSnap.docs) {
-    await db.recursiveDelete(doc.ref);
-    console.log(`[wipe] Deleted project ${doc.id}`);
-  }
+  const projectsDeleted = await deleteCollectionRecursive(db, "projects");
 
   // 2. Delete obsolete top-level /items/{itemId} documents.
-  const itemsSnap = await db.collection("items").get();
-  console.log(`[wipe] Found ${itemsSnap.size} top-level items to delete.`);
-  for (const doc of itemsSnap.docs) {
-    await db.recursiveDelete(doc.ref);
-    console.log(`[wipe] Deleted top-level item ${doc.id}`);
-  }
+  const itemsDeleted = await deleteCollectionRecursive(db, "items");
 
-  // 3. Delete project-scoped top-level checklists (projectId != null).
-  const checklistsSnap = await db.collection("checklists").get();
-  console.log(`[wipe] Found ${checklistsSnap.size} top-level checklists.`);
-  let deletedChecklists = 0;
-  for (const doc of checklistsSnap.docs) {
-    const data = doc.data();
-    if (data.projectId != null) {
-      await db.recursiveDelete(doc.ref);
-      deletedChecklists++;
-      console.log(`[wipe] Deleted project-scoped checklist ${doc.id}`);
-    } else {
-      console.log(`[wipe] Kept personal/shared checklist ${doc.id}`);
-    }
-  }
+  // 3. Delete obsolete top-level /checklists/{checklistId} documents (all of them).
+  const checklistsDeleted = await deleteCollectionRecursive(db, "checklists");
 
   // 4. Delete Storage prefix projects/.
   console.log("[wipe] Deleting Storage objects under projects/...");
@@ -88,7 +91,7 @@ async function main() {
 
   console.log("[wipe] Done.");
   console.log(
-    `Summary: ${projectsSnap.size} projects, ${itemsSnap.size} top-level items, ${deletedChecklists} project-scoped checklists, ${files.length} storage objects deleted.`
+    `Summary: ${projectsDeleted} projects, ${itemsDeleted} top-level items, ${checklistsDeleted} top-level checklists, ${files.length} storage objects deleted.`
   );
 }
 
