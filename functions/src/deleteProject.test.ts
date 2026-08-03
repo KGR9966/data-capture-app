@@ -12,7 +12,10 @@
  *   Storage:   localhost:9199
  */
 
-import * as admin from "firebase-admin";
+import { initializeApp, getApps } from "firebase-admin/app";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
+import { getStorage } from "firebase-admin/storage";
 
 interface TestContext {
   projectId: string;
@@ -30,14 +33,16 @@ const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-test";
 const FUNCTIONS_HOST = process.env.FUNCTIONS_EMULATOR_HOST || "localhost:5001";
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || "localhost:9099";
 
-admin.initializeApp({
-  projectId: PROJECT_ID,
-  storageBucket: `${PROJECT_ID}.appspot.com`,
-});
+if (getApps().length === 0) {
+  initializeApp({
+    projectId: PROJECT_ID,
+    storageBucket: `${PROJECT_ID}.appspot.com`,
+  });
+}
 
-const db = admin.firestore();
-const auth = admin.auth();
-const storage = admin.storage();
+const db = getFirestore();
+const auth = getAuth();
+const storage = getStorage();
 
 function assertEqual(actual: unknown, expected: unknown, message: string): void {
   if (actual !== expected) {
@@ -117,22 +122,22 @@ async function seedProject(): Promise<TestContext> {
       [adminUid]: "admin",
       [editorUid]: "editor",
     },
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   // members subcollection
-  batch.set(projectRef.collection("members").doc(ownerUid), { role: "owner", joinedAt: admin.firestore.FieldValue.serverTimestamp() });
-  batch.set(projectRef.collection("members").doc(adminUid), { role: "admin", joinedAt: admin.firestore.FieldValue.serverTimestamp() });
-  batch.set(projectRef.collection("members").doc(editorUid), { role: "editor", joinedAt: admin.firestore.FieldValue.serverTimestamp() });
+  batch.set(projectRef.collection("members").doc(ownerUid), { role: "owner", joinedAt: FieldValue.serverTimestamp() });
+  batch.set(projectRef.collection("members").doc(adminUid), { role: "admin", joinedAt: FieldValue.serverTimestamp() });
+  batch.set(projectRef.collection("members").doc(editorUid), { role: "editor", joinedAt: FieldValue.serverTimestamp() });
 
   // items + nested checkpoints + comments
-  batch.set(projectRef.collection("items").doc(itemId), { title: "Item 1", createdAt: admin.firestore.FieldValue.serverTimestamp() });
-  batch.set(projectRef.collection("items").doc(itemId).collection("checkpoints").doc(checkpointId), { name: "CP 1", createdAt: admin.firestore.FieldValue.serverTimestamp() });
-  batch.set(projectRef.collection("items").doc(itemId).collection("comments").doc(commentId), { text: "Note", createdAt: admin.firestore.FieldValue.serverTimestamp() });
+  batch.set(projectRef.collection("items").doc(itemId), { title: "Item 1", createdAt: FieldValue.serverTimestamp() });
+  batch.set(projectRef.collection("items").doc(itemId).collection("checkpoints").doc(checkpointId), { name: "CP 1", createdAt: FieldValue.serverTimestamp() });
+  batch.set(projectRef.collection("items").doc(itemId).collection("comments").doc(commentId), { text: "Note", createdAt: FieldValue.serverTimestamp() });
 
   // checklists + nested items
-  batch.set(projectRef.collection("checklists").doc(checklistId), { title: "Checklist 1", createdAt: admin.firestore.FieldValue.serverTimestamp() });
-  batch.set(projectRef.collection("checklists").doc(checklistId).collection("items").doc(checklistItemId), { text: "Todo", createdAt: admin.firestore.FieldValue.serverTimestamp() });
+  batch.set(projectRef.collection("checklists").doc(checklistId), { title: "Checklist 1", createdAt: FieldValue.serverTimestamp() });
+  batch.set(projectRef.collection("checklists").doc(checklistId).collection("items").doc(checklistItemId), { text: "Todo", createdAt: FieldValue.serverTimestamp() });
 
   await batch.commit();
 

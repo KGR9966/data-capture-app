@@ -1,5 +1,6 @@
 import * as functions from "firebase-functions/v1";
-import * as admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 
 /**
  * Callable Cloud Function: deleteProject({ projectId })
@@ -30,7 +31,7 @@ export const deleteProject = functions
       );
     }
 
-    const db = admin.firestore();
+    const db = getFirestore();
     const projectRef = db.collection("projects").doc(projectId);
     const projectSnap = await projectRef.get();
 
@@ -71,7 +72,7 @@ export const deleteProject = functions
     await db.recursiveDelete(projectRef);
 
     try {
-      const bucket = admin.storage().bucket();
+      const bucket = getStorage().bucket();
       await bucket.deleteFiles({ prefix: `projects/${projectId}/items/` });
     } catch (error) {
       functions.logger.warn(
