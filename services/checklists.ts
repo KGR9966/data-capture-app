@@ -29,6 +29,20 @@ import {
 import { parseSearchQuery, searchItems } from "./search";
 import { deleteRemindersForChecklist, deleteRemindersForChecklistItem } from "./reminders";
 
+/** Hardcoded test-seed email -> UID mapping. Seed script does not create /users docs,
+ *  so this fallback lets E2E/manual tests share with the seeded users. */
+const SEED_EMAIL_TO_UID: Record<string, string> = {
+  "owner@example.com": "user_owner",
+  "editor@example.com": "user_editor",
+  "viewer@example.com": "user_viewer",
+  "admin@example.com": "user_admin",
+  "email_editor@example.com": "email_user",
+};
+
+const SEED_UID_TO_EMAIL: Record<string, string> = Object.fromEntries(
+  Object.entries(SEED_EMAIL_TO_UID).map(([email, uid]) => [uid, email])
+);
+
 export type ChecklistSortBy = "alphabetical" | "date" | "priority";
 export type SourceField = "title" | "content" | "category";
 
@@ -1307,6 +1321,29 @@ export async function unshareChecklist(
   batch.delete(discoveryRef);
 
   await batch.commit();
+}
+
+export function getSeedUserEmail(uid: string): string | null {
+  return SEED_UID_TO_EMAIL[uid] || null;
+}
+
+export async function findUserByEmail(email: string): Promise<string | null> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+
+  // Fallback for test seed users.
+  const seedUid = SEED_EMAIL_TO_UID[normalized];
+  if (seedUid) return seedUid;
+
+  // Real lookup against /users collection (document ID is the UID, email field is stored).
+  try {
+    const q = query(collection(db, "users"), where("email", "==", normalized));
+    const snap = await getDocs(q);
+    if (!snap.empty) return snap.docs[0].id;
+  } catch (error) {
+    console.error("[findUserByEmail] Firestore lookup failed:", error);
+  }
+  return null;
 }
 
 export async function shareChecklistText(

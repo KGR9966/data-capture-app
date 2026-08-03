@@ -7,10 +7,13 @@ import {
   Alert,
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -21,9 +24,13 @@ import ReminderModal from "../components/ReminderModal";
 import {
   Checklist,
   ChecklistItem,
+  findUserByEmail,
   getChecklistById,
+  getSeedUserEmail,
+  shareChecklist,
   shareChecklistText,
   subscribeToChecklistItems,
+  unshareChecklist,
 } from "../services/checklists";
 import {
   compactPendingOps,
@@ -72,6 +79,11 @@ export default function ChecklistDetailScreen() {
   const [reminderModalVisible, setReminderModalVisible] = useState(false);
   const [reminderTargetItem, setReminderTargetItem] = useState<ChecklistItem | null>(null);
   const [reminderSaving, setReminderSaving] = useState(false);
+  const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [shareEmail, setShareEmail] = useState("");
+  const [shareRole, setShareRole] = useState<"editor" | "viewer">("editor");
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
   const checklistId = typeof id === "string" ? id : undefined;
   const ownerIdParam = typeof userId === "string" ? userId : undefined;
   const pendingOpsRef = React.useRef<PendingOp[]>(pendingOps);
@@ -215,6 +227,25 @@ export default function ChecklistDetailScreen() {
     [openItems, completedItems]
   );
 
+  const canManageSharing = useMemo(
+    () => !!checklist && !checklist.projectId && checklist.ownerId === user?.uid,
+    [checklist, user?.uid]
+  );
+
+  const refreshChecklist = async () => {
+    if (!checklistId) return;
+    try {
+      const data = await getChecklistById(
+        checklistId,
+        undefined,
+        ownerIdParam || user?.uid
+      );
+      if (data) setChecklist(data);
+    } catch (error) {
+      console.error("[refreshChecklist] error:", error);
+    }
+  };
+
   const handleToggleItem = async (item: ChecklistItem) => {
     if (!checklist || !user?.uid) return;
     const nextCompleted = !item.isCompleted;
@@ -254,6 +285,79 @@ export default function ChecklistDetailScreen() {
     } finally {
       setSharing(false);
     }
+  };
+
+  const openShareModal = () => {
+    setShareEmail("");
+    setShareRole("editor");
+    setShareError(null);
+    setShareModalVisible(true);
+  };
+
+  const closeShareModal = () => {
+    if (shareLoading) return;
+    setShareModalVisible(false);
+  };
+
+  const handleShareWithUser = async () => {
+    if (!checklist || !user?.uid) return;
+    const email = shareEmail.trim().toLowerCase();
+    if (!email) {
+      setShareError("Indtast en email.");
+      return;
+    }
+    if (email === user.email?.toLowerCase()) {
+      setShareError("Du kan ikke dele med dig selv.");
+      return;
+    }
+    setShareLoading(true);
+    setShareError(null);
+    try {
+      const recipientUserId = await findUserByEmail(email);
+      if (!recipientUserId) {
+        setShareError("Bruger ikke fundet");
+        setShareLoading(false);
+        return;
+      }
+      // Forbid re-sharing to someone already on the list (owner can change role later if needed).
+      if (checklist.sharedWith?.[recipientUserId]) {
+        setShareError("Listen er allerede delt med denne bruger.");
+        setShareLoading(false);
+        return;
+      }
+      await shareChecklist(checklist, recipientUserId, shareRole);
+      await refreshChecklist();
+      closeShareModal();
+    } catch (error) {
+      console.error("[handleShareWithUser] error:", error);
+      setShareError("Kunne ikke dele listen.");
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const handleUnshare = (recipientUserId: string) => {
+    if (!checklist) return;
+    Alert.alert(
+      "Fjern deling",
+      "Er du sikker på, at du vil fjerne denne bruger?",
+      [
+        { text: "Annuller", style: "cancel" },
+        {
+          text: "Fjern",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await unshareChecklist(checklist, recipientUserId);
+              await refreshChecklist();
+            } catch (error) {
+              console.error("[handleUnshare] error:", error);
+              Alert.alert("Fejl", "Kunne ikke fjerne deling.");
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleDelete = () => {
@@ -379,6 +483,15 @@ export default function ChecklistDetailScreen() {
             <Text style={styles.backText}>← Tilbage</Text>
           </TouchableOpacity>
           <View style={styles.headerActions}>
+            {canManageSharing ? (
+              <TouchableOpacity
+                style={[styles.headerAction, !online && styles.buttonDisabled]}
+                onPress={openShareModal}
+                disabled={!online}
+              >
+                <Text style={styles.headerActionText}>Del med</Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
               style={[
                 styles.headerAction,
@@ -415,6 +528,43 @@ export default function ChecklistDetailScreen() {
           {items.filter((i) => i.isCompleted).length} af {items.length} udført
           {checklist.syncStatusToSource !== false ? " · status synkroniseres til sagen" : ""}
         </Text>
+
+        {canManageSharing ? (
+          <View style={styles.shareSection}>
+            <Text style={styles.shareSectionTitle}>Delt med</Text>
+            {Object.keys(checklist.sharedWith || {}).length === 0 ? (
+              <Text style={styles.shareSectionHint}>Listen er ikke delt med andre.</Text>
+            ) : (
+              <View style={styles.recipientList}>
+                {Object.entries(checklist.sharedWith || {}).map(([recipientUserId, role]) => (
+                  <View key={recipientUserId} style={styles.recipientRow}>
+                    <View style={styles.recipientInfo}>
+                      <Text style={styles.recipientEmail} numberOfLines={1}>
+                        {getSeedUserEmail(recipientUserId) || recipientUserId}
+                      </Text>
+                      <Text style={styles.recipientRole}>
+                        {role === "owner"
+                          ? "Ejer"
+                          : role === "admin"
+                          ? "Administrator"
+                          : role === "editor"
+                          ? "Redaktør"
+                          : "Læser"}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.removeRecipientButton}
+                      onPress={() => handleUnshare(recipientUserId)}
+                      disabled={!online}
+                    >
+                      <Text style={styles.removeRecipientText}>Fjern</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        ) : null}
 
         {sortedItems.length === 0 ? (
           <View style={styles.emptyState}>
@@ -514,6 +664,104 @@ export default function ChecklistDetailScreen() {
           />
         )}
       </View>
+      <Modal
+        visible={shareModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={closeShareModal}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <ScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.modalContent}>
+              <Text style={styles.modalHeader}>Del liste med bruger</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+                value={shareEmail}
+                onChangeText={(text) => {
+                  setShareEmail(text);
+                  if (shareError) setShareError(null);
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                returnKeyType="done"
+                editable={!shareLoading}
+              />
+              <Text style={styles.roleLabel}>Rolle</Text>
+              <View style={styles.rolePicker}>
+                <TouchableOpacity
+                  style={[
+                    styles.roleChip,
+                    shareRole === "editor" && styles.roleChipActive,
+                  ]}
+                  onPress={() => setShareRole("editor")}
+                  disabled={shareLoading}
+                >
+                  <Text
+                    style={[
+                      styles.roleChipText,
+                      shareRole === "editor" && styles.roleChipTextActive,
+                    ]}
+                  >
+                    Redaktør
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.roleChip,
+                    shareRole === "viewer" && styles.roleChipActive,
+                  ]}
+                  onPress={() => setShareRole("viewer")}
+                  disabled={shareLoading}
+                >
+                  <Text
+                    style={[
+                      styles.roleChipText,
+                      shareRole === "viewer" && styles.roleChipTextActive,
+                    ]}
+                  >
+                    Læser
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {shareError ? (
+                <Text style={styles.errorText}>{shareError}</Text>
+              ) : null}
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.button, styles.buttonSecondary]}
+                  onPress={closeShareModal}
+                  disabled={shareLoading}
+                >
+                  <Text style={styles.buttonSecondaryText}>Annuller</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    styles.buttonPrimary,
+                    (!shareEmail.trim() || shareLoading) && styles.buttonDisabled,
+                  ]}
+                  onPress={handleShareWithUser}
+                  disabled={!shareEmail.trim() || shareLoading}
+                >
+                  <Text style={styles.buttonPrimaryText}>
+                    {shareLoading ? "Deler..." : "Del"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {reminderTargetItem ? (
         <ReminderModal
           key={
@@ -733,5 +981,158 @@ const themedStyles = (isDark: boolean) =>
     },
     buttonDisabled: {
       opacity: 0.5,
+    },
+    shareSection: {
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    shareSectionTitle: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: isDark ? "#f8fafc" : "#0f172a",
+      marginBottom: 8,
+    },
+    shareSectionHint: {
+      fontSize: 13,
+      color: isDark ? "#94a3b8" : "#64748b",
+    },
+    recipientList: {
+      gap: 8,
+    },
+    recipientRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    recipientInfo: {
+      flex: 1,
+      minWidth: 120,
+      marginRight: 8,
+    },
+    recipientEmail: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: isDark ? "#f8fafc" : "#0f172a",
+      lineHeight: 18,
+    },
+    recipientRole: {
+      fontSize: 12,
+      color: isDark ? "#94a3b8" : "#64748b",
+      marginTop: 2,
+    },
+    removeRecipientButton: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 6,
+      backgroundColor: isDark ? "#7f1d1d" : "#fee2e2",
+    },
+    removeRecipientText: {
+      color: isDark ? "#fca5a5" : "#ef4444",
+      fontWeight: "600",
+      fontSize: 12,
+    },
+    modalOverlay: {
+      flex: 1,
+      justifyContent: "center",
+      backgroundColor: "rgba(0,0,0,0.6)",
+      padding: 16,
+    },
+    modalScrollContent: {
+      flexGrow: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingVertical: 24,
+    },
+    modalContent: {
+      width: "100%",
+      maxWidth: 420,
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+      borderRadius: 16,
+      padding: 20,
+    },
+    modalHeader: {
+      fontSize: 20,
+      fontWeight: "700",
+      color: isDark ? "#f8fafc" : "#0f172a",
+      marginBottom: 16,
+    },
+    input: {
+      backgroundColor: isDark ? "#0f172a" : "#f1f5f9",
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      borderRadius: 10,
+      padding: 12,
+      fontSize: 15,
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#cbd5e1",
+      marginBottom: 12,
+    },
+    roleLabel: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      marginBottom: 8,
+    },
+    rolePicker: {
+      flexDirection: "row",
+      gap: 10,
+      marginBottom: 16,
+    },
+    roleChip: {
+      flex: 1,
+      paddingVertical: 10,
+      borderRadius: 8,
+      backgroundColor: isDark ? "#0f172a" : "#f1f5f9",
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+      alignItems: "center",
+    },
+    roleChipActive: {
+      backgroundColor: "#38bdf8",
+      borderColor: "#38bdf8",
+    },
+    roleChipText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: isDark ? "#e2e8f0" : "#0f172a",
+    },
+    roleChipTextActive: {
+      color: "#0f172a",
+    },
+    modalButtons: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 10,
+      marginTop: 8,
+    },
+    button: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 8,
+    },
+    buttonPrimary: {
+      backgroundColor: "#38bdf8",
+    },
+    buttonPrimaryText: {
+      color: "#0f172a",
+      fontWeight: "600",
+    },
+    buttonSecondary: {
+      backgroundColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    buttonSecondaryText: {
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      fontWeight: "600",
+    },
+    errorText: {
+      color: "#ef4444",
+      fontSize: 14,
+      marginBottom: 12,
     },
   });
