@@ -14,12 +14,18 @@ export function buildItemUrl(itemId: string, projectId: string): string {
   return `${APP_SCHEME}://item?itemId=${encodeURIComponent(itemId)}&projectId=${encodeURIComponent(projectId)}`;
 }
 
-export function buildChecklistUrl(checklistId: string): string {
-  return `${APP_SCHEME}://checklist?id=${encodeURIComponent(checklistId)}`;
+export function buildChecklistUrl(checklistId: string, projectId?: string): string {
+  const query = new URLSearchParams();
+  query.set("id", checklistId);
+  if (projectId) query.set("projectId", projectId);
+  return `${APP_SCHEME}://checklist?${query.toString()}`;
 }
 
-export function buildOpenListUrl(checklistId: string): string {
-  return `${APP_SCHEME}://open-list?id=${encodeURIComponent(checklistId)}`;
+export function buildOpenListUrl(checklistId: string, projectId?: string): string {
+  const query = new URLSearchParams();
+  query.set("id", checklistId);
+  if (projectId) query.set("projectId", projectId);
+  return `${APP_SCHEME}://open-list?${query.toString()}`;
 }
 
 export async function copyToClipboard(text: string): Promise<void> {

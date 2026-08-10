@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import DeepLinkHandler from "../components/DeepLinkHandler";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import NotificationResponseHandler from "../components/NotificationResponseHandler";
 import { AuthProvider, useAuth } from "../contexts/AuthContext";
@@ -29,6 +30,7 @@ export default function RootLayout() {
           <AuthProvider>
             <ProjectProvider>
               <NetworkListener />
+              <DeepLinkHandler />
               <NotificationResponseHandler />
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" />

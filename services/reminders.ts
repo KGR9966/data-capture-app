@@ -14,6 +14,7 @@ import {
 import { db } from "./firebase";
 import {
   cancelScheduledNotification,
+  registerForPushNotificationsAsync,
   scheduleLocalNotification,
 } from "./notifications";
 
@@ -144,6 +145,14 @@ export async function getRemindersForChecklist(
 }
 
 export async function createReminder(input: ReminderInput): Promise<Reminder> {
+  // Ensure we have permission before scheduling; local notifications need the
+  // same iOS permission as push notifications.
+  try {
+    await registerForPushNotificationsAsync();
+  } catch (error) {
+    console.warn("[createReminder] permission request failed:", error);
+  }
+
   const docRef = await addDoc(remindersCollection(input.userId), {
     ...input,
     title: input.title.trim(),
@@ -198,6 +207,11 @@ export async function updateReminder(
   // eventually reflect the change, but we reschedule eagerly here so the local
   // notification is up-to-date immediately.
   if (updates.scheduledAt !== undefined || updates.title !== undefined || updates.note !== undefined) {
+    try {
+      await registerForPushNotificationsAsync();
+    } catch (error) {
+      console.warn("[updateReminder] permission request failed:", error);
+    }
     try {
       const snap = await getDocs(query(remindersCollection(userId), where("__name__", "==", reminderId)));
       const current = snap.docs[0]?.data() as Omit<Reminder, "id"> | undefined;

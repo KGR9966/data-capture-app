@@ -41,6 +41,7 @@ export interface CaptureItem {
   tags?: string[];
   assignedTo?: string;
   assignedToName?: string;
+  clientMutationId?: string;
   createdAt?: any;
   updatedAt?: any;
 }
@@ -57,6 +58,29 @@ export async function createItem(
   projectId: string,
   item: Omit<CaptureItem, "id" | "projectId" | "createdAt" | "updatedAt">
 ): Promise<CaptureItem> {
+  const mutationId = item.clientMutationId;
+
+  // Idempotency: if a previous attempt with the same clientMutationId already
+  // succeeded (e.g. after a UI timeout), return the existing document instead of
+  // creating a duplicate.
+  if (mutationId) {
+    const existing = await getDocs(
+      query(
+        itemsCollection(projectId),
+        where("clientMutationId", "==", mutationId)
+      )
+    );
+    if (!existing.empty) {
+      const d = existing.docs[0];
+      const data = d.data() as Omit<CaptureItem, "id">;
+      return {
+        id: d.id,
+        ...data,
+        type: normalizeItemType(data.type),
+      };
+    }
+  }
+
   const payload = stripUndefined({
     ...item,
     projectId,

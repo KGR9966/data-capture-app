@@ -1,6 +1,4 @@
-import * as admin from "firebase-admin";
 import { deleteProject } from "./deleteProject";
+import { syncCheckpointToChecklists } from "./syncCheckpointToChecklists";
 
-admin.initializeApp();
-
-export { deleteProject };
+export { deleteProject, syncCheckpointToChecklists };

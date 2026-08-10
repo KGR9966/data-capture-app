@@ -22,6 +22,8 @@ interface TestContext {
   ownerUid: string;
   adminUid: string;
   editorUid: string;
+  viewerUid: string;
+  strangerUid: string;
   itemId: string;
   checkpointId: string;
   commentId: string;
@@ -106,6 +108,8 @@ async function seedProject(): Promise<TestContext> {
   const ownerUid = `owner-${Date.now()}`;
   const adminUid = `admin-${Date.now()}`;
   const editorUid = `editor-${Date.now()}`;
+  const viewerUid = `viewer-${Date.now()}`;
+  const strangerUid = `stranger-${Date.now()}`;
   const itemId = `item-1`;
   const checkpointId = `checkpoint-1`;
   const commentId = `comment-1`;
@@ -121,6 +125,7 @@ async function seedProject(): Promise<TestContext> {
     roles: {
       [adminUid]: "admin",
       [editorUid]: "editor",
+      [viewerUid]: "viewer",
     },
     createdAt: FieldValue.serverTimestamp(),
   });
@@ -129,6 +134,7 @@ async function seedProject(): Promise<TestContext> {
   batch.set(projectRef.collection("members").doc(ownerUid), { role: "owner", joinedAt: FieldValue.serverTimestamp() });
   batch.set(projectRef.collection("members").doc(adminUid), { role: "admin", joinedAt: FieldValue.serverTimestamp() });
   batch.set(projectRef.collection("members").doc(editorUid), { role: "editor", joinedAt: FieldValue.serverTimestamp() });
+  batch.set(projectRef.collection("members").doc(viewerUid), { role: "viewer", joinedAt: FieldValue.serverTimestamp() });
 
   // items + nested checkpoints + comments
   batch.set(projectRef.collection("items").doc(itemId), { title: "Item 1", createdAt: FieldValue.serverTimestamp() });
@@ -153,6 +159,8 @@ async function seedProject(): Promise<TestContext> {
     ownerUid,
     adminUid,
     editorUid,
+    viewerUid,
+    strangerUid,
     itemId,
     checkpointId,
     commentId,
@@ -167,6 +175,9 @@ async function verifyDeleted(ctx: TestContext): Promise<void> {
   const paths = [
     projectRef,
     projectRef.collection("members").doc(ctx.ownerUid),
+    projectRef.collection("members").doc(ctx.adminUid),
+    projectRef.collection("members").doc(ctx.editorUid),
+    projectRef.collection("members").doc(ctx.viewerUid),
     projectRef.collection("items").doc(ctx.itemId),
     projectRef.collection("items").doc(ctx.itemId).collection("checkpoints").doc(ctx.checkpointId),
     projectRef.collection("items").doc(ctx.itemId).collection("comments").doc(ctx.commentId),
@@ -210,25 +221,27 @@ async function runTest(name: string, fn: () => Promise<void>): Promise<void> {
 async function main(): Promise<void> {
   console.log("Running deleteProject integration tests...\n");
 
-  await runTest("owner can delete project", async () => {
+  await runTest("owner can delete project (TC-B9.2 / TC-B9.3)", async () => {
     const ctx = await seedProject();
     const ownerToken = await getIdToken(ctx.ownerUid);
     const result = await callDeleteProject(ctx.projectId, ownerToken);
     assertTrue(result.ok, `Expected success but got: ${JSON.stringify(result)}`);
     assertEqual((result as { ok: true; result: { success: true } }).result.success, true, "Result success flag");
+    assertEqual((result as { ok: true; result: { storageCleanupSuccess: boolean } }).result.storageCleanupSuccess, true, "Storage cleanup flag");
     await verifyDeleted(ctx);
   });
 
-  await runTest("admin can delete project", async () => {
+  await runTest("admin can delete project (TC-B9.2)", async () => {
     const ctx = await seedProject();
     const adminToken = await getIdToken(ctx.adminUid);
     const result = await callDeleteProject(ctx.projectId, adminToken);
     assertTrue(result.ok, `Expected success but got: ${JSON.stringify(result)}`);
     assertEqual((result as { ok: true; result: { success: true } }).result.success, true, "Result success flag");
+    assertEqual((result as { ok: true; result: { storageCleanupSuccess: boolean } }).result.storageCleanupSuccess, true, "Storage cleanup flag");
     await verifyDeleted(ctx);
   });
 
-  await runTest("editor cannot delete project", async () => {
+  await runTest("editor cannot delete project (TC-B9.2)", async () => {
     const ctx = await seedProject();
     const editorToken = await getIdToken(ctx.editorUid);
     const result = await callDeleteProject(ctx.projectId, editorToken);
@@ -237,11 +250,46 @@ async function main(): Promise<void> {
     await verifyStillExists(ctx);
   });
 
-  await runTest("unauthenticated call is rejected", async () => {
+  await runTest("viewer cannot delete project (TC-B9.2)", async () => {
+    const ctx = await seedProject();
+    const viewerToken = await getIdToken(ctx.viewerUid);
+    const result = await callDeleteProject(ctx.projectId, viewerToken);
+    assertTrue(!result.ok, "Expected permission-denied");
+    assertEqual((result as { ok: false; code: string; message: string }).code, "permission-denied", "Error code");
+    await verifyStillExists(ctx);
+  });
+
+  await runTest("non-member cannot delete project (TC-B9.2)", async () => {
+    const ctx = await seedProject();
+    const strangerToken = await getIdToken(ctx.strangerUid);
+    const result = await callDeleteProject(ctx.projectId, strangerToken);
+    assertTrue(!result.ok, "Expected permission-denied");
+    assertEqual((result as { ok: false; code: string; message: string }).code, "permission-denied", "Error code");
+    await verifyStillExists(ctx);
+  });
+
+  await runTest("unauthenticated call is rejected (TC-B9.1)", async () => {
     const ctx = await seedProject();
     const result = await callDeleteProject(ctx.projectId);
     assertTrue(!result.ok, "Expected unauthenticated error");
     assertEqual((result as { ok: false; code: string; message: string }).code, "unauthenticated", "Error code");
+    await verifyStillExists(ctx);
+  });
+
+  await runTest("invalid projectId is rejected (TC-B9.1)", async () => {
+    const ownerUid = `owner-invalid-${Date.now()}`;
+    const ownerToken = await getIdToken(ownerUid);
+    const result = await callDeleteProject("", ownerToken);
+    assertTrue(!result.ok, "Expected invalid-argument error");
+    assertEqual((result as { ok: false; code: string; message: string }).code, "invalid-argument", "Error code");
+  });
+
+  await runTest("non-existing projectId returns not-found (TC-B9.1)", async () => {
+    const ctx = await seedProject();
+    const ownerToken = await getIdToken(ctx.ownerUid);
+    const result = await callDeleteProject(`missing-${Date.now()}`, ownerToken);
+    assertTrue(!result.ok, "Expected not-found error");
+    assertEqual((result as { ok: false; code: string; message: string }).code, "not-found", "Error code");
     await verifyStillExists(ctx);
   });
 

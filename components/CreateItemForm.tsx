@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -286,8 +287,9 @@ export default function CreateItemForm({
       const translated = await translateText(ocrOriginal, ocrTargetLang, ocrSourceLang);
       setOcrTranslated(translated);
     } catch (error) {
-       
-      console.log("[CreateItemForm] Translate error", error);
+      const message = error instanceof Error ? error.message : "Oversættelse fejlede.";
+      console.error("[CreateItemForm] Translate error", message);
+      Alert.alert("Oversættelse fejlede", message);
     } finally {
       setTranslating(false);
     }

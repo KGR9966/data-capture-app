@@ -106,6 +106,27 @@ const cases = [
     input: "Silvan punktum åbn kamera",
     expected: { title: "silvan", content: "", type: "other", command: "openCamera" },
   },
+  // Regression cases for P2: explicit category prefix must not become the title.
+  {
+    id: "P2-1",
+    input: "Bug. Knappen virker ikke.",
+    expected: { title: "Knappen virker ikke", content: "", type: "bug", command: null },
+  },
+  {
+    id: "P2-2",
+    input: "Bug punktum knappen virker ikke punktum",
+    expected: { title: "knappen virker ikke", content: "", type: "bug", command: null },
+  },
+  {
+    id: "P2-3",
+    input: "Idé. Vi skal have mørkt tema som standard.",
+    expected: { title: "Vi skal have mørkt tema som standard", content: "", type: "idea", command: null },
+  },
+  {
+    id: "P2-4",
+    input: "Notat. Ændring af farve på knappen",
+    expected: { title: "Ændring af farve på knappen", content: "", type: "note", command: null },
+  },
 ];
 
 let failures = 0;

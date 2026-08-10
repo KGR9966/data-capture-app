@@ -5,17 +5,18 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../contexts/ThemeContext";
 
 export default function OpenListScreen() {
-  const { id } = useLocalSearchParams();
+  const { id, projectId } = useLocalSearchParams();
   const router = useRouter();
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
   useEffect(() => {
     const listId = typeof id === "string" ? id : undefined;
+    const projectIdParam = typeof projectId === "string" ? `&projectId=${encodeURIComponent(projectId)}` : "";
     if (listId) {
-      router.replace(`/checklist?id=${listId}` as any);
+      router.replace(`/checklist?id=${listId}${projectIdParam}` as any);
     }
-  }, [id, router]);
+  }, [id, projectId, router]);
 
   return (
     <View style={styles.container}>

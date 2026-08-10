@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -26,12 +26,17 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { suggestCategory } from "../../services/categories";
 import { buildBoardUrl, copyToClipboard } from "../../services/deeplinks";
 import { CaptureItem, createItem, ItemType, subscribeToItems } from "../../services/items";
+import { waitForNetwork } from "../../services/firebase";
 import {
   pickImage,
   takePhoto,
   uploadImage,
 } from "../../services/media";
-import { ProjectMember, subscribeToProjectMembers } from "../../services/projects";
+import {
+  getProjectByIdFromServer,
+  ProjectMember,
+  subscribeToProjectMembers,
+} from "../../services/projects";
 import { canAssignItems, getProjectRole, ProjectRole } from "../../services/roles";
 
 function formatDate(ts: any) {
@@ -69,7 +74,7 @@ function formatStatus(status: string) {
 
 export default function BoardScreen() {
   const { user } = useAuth();
-  const { activeProject, loading: projectLoading } = useProject();
+  const { activeProject, setActiveProject, loading: projectLoading } = useProject();
   const { theme } = useTheme();
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -87,6 +92,7 @@ export default function BoardScreen() {
   const [mediaUri, setMediaUri] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [creating, setCreating] = useState(false);
+  const currentItemMutationId = useRef<string | null>(null);
 
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [assignedTo, setAssignedTo] = useState<string | null>(null);
@@ -126,6 +132,9 @@ export default function BoardScreen() {
     };
   }, [activeProject]);
 
+  const generateItemMutationId = () =>
+    `${user?.uid}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
   const resetManualForm = () => {
     setItemType("idea");
     setTitle("");
@@ -135,6 +144,7 @@ export default function BoardScreen() {
     setMediaUri(null);
     setAssignedTo(null);
     setAssignedToName("");
+    currentItemMutationId.current = null;
   };
 
   const openManualModal = () => {
@@ -146,6 +156,7 @@ export default function BoardScreen() {
       return;
     }
     resetManualForm();
+    currentItemMutationId.current = generateItemMutationId();
     setModalVisible(true);
   };
 
@@ -166,6 +177,31 @@ export default function BoardScreen() {
       return;
     }
 
+    try {
+      await waitForNetwork(5000, "Sagsoprettelse");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Ingen netværksforbindelse.";
+      Alert.alert("Ingen forbindelse", message);
+      return;
+    }
+
+    const serverProject = activeProject
+      ? await getProjectByIdFromServer(activeProject.id)
+      : null;
+    if (!serverProject) {
+      Alert.alert(
+        "Projekt ikke fundet",
+        "Det aktive projekt findes ikke længere på serveren. Vælg et andet projekt."
+      );
+      setActiveProject(null);
+      return;
+    }
+
+    if (!currentItemMutationId.current) {
+      currentItemMutationId.current = generateItemMutationId();
+    }
+    const mutationId = currentItemMutationId.current;
+
     setCreating(true);
     try {
       const finalCategory =
@@ -184,13 +220,21 @@ export default function BoardScreen() {
           mediaUrl: mediaUrl || undefined,
           assignedTo: assignedTo || undefined,
           assignedToName: assignedToName || undefined,
+          clientMutationId: mutationId,
         }
       );
       setModalVisible(false);
       resetManualForm();
     } catch (error) {
       console.log("Create item error", error);
-      Alert.alert("Fejl", "Kunne ikke oprette notatet.");
+      const message =
+        error instanceof Error ? error.message : "Kunne ikke oprette notatet.";
+      Alert.alert(
+        "Fejl",
+        message.includes("Ingen netværksforbindelse")
+          ? message
+          : `Kunne ikke oprette sagen. Prøv igen.\n\n(${message})`
+      );
     } finally {
       setCreating(false);
     }
@@ -260,6 +304,7 @@ export default function BoardScreen() {
       );
       return;
     }
+    const voiceMutationId = generateItemMutationId();
     try {
       await createItem(
         activeProject.id,
@@ -275,6 +320,7 @@ export default function BoardScreen() {
           mediaUrl: voiceItem.mediaUrl,
           assignedTo: voiceItem.assignedTo,
           assignedToName: voiceItem.assignedToName,
+          clientMutationId: voiceMutationId,
         }
       );
     } catch (error) {

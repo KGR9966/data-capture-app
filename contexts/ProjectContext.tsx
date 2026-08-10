@@ -7,7 +7,10 @@ import React, {
   useState,
 } from "react";
 
-import { Project } from "../services/projects";
+import {
+  getProjectByIdFromServer,
+  type Project,
+} from "../services/projects";
 
 const ACTIVE_PROJECT_KEY = "@data_capture_active_project";
 
@@ -26,11 +29,25 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     AsyncStorage.getItem(ACTIVE_PROJECT_KEY)
-      .then((raw) => {
+      .then(async (raw) => {
         if (cancelled || !raw) return;
         try {
           const parsed = JSON.parse(raw) as Project;
-          setActiveProjectState(parsed);
+          // Validate against the server: the cached project may have been
+          // deleted while the app was offline / in the background.
+          const serverProject = parsed?.id
+            ? await getProjectByIdFromServer(parsed.id)
+            : null;
+          if (!cancelled) {
+            if (serverProject) {
+              setActiveProjectState(serverProject);
+            } else {
+              console.log(
+                "[ProjectContext] cached project not found on server, clearing"
+              );
+              await AsyncStorage.removeItem(ACTIVE_PROJECT_KEY);
+            }
+          }
         } catch (error) {
           console.log("[ProjectContext] Kunne ikke parse gemt projekt", error);
         }
@@ -38,7 +55,9 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       .catch((error) => {
         console.log("[ProjectContext] Kunne ikke indlæse gemt projekt", error);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => {
       cancelled = true;
     };

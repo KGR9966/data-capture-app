@@ -230,11 +230,16 @@ async function executePendingOp(op: PendingOp): Promise<void> {
       break;
     }
     case "deleteChecklist": {
-      const { checklistId, userId } = op.payload as {
+      const { checklistId, projectId, ownerId, userId } = op.payload as {
         checklistId: string;
+        projectId?: string;
+        ownerId?: string;
         userId: string;
       };
-      await deleteChecklist(checklistId, userId);
+      await deleteChecklist(checklistId, projectId, ownerId, userId);
+      // Først ryd cachen efter vellykket online-sletning, så vi ikke mister data
+      // hvis sletningen fejler.
+      await clearCachedItems(checklistId);
       break;
     }
     case "updateChecklistItem": {
@@ -387,18 +392,22 @@ export async function deleteChecklistItemOffline(
 }
 
 export async function deleteChecklistAndClearCache(
-  checklistId: string,
+  checklist: Pick<Checklist, "id" | "projectId" | "ownerId">,
   userId: string
 ): Promise<void> {
   const op: PendingOp = {
     id: generateOpId(),
     type: "deleteChecklist",
-    payload: { checklistId, userId },
+    payload: {
+      checklistId: checklist.id,
+      projectId: checklist.projectId,
+      ownerId: checklist.ownerId,
+      userId,
+    },
     createdAt: Date.now(),
     retries: 0,
   };
   await addPendingOp(userId, op);
-  await clearCachedItems(checklistId);
 
   if (await isOnline()) {
     await flushPendingOps(userId);

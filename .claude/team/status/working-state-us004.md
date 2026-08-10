@@ -38,9 +38,10 @@
 - [x] W2–W4: Wipe dev/test Firestore + Storage (9 projekter, 46 items, 5 checklists, 175 storage objects).
 - [x] Genskab testdata (`scripts/seed-us004-testdata.js`).
 - [x] Deploy `firestore.rules` + `deleteProject` Cloud Function.
+- [x] Share/unshare UI for personal checklists implementeret og committed (`54f8508`).
+- [ ] PO GO til Build 1 (iOS-only preview).
 - [ ] G6 manuel E2E E1–E9.
 - [ ] G7 QA-rapport.
-- [ ] PO GO til Build 1 (iOS-only preview).
 
 ---
 

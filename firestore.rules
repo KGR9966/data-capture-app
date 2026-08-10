@@ -20,6 +20,7 @@ service cloud.firestore {
 
     // Aflæs brugerens rolle i et projekt ud fra ownerId, roles-kort og memberEmails.
     // Email-inviterede medlemmer uden specifik rolle får editor-rettigheder.
+    // Hvis brugeren har en eksplicit rolle tildelt via email, bruges den før fallback.
     function getProjectMemberRole(projectData) {
       return isAuthenticated()
              ? (getUserId() == projectData.ownerId
@@ -27,9 +28,18 @@ service cloud.firestore {
                 : (getUserId() in projectData.roles
                    ? projectData.roles.get(getUserId(), null)
                    : (getUserEmail() != null
-                      && getUserEmail() in projectData.memberEmails
-                      ? "editor"
-                      : null)))
+                      && getUserEmail() in projectData.roles
+                      ? projectData.roles.get(getUserEmail(), null)
+                      : (getUserEmail() != null
+                         && getUserEmail() in projectData.memberEmails
+                         ? "editor"
+                         : null))))
+             : null;
+    }
+
+    function getProjectMemberRoleById(projectId) {
+      return projectId != null && exists(/databases/$(database)/documents/projects/$(projectId))
+             ? getProjectMemberRole(get(/databases/$(database)/documents/projects/$(projectId)).data)
              : null;
     }
 
@@ -44,7 +54,22 @@ service cloud.firestore {
     }
 
     function hasProjectRoleById(projectId, allowedRoles) {
-      return getProjectMemberRole(projectDataById(projectId)) in allowedRoles;
+      return getProjectMemberRoleById(projectId) in allowedRoles;
+    }
+
+    function callerIsProjectOwner(projectData) {
+      return isAuthenticated() && projectData.ownerId == getUserId();
+    }
+
+    function isRoleAtMost(requestedRole, currentRole) {
+      return requestedRole in ["owner", "admin", "editor", "viewer"]
+             && (currentRole == "owner"
+                 || (currentRole == "admin"
+                     && requestedRole in ["admin", "editor", "viewer"])
+                 || (currentRole == "editor"
+                     && requestedRole in ["editor", "viewer"])
+                 || (currentRole == "viewer"
+                     && requestedRole == "viewer"));
     }
 
     // Projekter
@@ -58,10 +83,28 @@ service cloud.firestore {
 
       allow create: if isAuthenticated() && request.resource.data.ownerId == getUserId();
 
+      // Kun ejer må ændre ownerId.
+      // Kun ejer må tildele owner-rolle.
+      // Kun ejer/admin må ændre memberEmails eller roles generelt.
+      // Ingen bruger må kunne give sig selv eller andre højere rolle end egen rolle.
       allow update: if isAuthenticated()
-                     && (resource.data.ownerId == getUserId()
-                         || (getUserId() in resource.data.roles
-                             && request.resource.data.roles.get(getUserId(), null) in ["owner", "admin"]));
+                     && hasAnyProjectRole(resource.data, ["owner", "admin"])
+                     // ownerId må ikke ændres af nogen.
+                     && (!request.resource.data.keys().hasAll(["ownerId"])
+                         || request.resource.data.ownerId == resource.data.ownerId)
+                     // Hvis roles ændres:
+                     // - Owner må alt.
+                     // - Admin må ændre, men ikke tildele owner-rolle, og ikke give sig selv owner/admin.
+                     && (!request.resource.data.keys().hasAll(["roles"])
+                         || callerIsProjectOwner(resource.data)
+                         || (
+                              getProjectMemberRole(resource.data) == "admin"
+                              && !request.resource.data.roles.values().hasAny(["owner"])
+                              && (
+                                   !request.resource.data.keys().hasAll([getUserId()])
+                                   || request.resource.data.roles.get(getUserId(), resource.data.roles.get(getUserId(), null)) in ["admin", "editor", "viewer"]
+                              )
+                            ));
 
       allow delete: if isAuthenticated() && resource.data.ownerId == getUserId();
     }
@@ -86,13 +129,22 @@ service cloud.firestore {
       allow read: if isAuthenticated()
                      && hasAnyProjectRole(projectData(), ["owner", "admin", "editor", "viewer"]);
 
+      // Kun projektejeren må tildele eller ændre til owner-rolle.
+      // Owner/admin kan tildele admin/editor/viewer, men admin må ikke skrive owner.
+      function canAssignRole(role) {
+        return role in ["admin", "editor", "viewer"]
+               || (role == "owner" && projectData().ownerId == getUserId());
+      }
+
       allow create: if isProjectOwnerOrAdmin()
                      && request.resource.data.keys().hasAll(["role"])
-                     && request.resource.data.role in ["owner", "admin", "editor", "viewer"];
+                     && request.resource.data.role in ["owner", "admin", "editor", "viewer"]
+                     && canAssignRole(request.resource.data.role);
 
       allow update: if isProjectOwnerOrAdmin()
                      && request.resource.data.keys().hasAll(["role"])
-                     && request.resource.data.role in ["owner", "admin", "editor", "viewer"];
+                     && request.resource.data.role in ["owner", "admin", "editor", "viewer"]
+                     && canAssignRole(request.resource.data.role);
 
       allow delete: if isProjectOwnerOrAdmin();
     }

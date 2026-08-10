@@ -150,7 +150,13 @@ export default function ProjectsScreen() {
       router.push("/(tabs)/board");
     } catch (error) {
       console.error("Create project error", error);
-      setCreateError("Kunne ikke oprette projektet. Prøv igen.");
+      const message =
+        error instanceof Error ? error.message : "Kunne ikke oprette projektet. Prøv igen.";
+      setCreateError(
+        message.includes("tog for lang tid")
+          ? `${message}\n\nBemærk: Projektoprettelsen kan være påbegyndt på serveren. Check listen over projekter om et øjeblik i stedet for at trykke Opret igen.`
+          : message
+      );
     } finally {
       setCreating(false);
     }
@@ -196,7 +202,22 @@ export default function ProjectsScreen() {
       handleCancelDelete();
     } catch (error) {
       console.error("Delete project error", error);
-      Alert.alert("Fejl", "Kunne ikke slette projektet. Prøv igen.");
+      let message = "Kunne ikke slette projektet. Prøv igen.";
+      if (error instanceof Error && error.message) {
+        message = error.message;
+      }
+      // Vis en mere hjælpende fejlmeddelelse hvis Cloud Function er utilgængelig.
+      if (
+        message.includes("Cloud Function") ||
+        message.includes("UNAVAILABLE") ||
+        message.includes("INTERNAL") ||
+        message.includes("deadline exceeded") ||
+        message.includes("network-request-failed") ||
+        message.includes("tog for lang tid")
+      ) {
+        message += "\n\nSletning via serveren er midlertidigt utilgængelig. Prøv igen om lidt, eller kontakt support hvis problemet fortsætter.";
+      }
+      Alert.alert("Fejl", message);
     } finally {
       setDeleting(false);
     }
@@ -222,7 +243,10 @@ export default function ProjectsScreen() {
     try {
       await addProjectMemberByEmail(inviteProjectId, normalizedEmail, inviteRole);
       setInviteEmail("");
-      Alert.alert("Inviteret", `${normalizedEmail} er tilføjet som ${ROLE_LABELS[inviteRole]}.`);
+      Alert.alert(
+        "Inviteret",
+        `${normalizedEmail} er tilføjet som ${ROLE_LABELS[inviteRole]}.\n\nBemærk: Der sendes ikke email i denne version. Personen skal logge ind med præcis denne emailadresse for at se projektet.`
+      );
     } catch (error) {
       console.log("Invite error", error);
       Alert.alert("Fejl", "Kunne ikke invitere medlemmet.");
@@ -412,7 +436,10 @@ export default function ProjectsScreen() {
         visible={modalVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => {
+          setModalVisible(false);
+          setCreating(false);
+        }}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -453,7 +480,10 @@ export default function ProjectsScreen() {
               <View style={styles.modalButtons}>
                 <TouchableOpacity
                   style={[styles.button, styles.buttonSecondary]}
-                  onPress={() => setModalVisible(false)}
+                  onPress={() => {
+                    setModalVisible(false);
+                    setCreating(false);
+                  }}
                 >
                   <Text style={styles.buttonSecondaryText}>Annuller</Text>
                 </TouchableOpacity>

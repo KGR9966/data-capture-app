@@ -79,14 +79,12 @@ export async function uploadImage(
     throw new Error("Billedet har ingen fil-URI.");
   }
 
-  console.log("[media] Uploading via RNFB Storage:", path);
   const localUri = await ensureLocalFilePath(asset);
   const localPath = localUri.replace(/^file:\/\//, "");
   const storageRef = ref(storage, path);
   await putFile(storageRef, localPath, { contentType: "image/jpeg" });
 
   const downloadUrl = await getDownloadURL(storageRef);
-  console.log("[media] Upload færdig, URL:", downloadUrl);
   return downloadUrl;
 }
 

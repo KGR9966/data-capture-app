@@ -1,0 +1,57 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Hjælpefunktioner til at hente projektdata fra Firestore.
+    function projectData(projectId) {
+      return firestore.get(/databases/(default)/documents/projects/$(projectId));
+    }
+
+    function projectExists(projectId) {
+      return projectData(projectId) != null;
+    }
+
+    function projectOwnerId(projectId) {
+      return projectData(projectId).data.ownerId;
+    }
+
+    function projectRoles(projectId) {
+      return projectData(projectId).data.roles;
+    }
+
+    function projectMemberEmails(projectId) {
+      return projectData(projectId).data.memberEmails;
+    }
+
+    function isProjectMember(projectId) {
+      return request.auth != null
+             && projectExists(projectId)
+             && (request.auth.uid == projectOwnerId(projectId)
+                 || request.auth.uid in projectRoles(projectId)
+                 || request.auth.token.email in projectMemberEmails(projectId));
+    }
+
+    // Projekt-filer under /projects/{projectId}/items/...
+    match /projects/{projectId}/items/{allPaths=**} {
+      allow read: if request.auth != null
+                    && projectExists(projectId)
+                    && (request.auth.uid == resource.metadata.ownerId
+                        || request.auth.uid == projectOwnerId(projectId)
+                        || request.auth.uid in projectRoles(projectId)
+                        || request.auth.token.email in projectMemberEmails(projectId));
+
+      // Ejere, admins og editorer må uploade og erstatte filer.
+      allow create: if isProjectMember(projectId);
+      allow update: if isProjectMember(projectId);
+
+      // Kun projektejeren må slette hele projektets filer.
+      allow delete: if request.auth != null
+                      && projectExists(projectId)
+                      && request.auth.uid == projectOwnerId(projectId);
+    }
+
+    // Bruger-specifikke filer (f.eks. profilbilleder) — ejeren må læse/slette.
+    match /users/{userId}/{allPaths=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

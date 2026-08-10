@@ -7,9 +7,15 @@
  *
  * Requires Firebase Admin SDK credentials via GOOGLE_APPLICATION_CREDENTIALS.
  *
+ * For EAS preview builds you MUST set SEED_OWNER_UID and SEED_MEMBER_EMAIL to the
+ * Firebase Auth UID/email of the test user that signs in on the device. Otherwise
+ * the projects and shared checklist will not be visible in the app (P1, Build 1).
+ *
  * Usage:
  *   export GOOGLE_APPLICATION_CREDENTIALS=/path/to/serviceAccountKey.json
  *   export EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=data-capture-506bd.firebasestorage.app
+ *   export SEED_OWNER_UID=<real-firebase-auth-uid>
+ *   export SEED_MEMBER_EMAIL=<real-test-user-email>
  *   node scripts/seed-us004-testdata.js
  */
 
@@ -47,13 +53,24 @@ async function main() {
 
   const now = Timestamp.now();
 
+  // Allow seed data to be matched against a real Firebase Auth user for EAS preview.
+  // Defaults keep local/emulator runs working without extra configuration.
+  const OWNER_UID = process.env.SEED_OWNER_UID || "user_owner";
+  const MEMBER_UID = process.env.SEED_MEMBER_UID || "email_user";
+  const MEMBER_EMAIL = process.env.SEED_MEMBER_EMAIL || "email_editor@example.com";
+  const ADMIN_UID = process.env.SEED_ADMIN_UID || "user_admin";
+  const EDITOR_UID = process.env.SEED_EDITOR_UID || "user_editor";
+  const VIEWER_UID = process.env.SEED_VIEWER_UID || "user_viewer";
+  const NON_MEMBER_UID = process.env.SEED_NON_MEMBER_UID || "user_non_member";
+
   const ROLES = {
-    owner: "user_owner",
-    admin: "user_admin",
-    editor: "user_editor",
-    viewer: "user_viewer",
-    emailEditor: "email_editor@example.com",
-    nonMember: "user_non_member",
+    owner: OWNER_UID,
+    admin: ADMIN_UID,
+    editor: EDITOR_UID,
+    viewer: VIEWER_UID,
+    emailEditor: MEMBER_EMAIL,
+    nonMember: NON_MEMBER_UID,
+    emailUser: MEMBER_UID,
   };
 
   // Helper to ensure users exist as auth identities would be handled by client sign-in.
@@ -62,11 +79,12 @@ async function main() {
   console.log("[seed] Creating Project A...");
   const projectAId = "projectA_us004";
   const projectARef = db.collection("projects").doc(projectAId);
+  const memberEmails = ROLES.emailEditor ? [ROLES.emailEditor] : [];
   await projectARef.set({
     name: "Projekt A — US-004 E2E",
     description: "Testprojekt til US-004 E2E",
     ownerId: ROLES.owner,
-    memberEmails: [ROLES.emailEditor],
+    memberEmails,
     roles: {
       [ROLES.admin]: "admin",
       [ROLES.editor]: "editor",
@@ -82,11 +100,11 @@ async function main() {
     admin: ROLES.admin,
     editor: ROLES.editor,
     viewer: ROLES.viewer,
-    emailEditor: "email_user",
+    emailEditor: ROLES.emailUser,
   })) {
     await projectARef.collection("members").doc(uid).set({
       userId: uid,
-      email: uid === "email_user" ? ROLES.emailEditor : `${roleName}@example.com`,
+      email: uid === ROLES.emailUser ? ROLES.emailEditor : `${roleName}@example.com`,
       role: roleName === "emailEditor" ? "editor" : roleName,
       joinedAt: now,
     });
@@ -217,11 +235,12 @@ async function main() {
   console.log("[seed] Creating Project B...");
   const projectBId = "projectB_us004";
   const projectBRef = db.collection("projects").doc(projectBId);
+  const projectBMemberEmails = ROLES.emailEditor ? [ROLES.emailEditor] : [];
   await projectBRef.set({
     name: "Projekt B — Email editor",
     description: "Testprojekt til email-medlem E9",
     ownerId: ROLES.owner,
-    memberEmails: [ROLES.emailEditor],
+    memberEmails: projectBMemberEmails,
     roles: {},
     createdAt: now,
     updatedAt: now,
@@ -232,8 +251,8 @@ async function main() {
     role: "owner",
     joinedAt: now,
   });
-  await projectBRef.collection("members").doc("email_user").set({
-    userId: "email_user",
+  await projectBRef.collection("members").doc(ROLES.emailUser).set({
+    userId: ROLES.emailUser,
     email: ROLES.emailEditor,
     role: "editor",
     joinedAt: now,
@@ -251,7 +270,7 @@ async function main() {
     ownerId: ROLES.owner,
     projectId: null,
     isDynamic: false,
-    sharedWith: { [ROLES.editor]: "editor" },
+    sharedWith: { [ROLES.emailUser]: "editor" },
     hasNewMatches: false,
     deletedItemKeys: [],
     createdAt: now,
@@ -274,7 +293,7 @@ async function main() {
   // Discovery index for recipient
   await db
     .collection("users")
-    .doc(ROLES.editor)
+    .doc(ROLES.emailUser)
     .collection("sharedChecklists")
     .doc(personalChecklistId)
     .set({
@@ -298,11 +317,11 @@ async function main() {
   });
 
   console.log("[seed] Done.");
-  console.log("Created:");
+  console.log("Created (owner UID =", OWNER_UID, "):");
   console.log(`  - Project A: ${projectAId}`);
   console.log(`  - Project B: ${projectBId}`);
   console.log(`  - Personal checklist: /users/${ROLES.owner}/checklists/${personalChecklistId}`);
-  console.log(`  - Shared index: /users/${ROLES.editor}/sharedChecklists/${personalChecklistId}`);
+  console.log(`  - Shared index: /users/${ROLES.emailUser}/sharedChecklists/${personalChecklistId}`);
 }
 
 main().catch((err) => {

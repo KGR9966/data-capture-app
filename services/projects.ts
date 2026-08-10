@@ -5,7 +5,9 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
+  getDocsFromServer,
   onSnapshot,
   query,
   serverTimestamp,
@@ -14,12 +16,34 @@ import {
   where,
   writeBatch,
 } from "@react-native-firebase/firestore";
-import { getFunctions, httpsCallable } from "@react-native-firebase/functions";
-import { deleteObject, listAll, ref } from "@react-native-firebase/storage";
+import { getAuth } from "@react-native-firebase/auth";
+import { httpsCallable } from "@react-native-firebase/functions";
+import { listAll, ref } from "@react-native-firebase/storage";
 
-import { db, storage } from "./firebase";
+import { db, storage, waitForNetwork } from "./firebase";
 import { getItemsForProject } from "./items";
 import type { ProjectRole } from "./roles";
+
+const DEFAULT_OPERATION_TIMEOUT_MS = 15000;
+
+export function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () =>
+          reject(
+            new Error(`${label} tog for lang tid (mere end ${ms / 1000} sekunder).`)
+          ),
+        ms
+      )
+    ),
+  ]);
+}
 
 export interface Project {
   id: string;
@@ -70,6 +94,8 @@ export async function createProject(
   ownerEmail?: string,
   description?: string
 ): Promise<Project> {
+  await waitForNetwork(5000, "Projektoprettelse");
+
   const trimmedName = name.trim();
   const trimmedDescription = (description || "").trim();
 
@@ -113,7 +139,9 @@ export async function createProject(
     joinedAt: serverTimestamp(),
   });
 
+  console.log("[createProject] committing batch for", trimmedName);
   await batch.commit();
+  console.log("[createProject] batch committed, project id", projectRef.id);
 
   return {
     id: projectRef.id,
@@ -123,6 +151,17 @@ export async function createProject(
     memberEmails: ownerEmail ? [ownerEmail] : [],
     roles: { [ownerId]: "owner" },
   };
+}
+
+function mergeAndSortProjects(projectLists: Project[][]): Project[] {
+  const results = projectLists.flat().filter(Boolean);
+  const unique = new Map<string, Project>();
+  results.forEach((p) => unique.set(p.id, p));
+  return Array.from(unique.values()).sort((a, b) => {
+    const aTime = a.updatedAt?.toMillis?.() || 0;
+    const bTime = b.updatedAt?.toMillis?.() || 0;
+    return bTime - aTime;
+  });
 }
 
 export function subscribeToProjects(
@@ -143,8 +182,34 @@ export function subscribeToProjects(
     );
   }
 
+  // Seed the list from the server first. This prevents deleted/ghost projects
+  // from appearing because Firestore offline persistence still has them cached.
+  getDocsFromServer(queries[0])
+    .then((ownedSnap) => {
+      const owned = ownedSnap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<Project, "id">),
+      }));
+      if (queries.length === 1) {
+        callback(mergeAndSortProjects([owned]));
+        return;
+      }
+      return getDocsFromServer(queries[1]).then((sharedSnap) => {
+        const shared = sharedSnap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<Project, "id">),
+        }));
+        callback(mergeAndSortProjects([owned, shared]));
+      });
+    })
+    .catch((error) => {
+      console.warn(
+        "[subscribeToProjects] server seed failed, falling back to snapshot:",
+        error
+      );
+    });
+
   const snapshots: Project[][] = [];
-  let results: Project[] = [];
 
   const unsubscribes = queries.map((q, index) =>
     onSnapshot(
@@ -160,23 +225,15 @@ export function subscribeToProjects(
           ...(d.data() as Omit<Project, "id">),
         }));
         snapshots[index] = projects;
-        results = snapshots.flat().filter(Boolean);
-
-        const unique = new Map<string, Project>();
-        results.forEach((p) => unique.set(p.id, p));
-
-        callback(
-          Array.from(unique.values()).sort((a, b) => {
-            const aTime = a.updatedAt?.toMillis?.() || 0;
-            const bTime = b.updatedAt?.toMillis?.() || 0;
-            return bTime - aTime;
-          })
-        );
+        callback(mergeAndSortProjects(snapshots));
       },
       (error) => {
-        console.error(`[subscribeToProjects] query ${index} onSnapshot error:`, error);
+        console.error(
+          `[subscribeToProjects] query ${index} onSnapshot error:`,
+          error
+        );
         snapshots[index] = [];
-        callback([]);
+        callback(mergeAndSortProjects(snapshots));
       }
     )
   );
@@ -229,8 +286,24 @@ export async function getProjectsForUser(
 
 export async function getProjectById(projectId: string): Promise<Project | null> {
   const snap = await getDoc(doc(db, "projects", projectId));
-  if (!snap.exists) return null;
+  if (!snap.exists()) return null;
   return { id: snap.id, ...(snap.data() as Omit<Project, "id">) };
+}
+
+export async function getProjectByIdFromServer(
+  projectId: string
+): Promise<Project | null> {
+  try {
+    const snap = await getDocFromServer(doc(db, "projects", projectId));
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...(snap.data() as Omit<Project, "id">) };
+  } catch (error) {
+    console.warn(
+      `[getProjectByIdFromServer] kunne ikke hente ${projectId} fra server:`,
+      error
+    );
+    return null;
+  }
 }
 
 export async function updateProject(
@@ -260,11 +333,39 @@ export async function updateProject(
 }
 
 export async function deleteProject(projectId: string): Promise<void> {
-  const fn = httpsCallable<{ projectId: string }, { success: boolean }>(
-    getFunctions(),
-    "deleteProject"
-  );
-  await fn({ projectId });
+  const user = getAuth().currentUser;
+  if (!user?.uid) {
+    throw new Error("Du skal være logget ind for at slette et projekt.");
+  }
+
+  // Project deletion requires a network connection and is performed exclusively
+  // via the Cloud Function. TC-B9.6 explicitly forbids a client-side cascade
+  // fallback.
+  await waitForNetwork(5000, "Sletning af projekt");
+
+  try {
+    const { functions } = await import("./firebase");
+    console.log("[deleteProject] functions instance initialized:", !!functions);
+    const fn = httpsCallable<{ projectId: string }, { success: boolean }>(
+      functions,
+      "deleteProject"
+    );
+    console.log("[deleteProject] calling Cloud Function for", projectId);
+    const result = await withTimeout(
+      fn({ projectId }),
+      25000,
+      "Server-sletning af projekt"
+    );
+    console.log("[deleteProject] Cloud Function result", result.data);
+    if (result.data.success) {
+      return;
+    }
+    throw new Error("Cloud Function-sletningen returnerede ikke success.");
+  } catch (error) {
+    console.error("[deleteProject] Cloud Function failed:", error);
+    console.error("[deleteProject] error code:", (error as any)?.code, "message:", (error as any)?.message, "details:", (error as any)?.details);
+    throw error;
+  }
 }
 
 export interface ProjectDeletionStats {
@@ -333,6 +434,7 @@ export async function addProjectMemberByEmail(
   const projectRef = doc(db, "projects", projectId);
   await updateDoc(projectRef, {
     memberEmails: arrayUnion(normalizedEmail),
+    [`roles.${normalizedEmail}`]: role,
     updatedAt: serverTimestamp(),
   });
 

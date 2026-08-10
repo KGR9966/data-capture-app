@@ -63,13 +63,13 @@ async function translateWithGoogle(
 
     const json = (await response.json()) as GoogleTranslateResponse;
     if (!response.ok || json.error) {
-      console.error("[translateWithGoogle] API error:", {
+      const errorMessage = json.error?.message || `HTTP ${response.status}`;
+      console.error("[translateWithGoogle] API error", {
+        message: errorMessage,
         status: response.status,
-        error: json.error,
         targetLang,
         sourceLang,
         textLength: text.length,
-        hasApiKey: !!GOOGLE_API_KEY,
       });
       return null;
     }
@@ -149,9 +149,9 @@ export async function translateText(
     targetLang,
     sourceLang,
     textLength: text.length,
-    hasGoogleApiKey: !!GOOGLE_API_KEY,
+    googleApiKeyPresent: !!GOOGLE_API_KEY,
   });
-  throw new Error("Oversættelse kunne ikke gennemføres. Tjek netværk og API-nøgle.");
+  throw new Error("Oversættelse kunne ikke gennemføres. Tjek netværk, API-nøgle og målsprog.");
 }
 
 export function getLanguageLabel(code: string): string {

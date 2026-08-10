@@ -41,5 +41,7 @@ yarn-error.*
 /ios
 /android
 
-# Firebase admin credentials (never commit)
+# Firebase config files containing API keys (must be injected at build time)
 .firebase/
+google-services.json
+GoogleService-Info.plist

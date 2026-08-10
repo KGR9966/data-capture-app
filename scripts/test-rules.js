@@ -32,6 +32,7 @@ async function setup() {
   contexts.editor = env.authenticatedContext("user_editor", { email: "editor@example.com" });
   contexts.viewer = env.authenticatedContext("user_viewer", { email: "viewer@example.com" });
   contexts.emailEditor = env.authenticatedContext("email_editor", { email: "email_editor@example.com" });
+  contexts.emailAdmin = env.authenticatedContext("email_admin", { email: "email_admin@example.com" });
   contexts.nonMember = env.authenticatedContext("user_non_member", { email: "nonmember@example.com" });
   contexts.other = env.authenticatedContext("user_other", { email: "other@example.com" });
 }
@@ -47,9 +48,12 @@ async function seedData() {
       user_admin: "admin",
       user_editor: "editor",
       user_viewer: "viewer",
+      email_admin: "admin",
+      email_editor: "editor",
     },
     memberEmails: {
       "email_editor@example.com": true,
+      "email_admin@example.com": true,
     },
     name: "Project A",
   });
@@ -157,6 +161,88 @@ async function runCase(id, fn) {
 
 async function main() {
   await setup();
+
+  // ─────────────────────────────────────────────────────────────
+  // Projects: /projects/{projectId}
+  // ─────────────────────────────────────────────────────────────
+
+  await runCase("P-L-1", async () => {
+    await expectAllow(getDoc(doc(db("owner"), "projects", "projectA")));
+  });
+  await runCase("P-L-2", async () => {
+    await expectAllow(getDoc(doc(db("admin"), "projects", "projectA")));
+  });
+  await runCase("P-L-3", async () => {
+    await expectDeny(getDoc(doc(db("nonMember"), "projects", "projectA")));
+  });
+
+  await runCase("P-UP-1", async () => {
+    await expectAllow(
+      updateDoc(doc(db("owner"), "projects", "projectA"), { name: "Renamed by owner" })
+    );
+  });
+  await runCase("P-UP-2", async () => {
+    await expectAllow(
+      updateDoc(doc(db("admin"), "projects", "projectA"), { name: "Renamed by admin" })
+    );
+  });
+  await runCase("P-UP-3", async () => {
+    await expectDeny(
+      updateDoc(doc(db("editor"), "projects", "projectA"), { name: "Hacked" })
+    );
+  });
+  await runCase("P-UP-4", async () => {
+    // Admin må ikke ændre ownerId.
+    await expectDeny(
+      updateDoc(doc(db("admin"), "projects", "projectA"), { ownerId: "user_admin" })
+    );
+  });
+  await runCase("P-UP-5", async () => {
+    // Owner må ikke ændre ownerId (kun for at forhindre utilsigtet overdragelse).
+    await expectDeny(
+      updateDoc(doc(db("owner"), "projects", "projectA"), { ownerId: "user_admin" })
+    );
+  });
+  await runCase("P-UP-6", async () => {
+    // Admin må ikke tildele sig selv owner-rolle.
+    await expectDeny(
+      updateDoc(doc(db("admin"), "projects", "projectA"), {
+        roles: { user_admin: "owner" },
+      })
+    );
+  });
+  await runCase("P-UP-7", async () => {
+    // Owner må tildele admin-rolle til andre.
+    await expectAllow(
+      updateDoc(doc(db("owner"), "projects", "projectA"), {
+        roles: { user_editor: "admin" },
+      })
+    );
+  });
+  await runCase("P-UP-8", async () => {
+    // Admin må ændre andres rolle til editor (nedgradering).
+    await expectAllow(
+      updateDoc(doc(db("admin"), "projects", "projectA"), {
+        roles: { user_editor: "viewer" },
+      })
+    );
+  });
+  await runCase("P-D-1", async () => {
+    await expectAllow(deleteDoc(doc(db("owner"), "projects", "projectA")));
+  });
+  await runCase("P-D-2", async () => {
+    await expectDeny(deleteDoc(doc(db("admin"), "projects", "projectA")));
+  });
+  await runCase("P-D-3", async () => {
+    // Email-invited admin må ikke slette projekt-dokumentet (kun CF-stien).
+    await expectDeny(deleteDoc(doc(db("emailAdmin"), "projects", "projectA")));
+  });
+  await runCase("P-ROLE-1", async () => {
+    // Email-invited admin får admin-rettigheder på projekt-scoped checklist.
+    await expectAllow(
+      updateDoc(doc(db("emailAdmin"), "projects", "projectA", "checklists", "checklist1"), { name: "Updated by email admin" })
+    );
+  });
 
   // ─────────────────────────────────────────────────────────────
   // Items: /projects/{projectId}/items/{itemId}

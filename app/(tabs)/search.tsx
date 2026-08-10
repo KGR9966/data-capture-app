@@ -239,9 +239,45 @@ export default function SearchScreen() {
     return availableProjects.some((p) => p.id === selectedProjectId);
   }, [selectedProjectId, availableProjects]);
 
+  function suggestListName(items: CaptureItem[], rawQuery: string): string {
+    const trimmedQuery = rawQuery.trim();
+    if (!trimmedQuery) return "Aktionsliste";
+
+    // Prioritér længste fælles prefix blandt titler (normaliseret).
+    const titles = items.map((i) => i.title).filter(Boolean) as string[];
+    if (titles.length > 0) {
+      const normalize = (s: string) =>
+        s.toLowerCase().replace(/[æ]/g, "ae").replace(/[ø]/g, "oe").replace(/[å]/g, "aa").replace(/[^a-z0-9]+/g, " ");
+      const normalizedTitles = titles.map(normalize);
+      let prefix = normalizedTitles[0];
+      for (const t of normalizedTitles.slice(1)) {
+        while (!t.startsWith(prefix) && prefix.length > 0) {
+          prefix = prefix.slice(0, -1).trim();
+        }
+      }
+      const cleanPrefix = prefix.replace(/\s+/g, " ").trim();
+      if (cleanPrefix.length >= 3) {
+        return cleanPrefix.charAt(0).toUpperCase() + cleanPrefix.slice(1);
+      }
+    }
+
+    // Hvis titlerne ikke deler et godt prefix, men alle deler samme kategori, brug den.
+    const categories = new Set(items.map((i) => i.category).filter(Boolean));
+    if (categories.size === 1) {
+      const category = Array.from(categories)[0];
+      if (category) return category;
+    }
+
+    // Fallback til selve søgestrengen.
+    return trimmedQuery.charAt(0).toUpperCase() + trimmedQuery.slice(1);
+  }
+
   const openConfigModal = () => {
     if (results.length === 0) return;
-    setListName(`Søgning: ${query.trim() || "alle resultater"}`);
+    const projectItems = selectedProjectId
+      ? results.filter((i) => i.projectId === selectedProjectId)
+      : results;
+    setListName(suggestListName(projectItems, query));
     // Forvalg: første projekt med resultater som brugeren kan oprette i.
     setSelectedProjectId((prev) => {
       if (availableProjects.length === 1) return availableProjects[0].id;
@@ -305,7 +341,8 @@ export default function SearchScreen() {
         }
       );
       setConfigVisible(false);
-      router.push(`/checklist?id=${checklist.id}` as any);
+      const projectIdParam = checklist.projectId ? `&projectId=${encodeURIComponent(checklist.projectId)}` : "";
+      router.push(`/checklist?id=${checklist.id}${projectIdParam}` as any);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Kunne ikke oprette den dynamiske liste.";
@@ -491,29 +528,42 @@ export default function SearchScreen() {
 
               {availableProjects.length > 0 ? (
                 <>
-                  <Text style={styles.modalLabel}>Projekt</Text>
+                  <Text style={styles.modalLabel}>Gem listen under projekt</Text>
+                  <Text style={styles.modalHelp}>
+                    Vælg det projekt listen skal tilhøre. Kun projekter med søgeresultater vises.
+                  </Text>
                   <View style={styles.projectList}>
                     {availableProjects.map((project) => {
                       const count = projectResultCounts[project.id] || 0;
+                      const selected = selectedProjectId === project.id;
                       return (
                         <TouchableOpacity
                           key={project.id}
                           style={[
                             styles.projectOption,
-                            selectedProjectId === project.id && styles.projectOptionActive,
+                            selected && styles.projectOptionActive,
                           ]}
                           onPress={() => setSelectedProjectId(project.id)}
                           activeOpacity={0.7}
+                          accessibilityRole="radio"
+                          accessibilityState={{ selected }}
                         >
-                          <Text
-                            style={[
-                              styles.projectOptionText,
-                              selectedProjectId === project.id && styles.projectOptionTextActive,
-                            ]}
-                          >
-                            {project.name}
-                          </Text>
-                          <Text style={styles.projectOptionHint}>{count} resultat{count === 1 ? "" : "er"}</Text>
+                          <View style={styles.projectOptionRow}>
+                            <View style={[styles.radioOuter, selected && styles.radioOuterActive]}>
+                              {selected ? <View style={styles.radioInner} /> : null}
+                            </View>
+                            <View style={styles.projectOptionTextBlock}>
+                              <Text
+                                style={[
+                                  styles.projectOptionText,
+                                  selected && styles.projectOptionTextActive,
+                                ]}
+                              >
+                                {project.name}
+                              </Text>
+                              <Text style={styles.projectOptionHint}>{count} resultat{count === 1 ? "" : "er"}</Text>
+                            </View>
+                          </View>
                         </TouchableOpacity>
                       );
                     })}
@@ -857,6 +907,38 @@ const themedStyles = (isDark: boolean) =>
     },
     projectOptionTextDisabled: {
       color: isDark ? "#94a3b8" : "#64748b",
+    },
+    modalHelp: {
+      fontSize: 12,
+      color: isDark ? "#94a3b8" : "#64748b",
+      marginTop: -4,
+      marginBottom: 8,
+    },
+    projectOptionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    projectOptionTextBlock: {
+      flex: 1,
+    },
+    radioOuter: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      borderWidth: 2,
+      borderColor: isDark ? "#94a3b8" : "#64748b",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    radioOuterActive: {
+      borderColor: "#0f172a",
+    },
+    radioInner: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: "#0f172a",
     },
     projectOptionHint: {
       fontSize: 12,

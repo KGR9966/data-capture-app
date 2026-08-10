@@ -206,6 +206,14 @@ function tokenize(raw: string): Token[] {
       }
     }
 
+    // Danish/English AND filler: "og" / "and" should not be treated as a required word.
+    const lowerWordPeek = remaining.split(/\s+/, 1)[0]?.toLowerCase();
+    if (lowerWordPeek === "og" || lowerWordPeek === "and") {
+      const { rest } = readWord(remaining);
+      remaining = rest;
+      continue;
+    }
+
     // Plain word: read until whitespace. Preserve every char including & / - , . etc.
     const { value, rest } = readWord(remaining);
     const cleaned = value.replace(/^\*+|\*+$/g, "");

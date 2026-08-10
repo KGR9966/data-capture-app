@@ -16,15 +16,15 @@ npm install --legacy-peer-deps
 5. Kopier `apiKey`, `authDomain`, `projectId`, `storageBucket`, `messagingSenderId` og `appId`.
 6. Opret filen `.env` i projektroden ud fra `.env.example` og indsæt værdierne.
 
-Eksempel:
+Eksempel (erstat `your_*` værdierne med dine egne Firebase-projektindstillinger):
 
 ```env
-EXPO_PUBLIC_FIREBASE_API_KEY=AIza...
-EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=data-capture-123.firebaseapp.com
-EXPO_PUBLIC_FIREBASE_PROJECT_ID=data-capture-123
-EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=data-capture-123.firebasestorage.app
-EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789
-EXPO_PUBLIC_FIREBASE_APP_ID=1:123456789:ios:abc123
+EXPO_PUBLIC_FIREBASE_API_KEY=your_api_key_here
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project_id.firebaseapp.com
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project_id.firebasestorage.app
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
 ```
 
 ## 3. Firestore regler (test)

@@ -4,10 +4,12 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
+  Modal,
   RefreshControl,
-  SectionList,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -17,6 +19,7 @@ import { useProject } from "../../contexts/ProjectContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
   Checklist,
+  createChecklist,
   subscribeToChecklists,
   subscribeToProjectChecklists,
 } from "../../services/checklists";
@@ -52,6 +55,10 @@ export default function ChecklistsScreen() {
   const [online, setOnline] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [activeTab, setActiveTab] = useState<"project" | "personal">("project");
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [newListName, setNewListName] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const projectChecklists = activeProject?.id
     ? projectChecklistsById[activeProject.id] || []
@@ -138,7 +145,7 @@ export default function ChecklistsScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            await deleteChecklistAndClearCache(checklist.id, user.uid);
+            await deleteChecklistAndClearCache(checklist, user.uid);
             await refreshPendingCount();
           } catch (error) {
             console.log("Delete checklist error", error);
@@ -147,6 +154,36 @@ export default function ChecklistsScreen() {
         },
       },
     ]);
+  };
+
+  const openCreateModal = () => {
+    setNewListName("");
+    setCreateModalVisible(true);
+  };
+
+  const closeCreateModal = () => {
+    setCreateModalVisible(false);
+    setNewListName("");
+  };
+
+  const handleCreatePersonal = async () => {
+    if (!user?.uid) return;
+    const trimmed = newListName.trim();
+    if (!trimmed) {
+      Alert.alert("Navn mangler", "Angiv et navn til listen.");
+      return;
+    }
+    setCreating(true);
+    try {
+      const checklist = await createChecklist(trimmed);
+      closeCreateModal();
+      router.push(`/checklist?id=${checklist.id}&userId=${user.uid}` as any);
+    } catch (error) {
+      console.error("Create personal checklist error", error);
+      Alert.alert("Fejl", "Kunne ikke oprette listen.");
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -164,9 +201,29 @@ export default function ChecklistsScreen() {
             </View>
           ) : null}
         </View>
-        <Text style={styles.subtitle}>
-          Opret lister fra Søg-fanen
-        </Text>
+        <View style={styles.headerActions}>
+          <Text style={styles.subtitle}>
+            Opret lister fra Søg-fanen
+          </Text>
+          <TouchableOpacity style={styles.addButton} onPress={openCreateModal}>
+            <Text style={styles.addButtonText}>+ Ny</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.tabRow}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === "project" && styles.tabActive]}
+          onPress={() => setActiveTab("project")}
+        >
+          <Text style={[styles.tabText, activeTab === "project" && styles.tabTextActive]}>Projekt</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === "personal" && styles.tabActive]}
+          onPress={() => setActiveTab("personal")}
+        >
+          <Text style={[styles.tabText, activeTab === "personal" && styles.tabTextActive]}>Mine / delte</Text>
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -175,27 +232,38 @@ export default function ChecklistsScreen() {
           color={isDark ? "#38bdf8" : "#0284c7"}
           style={{ marginTop: 40 }}
         />
-      ) : projectChecklists.length === 0 && personalChecklists.length === 0 ? (
+      ) : activeTab === "project" && projectChecklists.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>Ingen aktionslister endnu</Text>
+          <Text style={styles.emptyTitle}>Ingen projekt-lister</Text>
           <Text style={styles.emptySubtitle}>
             Gå til Søg-fanen, søg efter noget, og tryk “Opret aktionsliste”.
           </Text>
         </View>
+      ) : activeTab === "personal" && personalChecklists.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyTitle}>Ingen personlige eller delte lister</Text>
+          <Text style={styles.emptySubtitle}>
+            Gå til Søg-fanen og opret en liste uden at vælge projekt.
+          </Text>
+        </View>
       ) : (
-        <SectionList
-          sections={[
-            { title: activeProject?.name ? `Projekt: ${activeProject.name}` : "Projekt", data: projectChecklists },
-            { title: "Personlige / delte", data: personalChecklists },
-          ].filter((section) => section.data.length > 0)}
+        <FlatList
+          data={activeTab === "project" ? projectChecklists : personalChecklists}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
-          renderSectionHeader={({ section }) => (
-            <Text style={styles.sectionHeader}>{section.title}</Text>
-          )}
+          ListEmptyComponent={
+            activeTab === "personal" ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyTitle}>Ingen personlige lister</Text>
+                <TouchableOpacity style={styles.createEmptyButton} onPress={openCreateModal}>
+                  <Text style={styles.createEmptyButtonText}>Opret personlig liste</Text>
+                </TouchableOpacity>
+              </View>
+            ) : undefined
+          }
           renderItem={({ item }) => (
             <TouchableOpacity
               style={[
@@ -204,7 +272,9 @@ export default function ChecklistsScreen() {
               ]}
               onPress={() => {
                 if (item.projectId) {
-                  router.push(`/checklist?id=${item.id}` as any);
+                  router.push(
+                    `/checklist?id=${item.id}&projectId=${encodeURIComponent(item.projectId)}` as any
+                  );
                 } else {
                   router.push(
                     `/checklist?id=${item.id}&userId=${item.ownerId || user?.uid}` as any
@@ -229,16 +299,44 @@ export default function ChecklistsScreen() {
               </Text>
             </TouchableOpacity>
           )}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>Ingen aktionslister endnu</Text>
-              <Text style={styles.emptySubtitle}>
-                Gå til Søg-fanen, søg efter noget, og tryk “Opret aktionsliste”.
-              </Text>
-            </View>
-          }
         />
       )}
+
+      <Modal
+        visible={createModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeCreateModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Ny personlig liste</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={newListName}
+              onChangeText={setNewListName}
+              placeholder="Navn på listen"
+              placeholderTextColor={isDark ? "#94a3b8" : "#64748b"}
+              maxLength={100}
+              autoFocus
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.modalButtonSecondary} onPress={closeCreateModal}>
+                <Text style={styles.modalButtonSecondaryText}>Annuller</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButtonPrimary, creating && styles.buttonDisabled]}
+                onPress={handleCreatePersonal}
+                disabled={creating}
+              >
+                <Text style={styles.modalButtonPrimaryText}>
+                  {creating ? "Opretter..." : "Opret"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -258,6 +356,35 @@ const themedStyles = (isDark: boolean) =>
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
+    },
+    headerActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: 2,
+    },
+    addButton: {
+      backgroundColor: "#38bdf8",
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    addButtonText: {
+      color: "#0f172a",
+      fontWeight: "700",
+      fontSize: 13,
+    },
+    createEmptyButton: {
+      marginTop: 12,
+      backgroundColor: "#38bdf8",
+      borderRadius: 10,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+    },
+    createEmptyButtonText: {
+      color: "#0f172a",
+      fontWeight: "700",
+      fontSize: 14,
     },
     header: {
       fontSize: 28,
@@ -289,7 +416,90 @@ const themedStyles = (isDark: boolean) =>
     subtitle: {
       fontSize: 14,
       color: isDark ? "#94a3b8" : "#64748b",
-      marginTop: 2,
+    },
+    modalOverlay: {
+      flex: 1,
+      justifyContent: "center",
+      backgroundColor: "rgba(0,0,0,0.5)",
+      paddingHorizontal: 24,
+    },
+    modalContent: {
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+      borderRadius: 16,
+      padding: 20,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: isDark ? "#f8fafc" : "#0f172a",
+      marginBottom: 12,
+    },
+    modalInput: {
+      backgroundColor: isDark ? "#0f172a" : "#f8fafc",
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      borderRadius: 10,
+      padding: 12,
+      fontSize: 15,
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+      marginBottom: 16,
+    },
+    modalButtons: {
+      flexDirection: "row",
+      gap: 10,
+    },
+    modalButtonPrimary: {
+      flex: 1,
+      backgroundColor: "#38bdf8",
+      borderRadius: 10,
+      paddingVertical: 12,
+      alignItems: "center",
+    },
+    modalButtonPrimaryText: {
+      color: "#0f172a",
+      fontWeight: "700",
+      fontSize: 15,
+    },
+    modalButtonSecondary: {
+      flex: 1,
+      backgroundColor: isDark ? "#334155" : "#e2e8f0",
+      borderRadius: 10,
+      paddingVertical: 12,
+      alignItems: "center",
+    },
+    modalButtonSecondaryText: {
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      fontWeight: "700",
+      fontSize: 15,
+    },
+    buttonDisabled: {
+      opacity: 0.5,
+    },
+    tabRow: {
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 16,
+    },
+    tab: {
+      flex: 1,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    tabActive: {
+      backgroundColor: "#38bdf8",
+      borderColor: "#38bdf8",
+    },
+    tabText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: isDark ? "#e2e8f0" : "#0f172a",
+    },
+    tabTextActive: {
+      color: "#0f172a",
     },
     sectionHeader: {
       fontSize: 13,

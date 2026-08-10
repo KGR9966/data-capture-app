@@ -71,8 +71,10 @@ function handleResponse(
     }
     router.push(`/item?itemId=${targetId}&projectId=${targetProjectId}` as any);
   } else if (targetType === "checklistItem") {
-    router.push(`/checklist?id=${targetId}` as any);
+    const projectIdParam = targetProjectId ? `&projectId=${encodeURIComponent(targetProjectId)}` : "";
+    router.push(`/checklist?id=${targetId}${projectIdParam}` as any);
   } else if (targetType === "checklist" && targetSubId) {
-    router.push(`/checklist?id=${targetId}` as any);
+    const projectIdParam = targetProjectId ? `&projectId=${encodeURIComponent(targetProjectId)}` : "";
+    router.push(`/checklist?id=${targetId}${projectIdParam}` as any);
   }
 }

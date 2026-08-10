@@ -20,18 +20,27 @@ import {
 
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
+import GeoFenceGuide from "../components/GeoFenceGuide";
+import LocationPicker from "../components/LocationPicker";
 import ReminderModal from "../components/ReminderModal";
 import {
+  addChecklistLocation,
   Checklist,
   ChecklistItem,
+  ChecklistLocation,
+  deleteChecklistLocation,
   findUserByEmail,
   getChecklistById,
   getSeedUserEmail,
   shareChecklist,
   shareChecklistText,
   subscribeToChecklistItems,
+  synchronizeDynamicChecklist,
+  toggleChecklistLocationArrival,
   unshareChecklist,
+  updateChecklistLocation,
 } from "../services/checklists";
+import { subscribeToItems } from "../services/items";
 import {
   compactPendingOps,
   deleteChecklistAndClearCache,
@@ -51,6 +60,19 @@ import {
   subscribeToReminders,
   updateReminder,
 } from "../services/reminders";
+import { scheduleGeofenceNotification, suggestPlacesForChecklist } from "../services/geofence";
+
+function safeGoBack(router: ReturnType<typeof useRouter>) {
+  try {
+    if ("canGoBack" in router && typeof router.canGoBack === "function" && router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/checklists");
+    }
+  } catch {
+    router.replace("/checklists");
+  }
+}
 
 function formatDate(ts: any) {
   if (!ts) return "";
@@ -65,7 +87,7 @@ function formatDate(ts: any) {
 }
 
 export default function ChecklistDetailScreen() {
-  const { id, userId } = useLocalSearchParams();
+  const { id, userId, projectId, geofence, event, locationId } = useLocalSearchParams();
   const router = useRouter();
   const { user } = useAuth();
   const { theme } = useTheme();
@@ -84,8 +106,16 @@ export default function ChecklistDetailScreen() {
   const [shareRole, setShareRole] = useState<"editor" | "viewer">("editor");
   const [shareLoading, setShareLoading] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [locationPickerVisible, setLocationPickerVisible] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<ChecklistLocation | null>(null);
+  const [guideLocation, setGuideLocation] = useState<ChecklistLocation | null>(null);
+  const [geofenceBanner, setGeofenceBanner] = useState<{ name: string; event: "arrival" | "departure" } | null>(null);
   const checklistId = typeof id === "string" ? id : undefined;
   const ownerIdParam = typeof userId === "string" ? userId : undefined;
+  const projectIdParam = typeof projectId === "string" ? projectId : undefined;
+  const geofenceParam = typeof geofence === "string" ? geofence : undefined;
+  const eventParam = typeof event === "string" ? event : undefined;
+  const locationIdParam = typeof locationId === "string" ? locationId : undefined;
   const pendingOpsRef = React.useRef<PendingOp[]>(pendingOps);
 
   const isDark = theme === "dark";
@@ -142,6 +172,7 @@ export default function ChecklistDetailScreen() {
     if (!checklistId) return;
     let unsubscribeItems: (() => void) | undefined;
     let unsubscribeReminders: (() => void) | undefined;
+    let unsubscribeProjectItems: (() => void) | undefined;
 
     const loadCachedAndServer = async () => {
       const cached = await loadCachedItems(checklistId);
@@ -153,7 +184,7 @@ export default function ChecklistDetailScreen() {
       try {
         const data = await getChecklistById(
           checklistId,
-          undefined,
+          projectIdParam,
           ownerIdParam || user?.uid
         );
         setChecklist(data);
@@ -168,6 +199,14 @@ export default function ChecklistDetailScreen() {
             data.projectId,
             data.ownerId || ownerIdParam || user?.uid
           );
+
+          if (data.isDynamic && data.projectId) {
+            unsubscribeProjectItems = subscribeToItems(data.projectId, (projectItems) => {
+              synchronizeDynamicChecklist(data, projectItems).catch((error) => {
+                console.error("[checklist] dynamic sync error:", error);
+              });
+            });
+          }
         }
       } catch {
       } finally {
@@ -176,6 +215,21 @@ export default function ChecklistDetailScreen() {
     };
 
     loadCachedAndServer();
+
+    const checkGeofenceEvent = () => {
+      if (geofenceParam !== "true" || !locationIdParam || !checklistId) return;
+      const data = checklist;
+      if (!data) return;
+      const location = (data.locations || []).find((loc) => loc.id === locationIdParam);
+      if (location) {
+        setGeofenceBanner({
+          name: location.name,
+          event: eventParam === "departure" ? "departure" : "arrival",
+        });
+      }
+    };
+
+    checkGeofenceEvent();
 
     if (user?.uid) {
       unsubscribeReminders = subscribeToReminders(user.uid, (all) => {
@@ -199,8 +253,31 @@ export default function ChecklistDetailScreen() {
     return () => {
       if (unsubscribeItems) unsubscribeItems();
       if (unsubscribeReminders) unsubscribeReminders();
+      if (unsubscribeProjectItems) unsubscribeProjectItems();
     };
-  }, [checklistId, ownerIdParam, user?.uid]);
+  }, [
+    checklistId,
+    ownerIdParam,
+    projectIdParam,
+    user?.uid,
+    geofenceParam,
+    eventParam,
+    locationIdParam,
+  ]);
+
+  const openItemCount = useMemo(
+    () => items.filter((i) => !i.isCompleted).length,
+    [items]
+  );
+
+  useEffect(() => {
+    if (!geofenceBanner) return;
+    scheduleGeofenceNotification(
+      geofenceBanner.name,
+      openItemCount,
+      geofenceBanner.event
+    ).catch(() => {});
+  }, [geofenceBanner, openItemCount]);
 
   const openItems = useMemo(
     () =>
@@ -230,6 +307,16 @@ export default function ChecklistDetailScreen() {
   const canManageSharing = useMemo(
     () => !!checklist && !checklist.projectId && checklist.ownerId === user?.uid,
     [checklist, user?.uid]
+  );
+
+  const canManageLocations = useMemo(
+    () => !!checklist && checklist.ownerId === user?.uid,
+    [checklist, user?.uid]
+  );
+
+  const suggestedPlaces = useMemo(
+    () => (checklist ? suggestPlacesForChecklist(checklist.name, items.map((i) => i.title)) : []),
+    [checklist, items]
   );
 
   const refreshChecklist = async () => {
@@ -372,8 +459,8 @@ export default function ChecklistDetailScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              await deleteChecklistAndClearCache(checklist.id, user.uid);
-              router.back();
+              await deleteChecklistAndClearCache(checklist, user.uid);
+              safeGoBack(router);
             } catch {
               Alert.alert("Fejl", "Kunne ikke slette listen.");
             }
@@ -424,6 +511,7 @@ export default function ChecklistDetailScreen() {
           userId: user.uid,
           targetType: "checklistItem",
           targetId: checklistId,
+          targetProjectId: checklist.projectId,
           targetSubId: reminderTargetItem.id,
           title: reminderTargetItem.title || "Listepunkt",
           ...payload,
@@ -452,6 +540,95 @@ export default function ChecklistDetailScreen() {
     }
   };
 
+  const openLocationPicker = (location?: ChecklistLocation) => {
+    setEditingLocation(location || null);
+    setLocationPickerVisible(true);
+  };
+
+  const closeLocationPicker = () => {
+    setLocationPickerVisible(false);
+    setEditingLocation(null);
+  };
+
+  const handleSaveLocation = async (
+    payload: Omit<ChecklistLocation, "id" | "createdAt" | "updatedAt">
+  ) => {
+    if (!checklist || !user?.uid) return;
+    try {
+      if (editingLocation) {
+        await updateChecklistLocation(
+          checklist.id,
+          editingLocation.id,
+          payload,
+          checklist.projectId,
+          checklist.ownerId
+        );
+      } else {
+        await addChecklistLocation(
+          checklist.id,
+          payload,
+          checklist.projectId,
+          checklist.ownerId
+        );
+      }
+      await refreshChecklist();
+      closeLocationPicker();
+    } catch {
+      Alert.alert("Fejl", "Kunne ikke gemme stedet.");
+    }
+  };
+
+  const handleDeleteLocation = async (locationId: string) => {
+    if (!checklist) return;
+    Alert.alert("Slet sted", "Er du sikker på, at du vil slette dette sted?", [
+      { text: "Annuller", style: "cancel" },
+      {
+        text: "Slet",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteChecklistLocation(
+              checklist.id,
+              locationId,
+              checklist.projectId,
+              checklist.ownerId
+            );
+            await refreshChecklist();
+          } catch {
+            Alert.alert("Fejl", "Kunne ikke slette stedet.");
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleToggleLocation = async (locationId: string) => {
+    if (!checklist || !user?.uid) return;
+    try {
+      await toggleChecklistLocationArrival(
+        checklist.id,
+        locationId,
+        checklist.projectId,
+        checklist.ownerId
+      );
+      await refreshChecklist();
+    } catch {
+      Alert.alert("Fejl", "Kunne ikke ændre indstilling.");
+    }
+  };
+
+  const openGuide = (location: ChecklistLocation) => {
+    setGuideLocation(location);
+  };
+
+  const closeGuide = () => {
+    setGuideLocation(null);
+  };
+
+  const dismissGeofenceBanner = () => {
+    setGeofenceBanner(null);
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -464,7 +641,10 @@ export default function ChecklistDetailScreen() {
     return (
       <View style={styles.container}>
         <Text style={styles.notFound}>Listen blev ikke fundet.</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => safeGoBack(router)}
+        >
           <Text style={styles.backButtonText}>Tilbage</Text>
         </TouchableOpacity>
       </View>
@@ -479,7 +659,7 @@ export default function ChecklistDetailScreen() {
     >
       <View style={styles.container}>
         <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => safeGoBack(router)}>
             <Text style={styles.backText}>← Tilbage</Text>
           </TouchableOpacity>
           <View style={styles.headerActions}>
@@ -529,6 +709,22 @@ export default function ChecklistDetailScreen() {
           {checklist.syncStatusToSource !== false ? " · status synkroniseres til sagen" : ""}
         </Text>
 
+        {geofenceBanner ? (
+          <View style={styles.geofenceBanner}>
+            <Text style={styles.geofenceBannerText}>
+              {geofenceBanner.event === "departure"
+                ? `Du forlader ${geofenceBanner.name}`
+                : `Du er tæt på ${geofenceBanner.name}`}
+              {openItems.length > 0
+                ? ` — ${openItems.length} punkt${openItems.length === 1 ? "" : "er"} venter`
+                : " — Alt er klaret 🎉"}
+            </Text>
+            <TouchableOpacity onPress={dismissGeofenceBanner}>
+              <Ionicons name="close-outline" size={18} color={isDark ? "#f8fafc" : "#0f172a"} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {canManageSharing ? (
           <View style={styles.shareSection}>
             <Text style={styles.shareSectionTitle}>Delt med</Text>
@@ -559,6 +755,104 @@ export default function ChecklistDetailScreen() {
                     >
                       <Text style={styles.removeRecipientText}>Fjern</Text>
                     </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        ) : null}
+
+        {canManageLocations ? (
+          <View style={styles.shareSection}>
+            <View style={styles.locationSectionHeader}>
+              <Text style={styles.shareSectionTitle}>Steder</Text>
+              <TouchableOpacity
+                style={styles.addLocationButton}
+                onPress={() => openLocationPicker()}
+                disabled={!online}
+              >
+                <Text style={styles.addLocationButtonText}>+ Tilføj</Text>
+              </TouchableOpacity>
+            </View>
+
+            {suggestedPlaces.length > 0 && (checklist.locations || []).length === 0 ? (
+              <View style={styles.suggestionRow}>
+                {suggestedPlaces.slice(0, 3).map((place) => (
+                  <TouchableOpacity
+                    key={place.name}
+                    style={styles.suggestionChip}
+                    onPress={() =>
+                      openLocationPicker({
+                        id: "suggested",
+                        name: place.name,
+                        latitude: 0,
+                        longitude: 0,
+                        radiusMeters: 500,
+                        notifyOnArrival: true,
+                      })
+                    }
+                    disabled={!online}
+                  >
+                    <Text style={styles.suggestionChipText}>{place.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
+
+            {(checklist.locations || []).length === 0 ? (
+              <Text style={styles.shareSectionHint}>
+                Ingen steder tilknyttet. Tilføj et sted for at få påmindelser via Shortcuts eller Automate.
+              </Text>
+            ) : (
+              <View style={styles.recipientList}>
+                {(checklist.locations || []).map((location) => (
+                  <View key={location.id} style={styles.recipientRow}>
+                    <View style={styles.recipientInfo}>
+                      <Text style={styles.recipientEmail} numberOfLines={1}>
+                        {location.name}
+                      </Text>
+                      <Text style={styles.recipientRole}>
+                        {location.radiusMeters >= 1000
+                          ? `${location.radiusMeters / 1000} km`
+                          : `${location.radiusMeters} m`}
+                        {" "}
+                        · {location.notifyOnArrival ? "Aktiv" : "Inaktiv"}
+                      </Text>
+                    </View>
+                    <View style={styles.locationActions}>
+                      <TouchableOpacity
+                        style={styles.locationActionButton}
+                        onPress={() => handleToggleLocation(location.id)}
+                        disabled={!online}
+                      >
+                        <Ionicons
+                          name={location.notifyOnArrival ? "notifications" : "notifications-off-outline"}
+                          size={18}
+                          color={isDark ? "#38bdf8" : "#0284c7"}
+                        />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.locationActionButton}
+                        onPress={() => openGuide(location)}
+                        disabled={!online}
+                      >
+                        <Ionicons name="share-outline" size={18} color={isDark ? "#38bdf8" : "#0284c7"} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.locationActionButton}
+                        onPress={() => openLocationPicker(location)}
+                        disabled={!online}
+                      >
+                        <Ionicons name="create-outline" size={18} color={isDark ? "#38bdf8" : "#0284c7"} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.removeRecipientButton}
+                        onPress={() => handleDeleteLocation(location.id)}
+                        disabled={!online}
+                      >
+                        <Text style={styles.removeRecipientText}>Slet</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ))}
               </View>
@@ -642,15 +936,20 @@ export default function ChecklistDetailScreen() {
                     {item.isPending ? (
                       <Text style={styles.pendingLabel}>Afventer synkronisering</Text>
                     ) : null}
+                    {item.isStale ? (
+                      <Text style={styles.staleLabel}>{item.staleNote || "Sagen findes ikke længere"}</Text>
+                    ) : null}
                     <TouchableOpacity
                       onPress={() =>
                         router.push(
                           `/item?itemId=${item.sourceItemId}&projectId=${item.sourceProjectId}` as any
                         )
                       }
-                      disabled={!item.sourceProjectId}
+                      disabled={!item.sourceProjectId || item.isStale}
                     >
-                      <Text style={styles.sourceLink}>Åbn sag →</Text>
+                      <Text style={[styles.sourceLink, item.isStale && styles.staleSourceLink]}>
+                        {item.isStale ? "Sag utilgængelig" : "Åbn sag →"}
+                      </Text>
                     </TouchableOpacity>
                     {item.isCompleted ? (
                       <Text style={styles.completedMeta}>
@@ -779,6 +1078,32 @@ export default function ChecklistDetailScreen() {
           }}
           onSave={handleSaveReminder}
           onDelete={existingChecklistItemReminder ? handleDeleteReminder : undefined}
+        />
+      ) : null}
+
+      <LocationPicker
+        visible={locationPickerVisible}
+        existingLocation={editingLocation}
+        onClose={closeLocationPicker}
+        onSave={handleSaveLocation}
+        onDelete={
+          editingLocation
+            ? () => {
+                handleDeleteLocation(editingLocation.id);
+                closeLocationPicker();
+              }
+            : undefined
+        }
+      />
+
+      {guideLocation && checklist ? (
+        <GeoFenceGuide
+          visible
+          checklistId={checklist.id}
+          ownerId={checklist.ownerId}
+          location={guideLocation}
+          projectId={checklist.projectId}
+          onClose={closeGuide}
         />
       ) : null}
     </KeyboardAvoidingView>
@@ -958,9 +1283,19 @@ const themedStyles = (isDark: boolean) =>
       fontWeight: "600",
       marginTop: 2,
     },
+    staleSourceLink: {
+      color: isDark ? "#94a3b8" : "#64748b",
+      fontWeight: "400",
+    },
+    staleLabel: {
+      fontSize: 11,
+      color: isDark ? "#f87171" : "#dc2626",
+      marginBottom: 4,
+    },
     completedMeta: {
       fontSize: 11,
-      color: "#34d399",
+      color: isDark ? "#4ade80" : "#15803d",
+      fontWeight: "600",
       marginTop: 4,
     },
     notFound: {
@@ -1037,6 +1372,70 @@ const themedStyles = (isDark: boolean) =>
       color: isDark ? "#fca5a5" : "#ef4444",
       fontWeight: "600",
       fontSize: 12,
+    },
+    geofenceBanner: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      backgroundColor: isDark ? "#14532d" : "#dcfce7",
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      marginBottom: 12,
+      gap: 8,
+      borderWidth: 1,
+      borderColor: isDark ? "#22c55e" : "#86efac",
+    },
+    geofenceBannerText: {
+      flex: 1,
+      fontSize: 14,
+      fontWeight: "600",
+      color: isDark ? "#86efac" : "#15803d",
+    },
+    locationSectionHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 8,
+    },
+    addLocationButton: {
+      backgroundColor: "#38bdf8",
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    addLocationButtonText: {
+      color: "#0f172a",
+      fontWeight: "700",
+      fontSize: 12,
+    },
+    suggestionRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 12,
+    },
+    suggestionChip: {
+      backgroundColor: isDark ? "#0f172a" : "#f1f5f9",
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+    },
+    suggestionChipText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: isDark ? "#e2e8f0" : "#0f172a",
+    },
+    locationActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    locationActionButton: {
+      padding: 6,
+      borderRadius: 6,
     },
     modalOverlay: {
       flex: 1,

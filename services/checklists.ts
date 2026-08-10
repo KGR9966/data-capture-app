@@ -46,6 +46,18 @@ const SEED_UID_TO_EMAIL: Record<string, string> = Object.fromEntries(
 export type ChecklistSortBy = "alphabetical" | "date" | "priority";
 export type SourceField = "title" | "content" | "category";
 
+export interface ChecklistLocation {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  notifyOnArrival: boolean;
+  notifyOnDeparture?: boolean;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
 export interface Checklist {
   id: string;
   name: string;
@@ -61,6 +73,7 @@ export interface Checklist {
   hasNewMatches?: boolean;
   deletedItemKeys?: string[];
   lastViewedAt?: any;
+  locations?: ChecklistLocation[];
   createdAt?: any;
   updatedAt?: any;
 }
@@ -145,6 +158,39 @@ function stripUndefined(obj: Record<string, unknown>): Record<string, unknown> {
   );
 }
 
+function cleanLocationForFirestore(
+  loc: ChecklistLocation | Record<string, unknown>
+): ChecklistLocation {
+  // Firestore rejects undefined values inside array elements, so strip them.
+  const cleaned = stripUndefined(loc as Record<string, unknown>) as Record<string, unknown>;
+  // Ensure numeric coordinates are real finite numbers.
+  const latitude =
+    typeof cleaned.latitude === "string"
+      ? parseFloat(cleaned.latitude)
+      : Number(cleaned.latitude);
+  const longitude =
+    typeof cleaned.longitude === "string"
+      ? parseFloat(cleaned.longitude)
+      : Number(cleaned.longitude);
+  const radiusMeters =
+    typeof cleaned.radiusMeters === "string"
+      ? parseFloat(cleaned.radiusMeters)
+      : Number(cleaned.radiusMeters);
+
+  return {
+    id: String(cleaned.id),
+    name: String(cleaned.name),
+    latitude,
+    longitude,
+    radiusMeters,
+    notifyOnArrival: Boolean(cleaned.notifyOnArrival),
+    notifyOnDeparture:
+      cleaned.notifyOnDeparture === undefined ? undefined : Boolean(cleaned.notifyOnDeparture),
+    createdAt: cleaned.createdAt,
+    updatedAt: cleaned.updatedAt,
+  };
+}
+
 function prepareUpdateFields(
   updates: Record<string, unknown>
 ): Record<string, unknown> {
@@ -193,6 +239,38 @@ function statusToPriority(status?: string): number {
   }
 }
 
+function splitEnumeration(text: string): string[] {
+  const separator = /[,;]|\s+og\s+|\s+eller\s+/i;
+  const parts = text
+    .split(separator)
+    .map((p) => p.trim())
+    .filter((p) => p.length >= 2);
+  if (parts.length <= 1) return [text.trim()];
+  return parts;
+}
+
+function splitTextIntoPoints(text: string): string[] {
+  const points: string[] = [];
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^[\s]*[-*•][\s]+/, "").trim())
+    .filter(Boolean);
+  for (const line of lines) {
+    // Split sentences first.
+    const sentences = line.split(/(?<=[.!?])\s+/).filter(Boolean);
+    for (const sentence of sentences) {
+      const trimmed = sentence.trim();
+      if (!trimmed) continue;
+      // For short enumerations (shopping-list style), also split on comma / og / eller.
+      const fragments = splitEnumeration(trimmed);
+      for (const fragment of fragments) {
+        if (fragment) points.push(fragment);
+      }
+    }
+  }
+  return points;
+}
+
 function parseSourceTextIntoPoints(
   text: string,
   sourceItem: CaptureItem,
@@ -201,12 +279,11 @@ function parseSourceTextIntoPoints(
 ): Omit<ChecklistItem, "id" | "checklistId" | "createdAt" | "updatedAt">[] {
   if (!text || !text.trim()) return [];
 
-  const rawLines = text.split(/\r?\n/);
+  const pointTitles = splitTextIntoPoints(text);
   const points: Omit<ChecklistItem, "id" | "checklistId" | "createdAt" | "updatedAt">[] = [];
 
-  for (let i = 0; i < rawLines.length; i++) {
-    const rawLine = rawLines[i];
-    const line = rawLine.replace(/^[\s]*[-*•][\s]+/, "").trim();
+  for (let i = 0; i < pointTitles.length; i++) {
+    const line = pointTitles[i];
     if (!line) continue;
     points.push({
       sourceItemId: sourceItem.id,
@@ -973,30 +1050,42 @@ export async function setChecklistPointCompleted(
   });
 
   const sourceProjectId = point.sourceProjectId || checklist.projectId;
-  if (
+  const hasSourceLink =
     sourceProjectId &&
     point.sourceItemId &&
     point.sourceItemId !== "manual" &&
-    point.sourceCheckpointId
-  ) {
+    point.sourceCheckpointId;
+
+  if (hasSourceLink) {
     const checkpointRef = doc(
       db,
       "projects",
-      sourceProjectId,
+      sourceProjectId as string,
       "items",
-      point.sourceItemId,
+      point.sourceItemId as string,
       "checkpoints",
-      point.sourceCheckpointId
+      point.sourceCheckpointId as string
     );
     batch.update(checkpointRef, {
       status: nextCompleted ? "done" : "new",
       updatedAt: now,
     });
+  } else {
+    console.warn(
+      "[setChecklistPointCompleted] no source checkpoint to sync for point",
+      point.id,
+      "sourceItemId:",
+      point.sourceItemId,
+      "sourceCheckpointId:",
+      point.sourceCheckpointId,
+      "sourceProjectId:",
+      sourceProjectId
+    );
   }
 
   await batch.commit();
 
-  if (point.sourceItemId && point.sourceItemId !== "manual" && sourceProjectId) {
+  if (hasSourceLink) {
     const checkpoints = await getCheckpointsForItem(sourceProjectId, point.sourceItemId);
     if (checkpoints.length > 0) {
       const allDone = checkpoints.every((cp) => cp.status === "done");
@@ -1089,27 +1178,25 @@ export async function synchronizeDynamicChecklist(
   const now = serverTimestamp();
   let newMatchesAdded = false;
 
-  // Mark items whose source no longer matches as stale
+  // Mark items whose source no longer matches or has been deleted as stale.
   for (const [sourceId, itemsForSource] of existingBySource) {
-    if (!matchedSourceIds.has(sourceId)) {
-      for (const item of itemsForSource) {
-        if (!item.isStale) {
-          batch.update(checklistItemRef(checklist.id, item.id, projectId), {
-            isStale: true,
-            staleNote: "Kilden matcher ikke længere søgningen",
-            updatedAt: now,
-          });
-        }
-      }
-    } else {
-      for (const item of itemsForSource) {
-        if (item.isStale) {
-          batch.update(checklistItemRef(checklist.id, item.id, projectId), {
-            isStale: false,
-            staleNote: deleteField(),
-            updatedAt: now,
-          });
-        }
+    const sourceStillExists = matchedSourceIds.has(sourceId);
+    for (const item of itemsForSource) {
+      if (sourceStillExists && !item.isStale) continue;
+      if (!sourceStillExists && item.isStale) continue;
+
+      if (!sourceStillExists) {
+        batch.update(checklistItemRef(checklist.id, item.id, projectId), {
+          isStale: true,
+          staleNote: "Sagen er slettet eller matcher ikke længere",
+          updatedAt: now,
+        });
+      } else {
+        batch.update(checklistItemRef(checklist.id, item.id, projectId), {
+          isStale: false,
+          staleNote: deleteField(),
+          updatedAt: now,
+        });
       }
     }
   }
@@ -1380,17 +1467,125 @@ export async function shareChecklistText(
   });
 }
 
+export async function addChecklistLocation(
+  checklistId: string,
+  location: Omit<ChecklistLocation, "id" | "createdAt" | "updatedAt">,
+  projectId?: string,
+  ownerId?: string
+): Promise<ChecklistLocation> {
+  const checklist = await getChecklistById(checklistId, projectId, ownerId);
+  if (!checklist) throw new Error(`Liste ikke fundet: ${checklistId}`);
+
+  const now = Date.now();
+  const newLocation = cleanLocationForFirestore({
+    ...location,
+    id: Math.random().toString(36).slice(2),
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  const existing = checklist.locations || [];
+  const updatedLocations = [...existing, newLocation].map((loc) =>
+    cleanLocationForFirestore(loc)
+  );
+
+  await updateDoc(checklistRef(checklist), {
+    locations: updatedLocations,
+    updatedAt: serverTimestamp(),
+  });
+
+  return newLocation;
+}
+
+export async function updateChecklistLocation(
+  checklistId: string,
+  locationId: string,
+  updates: Partial<Omit<ChecklistLocation, "id" | "createdAt" | "updatedAt">>,
+  projectId?: string,
+  ownerId?: string
+): Promise<void> {
+  const checklist = await getChecklistById(checklistId, projectId, ownerId);
+  if (!checklist) throw new Error(`Liste ikke fundet: ${checklistId}`);
+
+  const now = Date.now();
+  const existing = checklist.locations || [];
+  const updatedLocations = existing.map((loc) =>
+    loc.id === locationId
+      ? cleanLocationForFirestore({ ...loc, ...updates, updatedAt: now })
+      : cleanLocationForFirestore(loc)
+  );
+
+  await updateDoc(checklistRef(checklist), {
+    locations: updatedLocations,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function deleteChecklistLocation(
+  checklistId: string,
+  locationId: string,
+  projectId?: string,
+  ownerId?: string
+): Promise<void> {
+  const checklist = await getChecklistById(checklistId, projectId, ownerId);
+  if (!checklist) throw new Error(`Liste ikke fundet: ${checklistId}`);
+
+  const updatedLocations = (checklist.locations || [])
+    .filter((loc) => loc.id !== locationId)
+    .map((loc) => cleanLocationForFirestore(loc));
+
+  await updateDoc(checklistRef(checklist), {
+    locations: updatedLocations,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function toggleChecklistLocationArrival(
+  checklistId: string,
+  locationId: string,
+  projectId?: string,
+  ownerId?: string
+): Promise<boolean> {
+  const checklist = await getChecklistById(checklistId, projectId, ownerId);
+  if (!checklist) throw new Error(`Liste ikke fundet: ${checklistId}`);
+
+  const now = Date.now();
+  const existing = checklist.locations || [];
+  const nextLocations = existing.map((loc) =>
+    loc.id === locationId
+      ? cleanLocationForFirestore({
+          ...loc,
+          notifyOnArrival: !loc.notifyOnArrival,
+          updatedAt: now,
+        })
+      : cleanLocationForFirestore(loc)
+  );
+
+  await updateDoc(checklistRef(checklist), {
+    locations: nextLocations,
+    updatedAt: serverTimestamp(),
+  });
+
+  const toggled = nextLocations.find((loc) => loc.id === locationId);
+  return toggled?.notifyOnArrival ?? false;
+}
+
 export async function deleteChecklist(
   checklistId: string,
-  userId?: string
+  projectId?: string,
+  ownerId?: string,
+  currentUserId?: string
 ): Promise<void> {
-  const checklist = await getChecklistById(checklistId, undefined, userId);
+  // ownerId bruges til at finde listen (især delte personlige lister).
+  // currentUserId bruges til at rydde reminders for den aktuelle bruger.
+  const lookupId = ownerId || currentUserId;
+  const checklist = await getChecklistById(checklistId, projectId, lookupId);
   if (!checklist) {
     // Hvis listen allerede er væk, er der ikke mere at rydde op.
     return;
   }
-  if (userId) {
-    await deleteRemindersForChecklist(userId, checklistId);
+  if (currentUserId) {
+    await deleteRemindersForChecklist(currentUserId, checklistId);
   }
   const itemsSnapshot = await getDocs(checklistItemsCollection(checklist));
   await Promise.all(itemsSnapshot.docs.map((d) => deleteDoc(d.ref)));

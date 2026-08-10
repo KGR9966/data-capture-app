@@ -48,36 +48,36 @@ export default function ReminderModal({
   const isDark = theme === "dark";
   const styles = themedStyles(isDark);
 
-  const [date, setDate] = useState(() => {
+  const initialDate = () => {
     if (existingReminder) {
       return new Date(existingReminder.scheduledAt);
     }
     const now = new Date();
     now.setMinutes(now.getMinutes() + 30);
     return now;
-  });
+  };
+
+  const [date, setDate] = useState(initialDate);
   const [repeat, setRepeat] = useState<ReminderRepeat>(
     existingReminder?.repeat || "once"
   );
   const [note, setNote] = useState(existingReminder?.note || "");
+  const [pickerMode, setPickerMode] = useState<"date" | "time" | null>(null);
 
   const handleDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
     if (selectedDate) {
       setDate((prev) => {
         const next = new Date(selectedDate);
-        next.setHours(prev.getHours(), prev.getMinutes(), 0, 0);
+        if (pickerMode === "time") {
+          next.setFullYear(prev.getFullYear(), prev.getMonth(), prev.getDate());
+        } else {
+          next.setHours(prev.getHours(), prev.getMinutes(), 0, 0);
+        }
         return next;
       });
     }
-  };
-
-  const handleTimeChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (selectedDate) {
-      setDate((prev) => {
-        const next = new Date(prev);
-        next.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
-        return next;
-      });
+    if (Platform.OS === "android") {
+      setPickerMode(null);
     }
   };
 
@@ -88,6 +88,9 @@ export default function ReminderModal({
       note: note.trim() || undefined,
     });
   };
+
+  const minimumDate = new Date();
+  minimumDate.setSeconds(0, 0);
 
   return (
     <Modal
@@ -108,25 +111,46 @@ export default function ReminderModal({
               <Text style={styles.subtitle} numberOfLines={2}>{title}</Text>
 
               <View style={styles.field}>
-                <Text style={styles.label}>Dato</Text>
-                <DateTimePicker
-                  value={date}
-                  mode="date"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  onChange={handleDateChange}
-                  themeVariant={isDark ? "dark" : "light"}
-                />
-              </View>
+                <Text style={styles.label}>Dato og tid</Text>
+                <View style={styles.datetimeRow}>
+                  <TouchableOpacity
+                    style={styles.datetimeButton}
+                    onPress={() => setPickerMode("date")}
+                  >
+                    <Text style={styles.datetimeButtonText}>
+                      {date.toLocaleDateString("da-DK")}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.datetimeButton}
+                    onPress={() => setPickerMode("time")}
+                  >
+                    <Text style={styles.datetimeButtonText}>
+                      {date.toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" })}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
 
-              <View style={styles.field}>
-                <Text style={styles.label}>Tid</Text>
-                <DateTimePicker
-                  value={date}
-                  mode="time"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  onChange={handleTimeChange}
-                  themeVariant={isDark ? "dark" : "light"}
-                />
+                {pickerMode ? (
+                  <View style={styles.pickerWrap}>
+                    <DateTimePicker
+                      value={date}
+                      mode={pickerMode}
+                      display={Platform.OS === "ios" ? "spinner" : "default"}
+                      minimumDate={pickerMode === "date" ? minimumDate : undefined}
+                      onChange={handleDateChange}
+                      themeVariant={isDark ? "dark" : "light"}
+                    />
+                    {Platform.OS === "ios" ? (
+                      <TouchableOpacity
+                        style={styles.doneButton}
+                        onPress={() => setPickerMode(null)}
+                      >
+                        <Text style={styles.doneButtonText}>Færdig</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
 
               <View style={styles.field}>
@@ -309,6 +333,40 @@ const themedStyles = (isDark: boolean) =>
       backgroundColor: "#f87171",
     },
     buttonDangerText: {
+      color: "#0f172a",
+      fontWeight: "700",
+      fontSize: 15,
+    },
+    datetimeRow: {
+      flexDirection: "row",
+      gap: 10,
+    },
+    datetimeButton: {
+      flex: 1,
+      backgroundColor: isDark ? "#0f172a" : "#f8fafc",
+      borderRadius: 10,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+      alignItems: "center",
+    },
+    datetimeButtonText: {
+      fontSize: 15,
+      color: isDark ? "#e2e8f0" : "#0f172a",
+      fontWeight: "600",
+    },
+    pickerWrap: {
+      marginTop: 12,
+      alignItems: "center",
+    },
+    doneButton: {
+      marginTop: 8,
+      backgroundColor: "#38bdf8",
+      borderRadius: 10,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+    },
+    doneButtonText: {
       color: "#0f172a",
       fontWeight: "700",
       fontSize: 15,

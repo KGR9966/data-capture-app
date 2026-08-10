@@ -399,6 +399,97 @@ function splitIntoSentences(text: string): string {
   return sentences.filter(Boolean).join("\n");
 }
 
+/** Deler tekst op i punkter baseret på både linjeskift OG sætningsafslutninger.
+ *  Bruges når brugeren dikterer flere punkter uden eksplicitte pauser. */
+function splitIntoPoints(text: string): string[] {
+  const points: string[] = [];
+  // Del først på linjeskift, derefter på sætningsafslutning indenfor hver linje.
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  for (const line of lines) {
+    let remaining = line;
+    while (remaining.length > 0) {
+      const m = /[.!?]/.exec(remaining);
+      if (!m) {
+        points.push(remaining.trim());
+        break;
+      }
+      const end = m.index + 1;
+      const candidate = remaining.slice(0, end).trim();
+      if (candidate) points.push(candidate);
+      remaining = remaining.slice(end).trim();
+    }
+  }
+  return points.filter(Boolean);
+}
+
+/**
+ * Check whether a word is a standalone type keyword (e.g. "bug", "idé", "notat").
+ * Phrase keywords like "virker ikke" are not considered standalone prefixes.
+ */
+function getStandaloneTypeKeyword(word: string): ItemType | null {
+  const normalizedWord = normalizeCommand(word);
+  if (!normalizedWord) return null;
+
+  for (const { type, terms, match } of TYPE_KEYWORDS) {
+    if (match === "phrase") continue;
+    for (const term of terms) {
+      const normalizedTerm = normalizeCommand(term);
+      if (!normalizedTerm) continue;
+      if (match === "full" && normalizedWord === normalizedTerm) return type;
+      if (match === "prefix" && normalizedWord.startsWith(normalizedTerm)) return type;
+      if (match === "suffix" && normalizedWord.endsWith(normalizedTerm)) return type;
+    }
+  }
+  return null;
+}
+
+/**
+ * Remove an explicit category keyword that stands alone at the very beginning of
+ * the text, followed by a sentence terminator or paragraph break. This prevents
+ * the keyword itself from becoming the title (e.g. "Bug. Knappen virker ikke."
+ * should produce title "Knappen virker ikke", not "Bug").
+ *
+ * Preserves the rest of the text unchanged so title/content splitting works on the
+ * cleaned version without the prefix.
+ */
+function stripLeadingTypeKeyword(cleaned: string): string {
+  const trimmed = cleaned.trim();
+  if (!trimmed) return trimmed;
+
+  // Grab the first token, including any trailing punctuation (e.g. "Bug.").
+  const firstTokenMatch = /^([^\s.!?]+[.!?]?)(\s+|$)/.exec(trimmed);
+  if (!firstTokenMatch) return trimmed;
+
+  const firstToken = firstTokenMatch[1];
+  const afterToken = trimmed.slice(firstTokenMatch[0].length);
+
+  // The keyword must be recognized and it must be separated from the rest by a
+  // sentence terminator (either inside the token or immediately after whitespace),
+  // or by a paragraph break. This avoids stripping "Bug" from "Bug i login knappen".
+  const keywordType = getStandaloneTypeKeyword(firstToken);
+  if (!keywordType) return trimmed;
+
+  const tokenEndsWithTerminator = /[.!?]$/.test(firstToken);
+  const afterStartsWithTerminator = /^\s*[.!?]/.test(afterToken);
+  const afterStartsWithParagraph = /^\n\n/.test(afterToken);
+  if (!tokenEndsWithTerminator && !afterStartsWithTerminator && !afterStartsWithParagraph) {
+    return trimmed;
+  }
+
+  // Also leave content that is just the keyword alone (e.g. user only said "Bug.").
+  if (!afterToken.trim()) return trimmed;
+
+  // Preserve the terminator that was inside the token so the rest can be split
+  // into title/content normally. "Bug. Knappen..." becomes "Knappen...".
+  if (tokenEndsWithTerminator) {
+    return afterToken.trim();
+  }
+
+  // "Bug Knappen..." becomes ". Knappen..." so splitTitleContent still sees the
+  // terminator and can split cleanly.
+  return trimmed.slice(firstTokenMatch[1].length).trim();
+}
+
 function splitTitleContent(cleaned: string): { title: string; content: string } {
   const trimmed = cleaned.trim();
   if (!trimmed) return { title: "", content: "" };
@@ -430,7 +521,15 @@ function splitTitleContent(cleaned: string): { title: string; content: string } 
     };
   }
 
-  // Regel V1: én sammenhængende sætning uden tegnsætning/pause bliver titel.
+  // Regel V1/V2: én sammenhængende tekst uden tegnsætning/pause.
+  // Brug første linje som titel og resten som content, så flere dikterede
+  // punkter adskilt af linjeskift eller pause stadig bliver individuelle punkter.
+  const singleLineBreak = trimmed.indexOf("\n");
+  if (singleLineBreak > 0) {
+    const title = trimmed.slice(0, singleLineBreak).trim();
+    const content = splitIntoPoints(trimmed.slice(singleLineBreak + 1).trim()).join("\n");
+    return { title, content };
+  }
   return { title: trimmed, content: "" };
 }
 
@@ -440,8 +539,12 @@ export function parseVoiceInput(input: string): VoiceParseResult {
   const command = detectCommand(splitInput);
   const textAfterCommands = command ? removeCommandWords(splitInput, command) : splitInput;
   const rawText = cleanText(textAfterCommands);
-  const { title, content } = splitTitleContent(rawText);
-  const type = inferType(rawText, title);
+
+  // Infer type on the full text first, then strip a leading category keyword so it
+  // does not become the title when the user explicitly prefixes with "Bug." etc.
+  const type = inferType(rawText, "");
+  const strippedRawText = stripLeadingTypeKeyword(rawText);
+  const { title, content } = splitTitleContent(strippedRawText);
   const category = TYPE_CATEGORY_LABELS[type];
 
   return {
