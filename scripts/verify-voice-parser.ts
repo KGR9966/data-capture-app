@@ -29,7 +29,7 @@ const cases = [
   {
     id: "E6",
     input: "Tag billede af skaden på taget",
-    expected: { title: "af skaden paa taget", content: "", type: "other", command: "openCamera" },
+    expected: { title: "af skaden på taget", content: "", type: "other", command: "openCamera" },
   },
   {
     id: "E7",
@@ -89,7 +89,7 @@ const cases = [
   {
     id: "D1.5",
     input: "Tag billede af skaden på taget",
-    expected: { title: "af skaden paa taget", content: "", type: "other", command: "openCamera" },
+    expected: { title: "af skaden på taget", content: "", type: "other", command: "openCamera" },
   },
   {
     id: "D1.6",
@@ -99,12 +99,12 @@ const cases = [
   {
     id: "D1.7",
     input: "Observationsnote åbn kamera skaden på taget",
-    expected: { title: "observationsnote skaden paa taget", content: "", type: "observation", command: "openCamera" },
+    expected: { title: "Observationsnote skaden på taget", content: "", type: "observation", command: "openCamera" },
   },
   {
     id: "D1.8",
     input: "Silvan punktum åbn kamera",
-    expected: { title: "silvan", content: "", type: "other", command: "openCamera" },
+    expected: { title: "Silvan", content: "", type: "other", command: "openCamera" },
   },
   // Regression cases for P2: explicit category prefix must not become the title.
   {
@@ -127,11 +127,41 @@ const cases = [
     input: "Notat. Ændring af farve på knappen",
     expected: { title: "Ændring af farve på knappen", content: "", type: "note", command: null },
   },
-  // TC-008 regression: æøå must be preserved in titles without photo commands.
+  // TC-008: æøå must be preserved after photo commands and in ordinary input.
   {
     id: "TC008-1",
     input: "Indkøb",
     expected: { title: "Indkøb", content: "", type: "other", command: null },
+  },
+  {
+    id: "TC008-2",
+    input: "Tag billede af skaden på taget",
+    expected: { title: "af skaden på taget", content: "", type: "other", command: "openCamera" },
+  },
+  {
+    id: "TC008-3",
+    input: "Åbn album vinduet er sprunget",
+    expected: { title: "vinduet er sprunget", content: "", type: "other", command: "openAlbum" },
+  },
+  {
+    id: "TC008-4",
+    input: "Vælg foto fra dokumentation",
+    expected: { title: "fra dokumentation", content: "", type: "other", command: "openAlbum" },
+  },
+  {
+    id: "TC008-5",
+    input: "Observationsnote åbn kamera skaden på taget",
+    expected: { title: "Observationsnote skaden på taget", content: "", type: "observation", command: "openCamera" },
+  },
+  {
+    id: "TC008-6",
+    input: "Tag billede af møbler til stuen",
+    expected: { title: "af møbler til stuen", content: "", type: "other", command: "openCamera" },
+  },
+  {
+    id: "TC008-7",
+    input: "Åbn kamera Ændring af farve på knappen",
+    expected: { title: "Ændring af farve på knappen", content: "", type: "other", command: "openCamera" },
   },
 ];
 

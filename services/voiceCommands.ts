@@ -168,10 +168,44 @@ function detectCommand(input: string): VoiceCommand {
   return null;
 }
 
+/** Lowercases a word but keeps Danish æøå intact. */
+function lowercaseKeepDanish(str: string): string {
+  return str.toLowerCase();
+}
+
 /** Fjerner foto-kommandoen og evt. foranstående aktionsord (åbn/åben/åbne/tag/vælg/et).
- *  Returnerer normaliserede ord, så parser-output matcher de PO-godkendte eksempler. */
+ *  Output bevarer originalt casing og danske tegn (æøå), så dikterede titler
+ *  efter "tag billede" / "åbn kamera" ikke konverteres til ae/oe/aa. */
 function stripPhotoCommand(input: string, command: "openAlbum" | "openCamera"): string {
   const normalized = normalizeCommand(input);
+  const originalWords = input.trim().split(/\s+/).filter(Boolean);
+  const normalizedWords = normalized.split(/\s+/).filter(Boolean);
+
+  // Word counts should match for typical input (separated words). If they don't,
+  // fall back to normalized output so the parser still works.
+  if (originalWords.length !== normalizedWords.length) {
+    const commands = command === "openAlbum" ? OPEN_ALBUM_COMMANDS : OPEN_CAMERA_COMMANDS;
+    let matchedPhrase = "";
+    let matchedIndex = -1;
+    for (const cmd of commands) {
+      const idx = normalized.indexOf(cmd);
+      if (idx !== -1 && (matchedIndex === -1 || idx < matchedIndex)) {
+        matchedIndex = idx;
+        matchedPhrase = cmd;
+      }
+    }
+    if (!matchedPhrase) return input;
+
+    const beforeText = normalized.slice(0, matchedIndex).trim();
+    const beforeWords = beforeText.split(/\s+/).filter(Boolean);
+    while (beforeWords.length > 0 && PHOTO_PREFIXES.includes(beforeWords[beforeWords.length - 1])) {
+      beforeWords.pop();
+    }
+    const afterText = normalized.slice(matchedIndex + matchedPhrase.length).trim();
+    const afterWords = afterText.split(/\s+/).filter(Boolean);
+    return [...beforeWords, ...afterWords].join(" ");
+  }
+
   const commands = command === "openAlbum" ? OPEN_ALBUM_COMMANDS : OPEN_CAMERA_COMMANDS;
 
   let matchedPhrase = "";
@@ -186,15 +220,26 @@ function stripPhotoCommand(input: string, command: "openAlbum" | "openCamera"): 
   if (!matchedPhrase) return input;
 
   const beforeText = normalized.slice(0, matchedIndex).trim();
-  const beforeWords = beforeText.split(/\s+/).filter(Boolean);
-  while (beforeWords.length > 0 && PHOTO_PREFIXES.includes(beforeWords[beforeWords.length - 1])) {
-    beforeWords.pop();
+  const commandWordStart = beforeText ? beforeText.split(/\s+/).filter(Boolean).length : 0;
+  const commandWordCount = matchedPhrase.split(/\s+/).filter(Boolean).length;
+  const commandWordEnd = commandWordStart + commandWordCount;
+
+  // Fjern evt. foranstående aktionsord (f.eks. "et" i "et åbn kamera").
+  let prefixCount = 0;
+  while (
+    commandWordStart - prefixCount - 1 >= 0 &&
+    PHOTO_PREFIXES.includes(normalizedWords[commandWordStart - prefixCount - 1])
+  ) {
+    prefixCount++;
   }
 
-  const afterText = normalized.slice(matchedIndex + matchedPhrase.length).trim();
-  const afterWords = afterText.split(/\s+/).filter(Boolean);
+  const removeStart = commandWordStart - prefixCount;
+  const remainingWords = [
+    ...originalWords.slice(0, removeStart),
+    ...originalWords.slice(commandWordEnd),
+  ];
 
-  return [...beforeWords, ...afterWords].join(" ");
+  return remainingWords.join(" ");
 }
 
 /** Fjerner de sidste N tokens svarende til den genkendte kommando.

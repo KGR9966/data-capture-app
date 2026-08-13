@@ -119,6 +119,7 @@ export default function ChecklistDetailScreen() {
   const dynamicSyncLock = React.useRef<Promise<void>>(Promise.resolve());
   const checklistRef = React.useRef<Checklist | null>(null);
   const notifiedEventRef = React.useRef<{ locationId?: string; event?: string } | null>(null);
+  const consumedGeofenceRef = React.useRef<string | null>(null);
   const pendingOpsRef = React.useRef<PendingOp[]>(pendingOps);
 
   const isDark = theme === "dark";
@@ -233,18 +234,33 @@ export default function ChecklistDetailScreen() {
 
     const checkGeofenceEvent = () => {
       if (geofenceParam !== "true" || !locationIdParam || !checklistId) return;
-      const data = checklist;
+
+      // Consume params once per unique geofence event so re-renders (snapshot
+      // updates, network changes, etc.) cannot re-trigger the banner/notifikation.
+      const eventKey = `${locationIdParam}:${eventParam || "arrival"}`;
+      if (consumedGeofenceRef.current === eventKey) return;
+      consumedGeofenceRef.current = eventKey;
+
+      const data = checklistRef.current;
       if (!data) return;
       const location = (data.locations || []).find((loc) => loc.id === locationIdParam);
       if (!location) return;
 
       const nextEvent = eventParam === "departure" ? "departure" : "arrival";
-      // Use functional update so identical events don't recreate the state object
-      // and trigger the notification effect repeatedly.
-      setGeofenceBanner((prev) => {
-        if (prev?.name === location.name && prev?.event === nextEvent) return prev;
-        return { name: location.name, event: nextEvent };
-      });
+      setGeofenceBanner({ name: location.name, event: nextEvent });
+
+      // Clear geofence params from the URL so a subsequent re-mount/re-render
+      // does not process the same deep-link event again.
+      try {
+        router.setParams({
+          geofence: undefined,
+          event: undefined,
+          locationId: undefined,
+        });
+      } catch {
+        // Best effort: if router does not support clearing these params,
+        // the ref guard above still prevents duplicate notifications.
+      }
     };
 
     checkGeofenceEvent();
@@ -281,6 +297,7 @@ export default function ChecklistDetailScreen() {
     geofenceParam,
     eventParam,
     locationIdParam,
+    router,
   ]);
 
   const openItemCount = useMemo(
@@ -339,6 +356,11 @@ export default function ChecklistDetailScreen() {
   );
 
   const canManageLocations = useMemo(
+    () => !!checklist && checklist.ownerId === user?.uid,
+    [checklist, user?.uid]
+  );
+
+  const canDeleteChecklist = useMemo(
     () => !!checklist && checklist.ownerId === user?.uid,
     [checklist, user?.uid]
   );
@@ -711,13 +733,15 @@ export default function ChecklistDetailScreen() {
             >
               <Text style={styles.headerActionText}>{sharing ? "Deler..." : "Del"}</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.headerActionDanger, !online && styles.buttonDisabled]}
-              onPress={handleDelete}
-              disabled={!online}
-            >
-              <Text style={styles.headerActionDangerText}>Slet</Text>
-            </TouchableOpacity>
+            {canDeleteChecklist ? (
+              <TouchableOpacity
+                style={[styles.headerActionDanger, !online && styles.buttonDisabled]}
+                onPress={handleDelete}
+                disabled={!online}
+              >
+                <Text style={styles.headerActionDangerText}>Slet</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
 

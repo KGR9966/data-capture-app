@@ -253,14 +253,17 @@ export function suggestPlacesForChecklist(
 
   const seen = new Set<string>();
   const results: SuggestedPlace[] = [];
-  const keywords = Object.keys(PLACE_SUGGESTIONS);
+  const keywords = Object.keys(PLACE_SUGGESTIONS).map((raw) => ({
+    raw,
+    normalized: normalizeKeyword(raw),
+  }));
 
   for (const word of words) {
     // Match exact keywords and also keywords that appear as a prefix inside a
     // compound word (e.g. "it-udstyr" or "itmaskiner" matches "it").
-    for (const keyword of keywords) {
+    for (const { raw, normalized: keyword } of keywords) {
       if (word === keyword || word.startsWith(keyword)) {
-        for (const place of PLACE_SUGGESTIONS[keyword]) {
+        for (const place of PLACE_SUGGESTIONS[raw]) {
           if (seen.has(place.name)) continue;
           seen.add(place.name);
           results.push(place);
