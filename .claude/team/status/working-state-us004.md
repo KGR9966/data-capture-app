@@ -110,6 +110,7 @@ npm test
 - [x] Commit + push af rettelser — `f4b1231` + oprydning `3ef2954`.
 - [x] Genskabte PO-testresultater fra build `92247ec7` (commit `60542c1`, 2026-08-11/12) fra session transcript `3f397a1c-2ab5-43b3-befa-f2f1859978df.jsonl` — indskrevet i testplanerne.
 - [x] Opdateret prognose: TC-001 = 100 % fixed; TC-005/TC-006/TC-007/TC-008/GEO-001/GEO-002/GEO-003 rettet/verificeret; samlet prognose 95 %.
+- [x] EAS iOS preview build gennemført: build `68b0773f-bcf3-454b-b861-d6560941dfae`.
 - [x] Iværksatte forbedringsaktiviteter og dokumenterede dem i `.claude/team/status/US004-BUILD-NEXT-IMPROVEMENT-PLAN-2026-08-13.md`.
 - [x] PO-afklaret TC-008: behold nuværende splitting, æøå skal bevares konsekvent. Rettet `services/voiceCommands.ts`; parser-tests udvidet til 33 cases og alle grønne.
 - [ ] PO GO til Build 1 (iOS-only preview) — **anbefales NO-GO indtil prognose ≥ 95 %**.

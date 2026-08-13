@@ -26,7 +26,8 @@
 | 5 | TC-005/TC-007 code review | ✅ Done | Ingen nye race-vinduer fundet |
 | 6 | Opdater prognose til 95 % | ✅ Done | Dokumenteret i statusfiler |
 | 7 | Commit + push rettelser | ✅ Done | `1856b0a` pushed |
-| 8 | EAS build + deploy | ⏳ **Næste** | Kør EAS build + fysisk test |
+| 8 | EAS build + deploy | ✅ Done | Build `68b0773f-bcf3-454b-b861-d6560941dfae` færdig |
+| 9 | Fysisk iOS test | ⏳ **Næste** | Installer på iPhone/iPad og kør TC-005/TC-007/TC-008 tests |
 
 ---
 
@@ -133,6 +134,11 @@ eas build --platform ios --profile preview
 # eller Android:
 # eas build --platform android --profile preview
 ```
+
+### Installer build på iOS
+
+Åbn dette link på iOS-enheden:
+`https://expo.dev/accounts/kgradm/projects/data-capture-app/builds/68b0773f-bcf3-454b-b861-d6560941dfae`
 
 ---
 

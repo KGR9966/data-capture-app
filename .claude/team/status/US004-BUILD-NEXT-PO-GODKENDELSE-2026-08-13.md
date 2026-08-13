@@ -98,10 +98,10 @@ For at forbedre prognosen er følgende iværksat og dokumenteret i `.claude/team
 4. Ny PO-godkendelsespakke præsenteres.
 5. Først derefter EAS build.
 
-### Hvis PO siger GO nu (anbefalet)
+### PO har sagt GO (2026-08-13)
 
-1. EAS build startes (iOS preview først, derefter Android hvis PO ønsker).
-2. Build testes på fysisk enhed med fokus på TC-005/TC-007 race og TC-008 stemme.
+1. ✅ EAS iOS preview build gennemført: build `68b0773f-bcf3-454b-b861-d6560941dfae`.
+2. Næste: Build testes på fysisk enhed med fokus på TC-005/TC-007 race og TC-008 stemme.
 3. Hvis TC-005/TC-007/TC-008 fejler, dokumenteres det; ny rettelsesrunde kræver PO-beslutning.
 4. Accept af, at ~5 % risiko for fejl kan materialisere.
 
