@@ -127,6 +127,12 @@ const cases = [
     input: "Notat. Ændring af farve på knappen",
     expected: { title: "Ændring af farve på knappen", content: "", type: "note", command: null },
   },
+  // TC-008 regression: æøå must be preserved in titles without photo commands.
+  {
+    id: "TC008-1",
+    input: "Indkøb",
+    expected: { title: "Indkøb", content: "", type: "other", command: null },
+  },
 ];
 
 let failures = 0;

@@ -109,7 +109,9 @@ npm test
 - [x] Review/audit af 9 uncommitted ændringer gennemført; ingen yderligere blockere identificeret.
 - [x] Commit + push af rettelser — `f4b1231` + oprydning `3ef2954`.
 - [x] Genskabte PO-testresultater fra build `92247ec7` (commit `60542c1`, 2026-08-11/12) fra session transcript `3f397a1c-2ab5-43b3-befa-f2f1859978df.jsonl` — indskrevet i testplanerne.
-- [ ] PO GO til Build 1 (iOS-only preview).
+- [x] Opdateret prognose: TC-001 = 100 % fixed; samlet prognose 91 %.
+- [x] Iværksatte forbedringsaktiviteter og dokumenterede dem i `.claude/team/status/US004-BUILD-NEXT-IMPROVEMENT-PLAN-2026-08-13.md`.
+- [ ] PO GO til Build 1 (iOS-only preview) — **anbefales NO-GO indtil prognose ≥ 95 %**.
 - [ ] G6 manuel E2E E1–E9.
 - [ ] G7 QA-rapport.
 
@@ -139,7 +141,79 @@ Build testet: `92247ec7` (commit `60542c1` — `fix(build-next): resolve TC-001/
 | TC-GEO-005 Deeplink åbner liste | 🟡 | Delvis passed; hænger sammen med TC-GEO-003. |
 | TC-GEO-006 Toggle sted til/fra | 🟢 | Bestod. |
 
-**Observation om "offentlig" / projektsletning:** Der blev ikke fundet en specifik observation i transcriptet om, at en rettelse af adgang til "offentlig" har gjort det muligt at slette projekter. TC-001 fejlede pga. manglende IAM invoker på `deleteProject`. Efterfølgende blev `allUsers` + `Cloud Functions Invoker` tilføjet, hvilket er standard for Firebase callable functions; funktionen validerer stadig `context.auth` og owner/admin rolle server-side.
+**Opdatering 2026-08-13 (eftermiddag):** PO bekræfter, at efter `allUsers` + `Cloud Functions Invoker` blev sat på `deleteProject`, er projektsletning nu mulig i appen. TC-001 anses derfor for **rettet / confirmed fixed**. Dette er ikke et sikkerhedshul: Firebase callable function validerer `context.auth` og owner/admin rolle server-side.
+
+---
+
+## Opdateret prognose før forbedringsaktiviteter
+
+| TC / Område | Prognose før aktiviteter | Prognose efter planlagte aktiviteter | Bemærkning |
+|---|---|---|---|
+| TC-001 deleteProject | 100 % (fixed) | 100 % | IAM rettet; PO bekræfter det virker. |
+| TC-005 Dynamisk liste duplikater | 80 % | 90 % | Deterministiske IDs + serialisering + race-test + regression. |
+| TC-006 Slet liste / permission | 85 % | 92 % | OwnerId fallback + delete-ikon guard + offline delete test + rules-test. |
+| TC-007 Flueben sync / checkpoints | 80 % | 90 % | Deterministiske checkpoint IDs + allDone-logik test + race-test. |
+| TC-008 Stemmekommando uden punktum / æøå | 90 % | 85 % | æøå bevares i titel; splitting på " og " kan give uventede titler; æøå normaliseres efter foto-kommando per PO-godkendte eksempler. Kræver PO-afklaring. |
+| TC-009 Personlige lister / search "og/and" | 95 % | 95 % | Search parser test + fane-switch test. |
+| GEO-001 serverTimestamp sanitering | 85 % | 90 % | Emulator + serialization test. |
+| GEO-002 Smarte stedforslag | 80 % | 88 % | Compound keyword test + danske navneforslag. |
+| GEO-003 Geofence notifikations-dedup | 85 % | 93 % | Deep-link param clearing + re-render test + dedup logik. |
+
+**Ny vægtet samlet prognose (efter aktiviteter):**
+
+$$
+\frac{100 + 90 + 92 + 90 + 85 + 95 + 90 + 88 + 93}{9} = \textbf{91,4 %} ≈ \textbf{91 %}
+$$
+
+> **Note:** Yderligere forbedring kræver fysisk enhedstest (iOS simulator/enhed) og PO-afklaring af TC-008. Mål: ≥ 95 % før build.
+
+> **Automatiserede checks kørt 2026-08-13:**
+> - `npm run typecheck` ✅
+> - `npm run lint` ✅
+> - `npx tsx scripts/verify-voice-parser.ts` ✅ 26/26 passed
+> - `npx tsx scripts/test-search-parser.ts` ✅ All passed
+> - Firestore emulator tests ✅ 122/122 passed
+> - Cloud Functions integration tests ✅ 8/8 passed (anden kørsel; første kørsel fejlede pga. emulator timeout)
+
+---
+
+## Planlagte forbedringsaktiviteter (2026-08-13)
+
+Aktiviteterne skal dokumenteres, begrundes og præsenteres ved PO-godkendelse før build. Ingen build uden PO-go.
+
+### A. Unit / integration tests (kan køres nu)
+
+| # | Aktivitet | TC / Område | Formål | Forventet effekt |
+|---|---|---|---|---|
+| A1 | Udvid `scripts/verify-voice-parser.ts` med "Husk mælk og brød" + "Indkøb" cases | TC-008 | Sikre at æøå bevares og "og"/"," splitter uden punktum. | +3 % |
+| A2 | Kør `test-search-parser.ts` med "og/and" + danske specialtegn | TC-009 | Verificere filtrering af konjunktioner. | +2 % |
+| A3 | Udvid functions tests med rolle-check cases for shared projects | TC-001 / TC-DEL-005 | Sikre at kun owner/admin kan slette. | +2 % |
+| A4 | Emulator regeltest for `delete` på `users/{userId}/checklists` | TC-006 | Verificere ownership-regel for personlige lister. | +2 % |
+
+### B. Race condition / stress tests (kræver emulator/enhed)
+
+| # | Aktivitet | TC / Område | Formål | Forventet effekt |
+|---|---|---|---|---|
+| B1 | Opret 10 items hurtigt efter hinanden og tjek dynamisk liste for duplikater | TC-005 | Verificere serialisering + deterministiske IDs. | +5 % |
+| B2 | Afkryds punkt mens subscription stadig initialiserer checkpoints | TC-007 | Sikre idempotent checkpoint-oprettelse. | +5 % |
+| B3 | Åbn deep-link 5x i træk og tjek notifikations-tæller | TC-GEO-003 | Verificere dedup + route param clearing. | +5 % |
+
+### C. Manuelle / simulator tests (kræver PO eller QA Agent)
+
+| # | Aktivitet | TC / Område | Formål | Forventet effekt |
+|---|---|---|---|---|
+| C1 | TC-001: Slet tomt projekt, projekt med items, og projekt med fotos | TC-DEL-001–004 | Bekræfte IAM-rettelse + cascade. | Sikrer 100 % fastholdes. |
+| C2 | TC-006: Slet personlig liste + delt liste som ikke-ejer | TC-006 | Verificere ejerskabsguard + fejlbesked. | +5 % |
+| C3 | TC-008: Stemmekommandoer uden punktum på fysisk enhed | TC-008 | Fang platform-specifikke edge cases. | +3 % |
+| C4 | TC-GEO-002/003: Test med danske stednavne og deep-link flood | GEO-002, GEO-003 | Verificere compound keywords og notifikationsdedup i praksis. | +5 % |
+
+### D. Review / audit
+
+| # | Aktivitet | TC / Område | Formål | Forventet effekt |
+|---|---|---|---|---|
+| D1 | Uafhængig code review af `services/checklists.ts` sync-logik | TC-005 | Sikre at serialisering dækker alle paths. | +3 % |
+| D2 | Uafhængig code review af `services/checkpoints.ts` idempotens | TC-007 | Sikre at `setDoc({ merge: true })` + deterministiske IDs ikke overskriver data. | +3 % |
+| D3 | Review af `services/geofence.ts` + `app/checklist.tsx` geofence effect | TC-GEO-003 | Sikre at params cleares og banner ikke re-renders unødigt. | +5 % |
 
 ---
 
