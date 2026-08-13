@@ -1,8 +1,8 @@
 # Working state — US-004 Solution B + A (regenerérbar ved context-loss)
 
-**Dato:** 2026-08-02  
+**Dato:** 2026-08-13  
 **Branch:** `fix/us004-items-subcollection`  
-**Seneste commit:** `103be90 feat(us004): Solution A + A2 user-scoped personal checklists and shared discovery index`  
+**Seneste commit:** `9cae5e3 docs(us004): opdater working-state med genetableringsresultater`  
 **Working tree:** clean  
 **Java:** Temurin 21.0.12 installeret under `C:\tools\jdk-21.0.12+8` og `C:\Program Files\Eclipse Adoptium\jdk-21.0.12.8-hotspot`
 
