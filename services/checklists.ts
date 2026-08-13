@@ -216,6 +216,14 @@ function normalizeItemKey(title: string): string {
   return normalizeTitle(title);
 }
 
+/** Deterministic checklist-item ID so concurrent sync calls converge to one doc. */
+function checklistItemDocId(
+  checklistId: string,
+  point: Pick<ChecklistItem, "sourceItemId" | "sourceField" | "lineIndex">
+): string {
+  return `${checklistId}_${point.sourceItemId}_${point.sourceField}_${point.lineIndex ?? 0}`;
+}
+
 function getUserId(): string | null {
   try {
     return getAuth().currentUser?.uid || null;
@@ -611,9 +619,10 @@ export async function createDynamicChecklistFromSearch(
       createdAt: now,
       updatedAt: now,
     });
-    const docRef = doc(projectChecklistItemsCollection(projectId, checklistRef.id));
+    const docId = checklistItemDocId(checklistRef.id, point);
+    const docRef = doc(projectChecklistItemsCollection(projectId, checklistRef.id), docId);
     batch.set(docRef, payload);
-    checklistItems.push({ id: docRef.id, ...payload } as ChecklistItem);
+    checklistItems.push({ id: docId, ...payload } as ChecklistItem);
   }
 
   await batch.commit();
@@ -1088,7 +1097,27 @@ export async function setChecklistPointCompleted(
   if (hasSourceLink) {
     const checkpoints = await getCheckpointsForItem(sourceProjectId, point.sourceItemId);
     if (checkpoints.length > 0) {
-      const allDone = checkpoints.every((cp) => cp.status === "done");
+      // Only consider checkpoints that are actually referenced by items in this
+      // checklist. This prevents orphaned duplicate checkpoints from blocking
+      // item status progression.
+      const referencedIds = new Set(
+        (
+          await getDocs(
+            query(
+              checklistItemsCollection(checklist),
+              where("sourceItemId", "==", point.sourceItemId)
+            )
+          )
+        ).docs
+          .map((d) => (d.data() as ChecklistItem).sourceCheckpointId)
+          .filter(Boolean) as string[]
+      );
+
+      const relevant = referencedIds.size > 0
+        ? checkpoints.filter((cp) => referencedIds.has(cp.id))
+        : checkpoints;
+
+      const allDone = relevant.length > 0 && relevant.every((cp) => cp.status === "done");
       const item = await getItemById(sourceProjectId, point.sourceItemId);
 
       if (allDone && item?.status !== "done") {
@@ -1239,7 +1268,8 @@ export async function synchronizeDynamicChecklist(
           : point.sourceField;
       const cp = cpByKey.get(ptKey);
 
-      const docRef = doc(checklistItemsCollection(checklist));
+      const docId = checklistItemDocId(checklist.id, point);
+      const docRef = doc(checklistItemsCollection(checklist), docId);
       batch.set(docRef, {
         checklistId: checklist.id,
         ...point,

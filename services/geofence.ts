@@ -253,14 +253,19 @@ export function suggestPlacesForChecklist(
 
   const seen = new Set<string>();
   const results: SuggestedPlace[] = [];
+  const keywords = Object.keys(PLACE_SUGGESTIONS);
 
   for (const word of words) {
-    const suggestions = PLACE_SUGGESTIONS[word];
-    if (!suggestions) continue;
-    for (const place of suggestions) {
-      if (seen.has(place.name)) continue;
-      seen.add(place.name);
-      results.push(place);
+    // Match exact keywords and also keywords that appear as a prefix inside a
+    // compound word (e.g. "it-udstyr" or "itmaskiner" matches "it").
+    for (const keyword of keywords) {
+      if (word === keyword || word.startsWith(keyword)) {
+        for (const place of PLACE_SUGGESTIONS[keyword]) {
+          if (seen.has(place.name)) continue;
+          seen.add(place.name);
+          results.push(place);
+        }
+      }
     }
   }
 
@@ -292,34 +297,49 @@ export function geofenceGuideText(
   const lines: string[] = [];
 
   if (platform === "ios") {
-    lines.push(`Få besked, når du er tæt på ${locationName}`);
+    lines.push(`Få besked på din låst skærm, når du er tæt på ${locationName}.`);
     lines.push("");
-    lines.push("1. Åbn Shortcuts-appen.");
-    lines.push('2. Tryk "Automation" → "+" → "Arrives".');
-    lines.push(`3. Vælg "${locationName}" på kortet og indstil radius.`);
-    lines.push('4. Tilføj handlingen "Open URL" og indsæt:');
+    lines.push("Sådan gør du i Shortcuts-appen:");
+    lines.push("");
+    lines.push('1. Åbn appen "Hjælpeprogrammer" (grå tandhjuls-ikon).');
+    lines.push('2. Tryk nederst på "Automatisering".');
+    lines.push('3. Tryk knappen "+" øverst til højre.');
+    lines.push('4. Vælg "Ankomst" (Arrives).');
+    lines.push(`5. Søg efter "${locationName}" på kortet, eller tryk på kortet ved stedet.`);
+    lines.push('6. Indstil radius (afstand) – f.eks. 200 meter.');
+    lines.push('7. Tryk "Næste" øverst til højre.');
+    lines.push('8. Tryk "Tilføj handling".');
+    lines.push('9. Søg efter "Åbn URL" og tryk på den.');
+    lines.push("10. Tryk på teksten 'Åbn URL' og indsæt dette link (kopier det først):");
     lines.push(arrivalUrl);
-    lines.push('5. Slå "Ask Before Running" fra.');
-    lines.push("6. Gem.");
+    lines.push('11. Tryk "Næste" og slå "Spørg før kørsel" fra.');
+    lines.push('12. Tryk "Udfør".');
 
     if (departureUrl) {
       lines.push("");
-      lines.push("For afgang, gentag med linket:");
+      lines.push("For at få besked når du forlader stedet igen:");
+      lines.push('Gentag trin 1-12, men vælg "Afgang" i trin 4 og brug dette link:');
       lines.push(departureUrl);
     }
   } else {
-    lines.push(`Få besked, når du er tæt på ${locationName}`);
+    lines.push(`Få besked, når du er tæt på ${locationName}.`);
     lines.push("");
-    lines.push("1. Åbn Automate (eller Tasker).");
-    lines.push("2. Opret en flow med trigger \"Location enter\".");
-    lines.push(`3. Indstil koordinater for ${locationName} og radius.`);
-    lines.push("4. Tilføj handling \"Browse URL\" og indsæt:");
+    lines.push("Sådan gør du i Automate-appen:");
+    lines.push("");
+    lines.push('1. Åbn appen "Automate" (eller "Tasker").');
+    lines.push('2. Tryk "+" for at oprette en ny flow/automatisering.');
+    lines.push('3. Vælg "Udløser" (Trigger) og find "Lokalitet" / "Location".');
+    lines.push('4. Vælg "Enter" (ankomst) som hændelse.');
+    lines.push(`5. Indtast koordinaterne for ${locationName} og vælg radius.`);
+    lines.push('6. Tilføj en "Åbn URL"-handling (eller "Browse URL").');
+    lines.push("7. Indsæt dette link (kopier det først):");
     lines.push(arrivalUrl);
-    lines.push("5. Gem.");
+    lines.push('8. Gem flowet og giv appen tilladelse til at køre i baggrunden.');
 
     if (departureUrl) {
       lines.push("");
-      lines.push("For afgang, gentag med linket:");
+      lines.push("For at få besked når du forlader stedet igen:");
+      lines.push('Opret en ny flow med "Exit" (afgang) og brug dette link:');
       lines.push(departureUrl);
     }
   }

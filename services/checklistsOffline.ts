@@ -401,7 +401,7 @@ export async function deleteChecklistAndClearCache(
     payload: {
       checklistId: checklist.id,
       projectId: checklist.projectId,
-      ownerId: checklist.ownerId,
+      ownerId: checklist.ownerId ?? userId,
       userId,
     },
     createdAt: Date.now(),
@@ -411,5 +411,12 @@ export async function deleteChecklistAndClearCache(
 
   if (await isOnline()) {
     await flushPendingOps(userId);
+    // Surface any persistent delete error so the UI can show a clear message
+    // instead of silently growing the pending-op counter.
+    const remaining = await loadPendingOps(userId);
+    const failed = remaining.find((o) => o.id === op.id);
+    if (failed?.error) {
+      throw new Error(failed.error);
+    }
   }
 }

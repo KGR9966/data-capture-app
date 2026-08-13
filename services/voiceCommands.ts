@@ -169,7 +169,7 @@ function detectCommand(input: string): VoiceCommand {
 }
 
 /** Fjerner foto-kommandoen og evt. foranstående aktionsord (åbn/åben/åbne/tag/vælg/et).
- *  Beholder resten af den originale tekst, så den kan renses af cleanText senere. */
+ *  Returnerer normaliserede ord, så parser-output matcher de PO-godkendte eksempler. */
 function stripPhotoCommand(input: string, command: "openAlbum" | "openCamera"): string {
   const normalized = normalizeCommand(input);
   const commands = command === "openAlbum" ? OPEN_ALBUM_COMMANDS : OPEN_CAMERA_COMMANDS;
@@ -521,7 +521,16 @@ function splitTitleContent(cleaned: string): { title: string; content: string } 
     };
   }
 
-  // Regel V1/V2: én sammenhængende tekst uden tegnsætning/pause.
+  // Regel V1/V2/V3: én sammenhængende tekst uden tegnsætning/pause.
+  // Hvis teksten indeholder en optælling ("mælk og brød", "a, b, c"),
+  // brug teksten før optællingen som titel og resten som individuelle punkter.
+  const enumerationMatch = /\s+(og|eller)\s+|\s*[;,]\s*/i.exec(trimmed);
+  if (enumerationMatch && enumerationMatch.index > 0) {
+    const title = trimmed.slice(0, enumerationMatch.index).trim();
+    const content = splitIntoPoints(trimmed.slice(enumerationMatch.index).trim()).join("\n");
+    return { title, content };
+  }
+
   // Brug første linje som titel og resten som content, så flere dikterede
   // punkter adskilt af linjeskift eller pause stadig bliver individuelle punkter.
   const singleLineBreak = trimmed.indexOf("\n");

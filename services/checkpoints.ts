@@ -1,9 +1,9 @@
 import {
-  addDoc,
   collection,
   doc,
   getDocs,
   serverTimestamp,
+  setDoc,
   updateDoc,
 } from "@react-native-firebase/firestore";
 
@@ -35,6 +35,28 @@ function parseContentLines(content: string): string[] {
     .split(/\r?\n/)
     .map((line) => line.replace(/^[\s]*[-*•][\s]+/, "").trim())
     .filter(Boolean);
+}
+
+/** Normaliser tekst til en stabil nøgle, så identiske checkpoints kan genkendes. */
+function normalizeCheckpointText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[æ]/g, "ae")
+    .replace(/[ø]/g, "oe")
+    .replace(/[å]/g, "aa")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+}
+
+function checkpointKey(p: { sourceField: SourceField; lineIndex?: number; text: string }): string {
+  return `${p.sourceField}:${p.lineIndex ?? "none"}:${normalizeCheckpointText(p.text)}`;
+}
+
+function checkpointDocId(p: { sourceField: SourceField; lineIndex?: number; text: string }): string {
+  // Deterministic ID so concurrent callers write the same document and converge.
+  const key = checkpointKey(p);
+  if (key.length <= 150) return key;
+  return key.slice(0, 150);
 }
 
 export function deriveCheckpointsFromItem(
@@ -94,28 +116,32 @@ export async function getOrCreateCheckpointsForItem(
   item: CaptureItem,
   sourceFields: SourceField[]
 ): Promise<Checkpoint[]> {
-  const existing = await getCheckpointsForItem(projectId, item.id);
+  const itemId = item.id;
+  const existing = await getCheckpointsForItem(projectId, itemId);
 
-  // Sikr at eksisterende checkpoints dækker alle ønskede sourceFields.
-  // Hvis ikke, tilføj de manglende (fx hvis et item tidligere kun fik title).
-  const coveredFields = new Set(existing.map((cp) => cp.sourceField));
-  const missingFields = sourceFields.filter((f) => !coveredFields.has(f));
+  // Index existing checkpoints by their semantic key (field + line + text).
+  const existingByKey = new Map(existing.map((cp) => [checkpointKey(cp), cp]));
 
-  if (existing.length > 0 && missingFields.length === 0) return existing;
-
-  const derived = deriveCheckpointsFromItem(item, sourceFields).filter((p) =>
-    missingFields.includes(p.sourceField)
-  );
+  const derived = deriveCheckpointsFromItem(item, sourceFields);
   const created: Checkpoint[] = [...existing];
+
   for (const point of derived) {
+    const key = checkpointKey(point);
+    if (existingByKey.has(key)) continue;
+
+    const id = checkpointDocId(point);
     const payload = {
       ...point,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-    const docRef = await addDoc(checkpointsCollection(projectId, item.id), payload);
-    created.push({ id: docRef.id, ...payload });
+    // setDoc with merge prevents race-created duplicates; deterministic ID converges.
+    await setDoc(doc(checkpointsCollection(projectId, itemId), id), payload, { merge: true });
+    const checkpoint: Checkpoint = { id, ...payload };
+    existingByKey.set(key, checkpoint);
+    created.push(checkpoint);
   }
+
   return created;
 }
 
@@ -137,6 +163,7 @@ export async function createCheckpoint(
   itemId: string,
   point: Omit<Checkpoint, "id" | "itemId" | "projectId" | "createdAt" | "updatedAt">
 ): Promise<Checkpoint> {
+  const id = checkpointDocId(point);
   const payload = {
     ...point,
     itemId,
@@ -144,6 +171,6 @@ export async function createCheckpoint(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
-  const docRef = await addDoc(checkpointsCollection(projectId, itemId), payload);
-  return { id: docRef.id, ...payload };
+  await setDoc(doc(checkpointsCollection(projectId, itemId), id), payload, { merge: true });
+  return { id, ...payload };
 }

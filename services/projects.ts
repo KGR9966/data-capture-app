@@ -344,8 +344,9 @@ export async function deleteProject(projectId: string): Promise<void> {
   await waitForNetwork(5000, "Sletning af projekt");
 
   try {
-    const { functions } = await import("./firebase");
+    const { functions, ensureAuthenticated } = await import("./firebase");
     console.log("[deleteProject] functions instance initialized:", !!functions);
+    const idToken = await ensureAuthenticated();
     const fn = httpsCallable<{ projectId: string }, { success: boolean }>(
       functions,
       "deleteProject"
@@ -362,9 +363,52 @@ export async function deleteProject(projectId: string): Promise<void> {
     }
     throw new Error("Cloud Function-sletningen returnerede ikke success.");
   } catch (error) {
-    console.error("[deleteProject] Cloud Function failed:", error);
-    console.error("[deleteProject] error code:", (error as any)?.code, "message:", (error as any)?.message, "details:", (error as any)?.details);
-    throw error;
+    const code = (error as any)?.code || "unknown";
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[deleteProject] Cloud Function failed:", { code, message, error });
+
+    // Hardened fallback: call the function by direct URL with explicit auth header.
+    // This bypasses any RNFirebase callable wrapper issues in release builds.
+    try {
+      const { ensureAuthenticated } = await import("./firebase");
+      const idToken = await ensureAuthenticated();
+      const directUrl = `https://us-central1-data-capture-506bd.cloudfunctions.net/deleteProject`;
+      console.log("[deleteProject] trying direct URL fallback for", projectId);
+      const response = await withTimeout(
+        fetch(directUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ data: { projectId } }),
+        }),
+        25000,
+        "Server-sletning af projekt (fallback)"
+      );
+      const responseText = await response.text();
+      console.log("[deleteProject] fallback HTTP status:", response.status, "body preview:", responseText.slice(0, 200));
+      let responseBody;
+      try {
+        responseBody = JSON.parse(responseText);
+      } catch {
+        throw new Error(`HTTP ${response.status}: ${responseText.slice(0, 200)}`);
+      }
+      if (!response.ok || responseBody.error) {
+        throw new Error(
+          responseBody.error?.message || `HTTP ${response.status}: ${JSON.stringify(responseBody)}`
+        );
+      }
+      if (responseBody.result?.success) {
+        return;
+      }
+      throw new Error("Fallback Cloud Function returnerede ikke success.");
+    } catch (fallbackError) {
+      const fallbackCode = (fallbackError as any)?.code || "unknown";
+      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      console.error("[deleteProject] fallback failed:", { fallbackCode, fallbackMessage, fallbackError });
+      throw new Error(`deleteProject fejlede (${code}): ${message}; fallback (${fallbackCode}): ${fallbackMessage}`);
+    }
   }
 }
 

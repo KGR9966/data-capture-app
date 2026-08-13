@@ -138,6 +138,13 @@ export default function ChecklistsScreen() {
 
   const handleDelete = (checklist: Checklist) => {
     if (!user?.uid) return;
+
+    // Prevent deletion of shared lists the current user does not own.
+    if (checklist.ownerId && checklist.ownerId !== user.uid) {
+      Alert.alert("Begrænset adgang", "Du kan kun slette lister, du selv ejer.");
+      return;
+    }
+
     Alert.alert("Slet liste", `Er du sikker på du vil slette "${checklist.name}"?`, [
       { text: "Annuller", style: "cancel" },
       {
@@ -148,8 +155,13 @@ export default function ChecklistsScreen() {
             await deleteChecklistAndClearCache(checklist, user.uid);
             await refreshPendingCount();
           } catch (error) {
-            console.log("Delete checklist error", error);
-            Alert.alert("Fejl", "Kunne ikke slette listen.");
+            const raw = error instanceof Error ? error.message : String(error);
+            const code = (error as any)?.code || "unknown";
+            console.error("[deleteChecklist] error:", { code, raw, error });
+            Alert.alert(
+              "Kunne ikke slette liste",
+              `Fejl (${code}): ${raw}`
+            );
           }
         },
       },
@@ -286,13 +298,15 @@ export default function ChecklistsScreen() {
                 <Text style={styles.checklistName} numberOfLines={1}>
                   {item.name}
                 </Text>
-                <TouchableOpacity
-                  onPress={() => handleDelete(item)}
-                  disabled={!online}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={[styles.deleteButton, !online && styles.disabledButton]}>🗑</Text>
-                </TouchableOpacity>
+                {(item.ownerId === user?.uid) ? (
+                  <TouchableOpacity
+                    onPress={() => handleDelete(item)}
+                    disabled={!online}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={[styles.deleteButton, !online && styles.disabledButton]}>🗑</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
               <Text style={styles.checklistMeta}>
                 {formatDate(item.updatedAt)} · {item.isDynamic ? "Dynamisk" : "Manuel"}

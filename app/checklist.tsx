@@ -116,11 +116,19 @@ export default function ChecklistDetailScreen() {
   const geofenceParam = typeof geofence === "string" ? geofence : undefined;
   const eventParam = typeof event === "string" ? event : undefined;
   const locationIdParam = typeof locationId === "string" ? locationId : undefined;
+  const dynamicSyncLock = React.useRef<Promise<void>>(Promise.resolve());
+  const checklistRef = React.useRef<Checklist | null>(null);
+  const notifiedEventRef = React.useRef<{ locationId?: string; event?: string } | null>(null);
   const pendingOpsRef = React.useRef<PendingOp[]>(pendingOps);
 
   const isDark = theme === "dark";
   const styles = themedStyles(isDark);
   const [loading, setLoading] = useState(!checklistId);
+
+  // Keep a mutable ref so the dynamic sync callback always uses the latest checklist.
+  useEffect(() => {
+    checklistRef.current = checklist;
+  }, [checklist]);
 
   // Network state
   useEffect(() => {
@@ -202,9 +210,16 @@ export default function ChecklistDetailScreen() {
 
           if (data.isDynamic && data.projectId) {
             unsubscribeProjectItems = subscribeToItems(data.projectId, (projectItems) => {
-              synchronizeDynamicChecklist(data, projectItems).catch((error) => {
-                console.error("[checklist] dynamic sync error:", error);
-              });
+              // Serialize dynamic sync calls to prevent concurrent syncs from
+              // reading the same stale snapshot and creating duplicate items.
+              dynamicSyncLock.current = dynamicSyncLock.current
+                .then(async () => {
+                  const currentChecklist = checklistRef.current ?? data;
+                  await synchronizeDynamicChecklist(currentChecklist, projectItems);
+                })
+                .catch((error) => {
+                  console.error("[checklist] dynamic sync error:", error);
+                });
             });
           }
         }
@@ -221,12 +236,15 @@ export default function ChecklistDetailScreen() {
       const data = checklist;
       if (!data) return;
       const location = (data.locations || []).find((loc) => loc.id === locationIdParam);
-      if (location) {
-        setGeofenceBanner({
-          name: location.name,
-          event: eventParam === "departure" ? "departure" : "arrival",
-        });
-      }
+      if (!location) return;
+
+      const nextEvent = eventParam === "departure" ? "departure" : "arrival";
+      // Use functional update so identical events don't recreate the state object
+      // and trigger the notification effect repeatedly.
+      setGeofenceBanner((prev) => {
+        if (prev?.name === location.name && prev?.event === nextEvent) return prev;
+        return { name: location.name, event: nextEvent };
+      });
     };
 
     checkGeofenceEvent();
@@ -271,13 +289,24 @@ export default function ChecklistDetailScreen() {
   );
 
   useEffect(() => {
-    if (!geofenceBanner) return;
+    if (!geofenceBanner || !locationIdParam || !eventParam) return;
+
+    // Guard against repeated notifications for the same geofence event.
+    if (
+      notifiedEventRef.current?.locationId === locationIdParam &&
+      notifiedEventRef.current?.event === eventParam
+    ) {
+      return;
+    }
+
+    notifiedEventRef.current = { locationId: locationIdParam, event: eventParam };
+
     scheduleGeofenceNotification(
       geofenceBanner.name,
       openItemCount,
       geofenceBanner.event
     ).catch(() => {});
-  }, [geofenceBanner, openItemCount]);
+  }, [geofenceBanner, openItemCount, locationIdParam, eventParam]);
 
   const openItems = useMemo(
     () =>

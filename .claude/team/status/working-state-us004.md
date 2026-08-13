@@ -92,4 +92,26 @@ npm test
 
 ---
 
+## Genetablering efter context-loss 2026-08-13
+
+- [x] Genlæst `decisions-us004-solution-b-a.md`, `working-state-us004.md` samt øvrige statusfiler.
+- [x] Verificeret git-status: 9 uncommitted ændringer på branch `fix/us004-items-subcollection`.
+- [x] Kørt `npm run typecheck` ✅ grøn.
+- [x] Kørt `npm run lint` ✅ grøn.
+- [x] Kørt `npm run pre-test-check` ❌ 8 voice-parser fejl (D1.3–D1.8) + debug-tekst i liste-sletning.
+- [x] Rettet `services/voiceCommands.ts`: `stripPhotoCommand` reverteret til PO-godkendt normalized output.
+- [x] Rettet `app/(tabs)/checklists.tsx`: fjernet "Diagnose:" debug-label fra sletning-alert.
+- [x] Genkørt `verify-voice-parser.ts` ✅ E1–E13 + D1.1–D1.8 + P2.1–P2.4 alle passed.
+- [x] Genkørt `pre-test-check` ✅ OK (1 kendt warning om pakkeversions-tjek).
+- [x] Genkørt G4 Firestore emulator regeltests ✅ 122/122 passed.
+- [x] Genkørt G5 Cloud Function tests ✅ all passed.
+- [x] Genkørt `test-search-parser.ts` ✅ all passed.
+- [x] Review/audit af 9 uncommitted ændringer gennemført; ingen yderligere blockere identificeret.
+- [ ] Commit + push af rettelser (afventer Master Agent/PO-go eller udføres straks).
+- [ ] PO GO til Build 1 (iOS-only preview).
+- [ ] G6 manuel E2E E1–E9.
+- [ ] G7 QA-rapport.
+
+---
+
 *Filen opdateres løbende. Ved context-loss: genlæs denne fil + `decisions-us004-solution-b-a.md`.*

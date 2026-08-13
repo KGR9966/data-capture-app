@@ -129,6 +129,25 @@ export async function clearFirestorePersistenceCache(): Promise<void> {
   }
 }
 
+/**
+ * Ensure the current Firebase Auth user has a valid ID token before calling
+ * Cloud Functions or performing other server-only operations. Returns the token.
+ */
+export async function ensureAuthenticated(): Promise<string> {
+  const { getAuth } = await import("@react-native-firebase/auth");
+  const auth = getAuth();
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error("Du skal være logget ind for at udføre denne handling.");
+  }
+  // Force token refresh to ensure the server receives a valid, unexpired token.
+  const token = await currentUser.getIdToken(true);
+  if (!token) {
+    throw new Error("Kunne ikke hente gyldig login-token.");
+  }
+  return token;
+}
+
 if (__DEV__) {
   setLogLevel("debug");
 }
