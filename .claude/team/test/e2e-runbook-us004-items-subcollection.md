@@ -314,6 +314,14 @@
 - Ingen orphaned data tilbage.
 - Appen viser opdateret projektliste uden Projekt A.
 
+#### Faktisk resultat fra PO-test (build `92247ec7`, commit `60542c1`, 2026-08-11/12)
+
+- **Status:** 🔴 Fejlet
+- **Observation:** Sletningsdialog viser:  
+  `Diagnose: sletning fejlede. Sletning fejlede (unknown): deleteProject fejlede: httpsCallable(unauthenticated): UNAUTHENTICATED; directUrl(unknown): JSON Parse error: Unexpected character:`
+- **Rodårsag (verificeret):** `deleteProject` Cloud Function var deployet, men IAM-policy manglede `allUsers` / `Cloud Functions Invoker`. Google front-end afviste kaldet før det nåede funktionskoden.
+- **Rettelse:** `allUsers` + `roles/cloudfunctions.invoker` tilføjet; appens `services/projects.ts` fik forbedret direct-URL fallback med auth-header. Skal verificeres i næste build.
+
 ---
 
 ### E9 — Email-medlem editor
@@ -398,7 +406,7 @@ Efter E2E-afvikling skal QA Agent udfylde følgende:
 | E5 | ⚪ | | |
 | E6 | ⚪ | | |
 | E7 | ⚪ | | |
-| E8 | ⚪ | | |
+| E8 | 🔴 | Build 92247ec7: `deleteProject` fejler med `UNAUTHENTICATED` pga. manglende IAM invoker. Rettet efterfølgende; afventer verifikation i næste build. | Build 92247ec7 (2026-08-11) |
 | E9 | ⚪ | | |
 
 **Status-legend:**  

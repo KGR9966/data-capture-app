@@ -444,9 +444,9 @@
 | Forudsætning | Bruger ejer tomt projekt uden sager, lister eller fotos. |
 | Trin | 1. Tryk "..." på projektkort. <br> 2. Vælg "Slet projekt". <br> 3. Gennemfør dialoger og skriv navn. <br> 4. Bekræft. |
 | Forventet resultat | Projekt og `members`-subcollection fjernes. Bruger sendes tilbage til projektlisten. |
-| Status | ⚪ |
-| Faktisk resultat | |
-| Bemærkninger | |
+| Status | 🔴 |
+| Faktisk resultat | Build `92247ec7` (commit `60542c1`, 2026-08-11/12): Sletning fejler med `UNAUTHENTICATED`. Fejlmeddelelse: `Diagnose: sletning fejlede. Sletning fejlede (unknown): deleteProject fejlede: httpsCallable(unauthenticated): UNAUTHENTICATED; directUrl(unknown): JSON Parse error: Unexpected character:` |
+| Bemærkninger | Rodårsag: `deleteProject` Cloud Function manglede IAM `allUsers` + `Cloud Functions Invoker`. Rettet efterfølgende; afventer verifikation i næste build. |
 
 ### TC-DEL-002: Slet projekt med sager, checkpoints og kommentarer
 | Felt | Værdi |
@@ -455,9 +455,9 @@
 | Forudsætning | Projekt har sager med checkpoints og kommentarer. |
 | Trin | Gennemfør slet-flow. |
 | Forventet resultat | Alle `items`, `checkpoints` og `comments` med `projectId` er fjernet. Ingen dokumenter kan queries frem. |
-| Status | ⚪ |
-| Faktisk resultat | |
-| Bemærkninger | Verificer i Firestore console. |
+| Status | 🟡 |
+| Faktisk resultat | Ikke individuelt testet i build 92247ec7. Underliggende `deleteProject` fejlede med `UNAUTHENTICATED` for TC-DEL-001. |
+| Bemærkninger | Gen-test efter IAM-rettelse og verifikation af TC-DEL-001. |
 
 ### TC-DEL-003: Slet projekt med checklister
 | Felt | Værdi |
@@ -466,9 +466,9 @@
 | Forudsætning | Projekt har checklister med listepunkter. |
 | Trin | Gennemfør slet-flow. |
 | Forventet resultat | Alle `checklists` og `checklists/{id}/items` for projektet er fjernet. |
-| Status | ⚪ |
-| Faktisk resultat | |
-| Bemærkninger | |
+| Status | 🟡 |
+| Faktisk resultat | Ikke individuelt testet i build 92247ec7. Underliggende `deleteProject` fejlede med `UNAUTHENTICATED` for TC-DEL-001. |
+| Bemærkninger | Gen-test efter IAM-rettelse og verifikation af TC-DEL-001. |
 
 ### TC-DEL-004: Slet projekt med fotos
 | Felt | Værdi |
@@ -477,9 +477,9 @@
 | Forudsætning | Projekt har sager med fotos i Storage under `projects/{projectId}/items/`. |
 | Trin | Gennemfør slet-flow. |
 | Forventet resultat | Storage-mappen er tom. Download-URL'er returnerer 404. |
-| Status | ⚪ |
-| Faktisk resultat | |
-| Bemærkninger | |
+| Status | 🟡 |
+| Faktisk resultat | Ikke individuelt testet i build 92247ec7. Foto-upload (TC-002) bestod, men sletning af fotos under projektsletning kunne ikke verificeres pga. `UNAUTHENTICATED`. |
+| Bemærkninger | Gen-test efter IAM-rettelse og verifikation af TC-DEL-001. |
 
 ### TC-DEL-005: Medlem eller admin forsøger at slette
 | Felt | Værdi |
@@ -488,9 +488,9 @@
 | Forudsætning | Bruger er medlem/admin i projekt ejet af en anden. |
 | Trin | 1. Forsøg at påkalde slet-funktion via UI. <br> 2. (Optional) Kald Cloud Function direkte. |
 | Forventet resultat | Handling afvises. Projekt og data forbliver intakte. Slet-knap vises ikke for ikke-ejere. |
-| Status | ⚪ |
-| Faktisk resultat | |
-| Bemærkninger | |
+| Status | 🟡 |
+| Faktisk resultat | Ikke individuelt testet i build 92247ec7. Rolle-checks er verificeret i functions unit tests (8/8 PASS). |
+| Bemærkninger | Gen-test i app UI efter IAM-rettelse og verifikation af TC-DEL-001. |
 
 ### TC-DEL-006: Annullér i bekræftelsesdialog
 | Felt | Værdi |
@@ -499,9 +499,9 @@
 | Forudsætning | Owner trykker "Slet projekt". |
 | Trin | 1. Tryk "Annuller" i dialog 1. <br> 2. Gentag og tryk "Annuller" i dialog 2. |
 | Forventet resultat | Intet slettes. Bruger forbliver på projektlisten. |
-| Status | ⚪ |
-| Faktisk resultat | |
-| Bemærkninger | |
+| Status | 🟡 |
+| Faktisk resultat | Ikke individuelt testet i build 92247ec7. Underliggende `deleteProject` fejlede med `UNAUTHENTICATED` for TC-DEL-001. |
+| Bemærkninger | Gen-test efter IAM-rettelse og verifikation af TC-DEL-001. |
 
 ### TC-DEL-007: Forkert navn i tekstbekræftelse
 | Felt | Værdi |
@@ -510,9 +510,9 @@
 | Forudsætning | Owner er nået til tekstbekræftelse. |
 | Trin | 1. Indtast forkert projektnavn. |
 | Forventet resultat | "Slet"-knappen forbliver deaktiveret. Sletning kan ikke gennemføres. |
-| Status | ⚪ |
-| Faktisk resultat | |
-| Bemærkninger | |
+| Status | 🟡 |
+| Faktisk resultat | Ikke individuelt testet i build 92247ec7. Underliggende `deleteProject` fejlede med `UNAUTHENTICATED` for TC-DEL-001. |
+| Bemærkninger | Gen-test efter IAM-rettelse og verifikation af TC-DEL-001. |
 
 ### TC-DEL-008: Aktivt projekt slettes
 | Felt | Værdi |
@@ -521,9 +521,9 @@
 | Forudsætning | Det projekt brugeren står i, er valgt som aktivt. |
 | Trin | Slet det aktive projekt. |
 | Forventet resultat | `activeProject` nulstilles. Bruger navigeres til projektlisten og ser ikke længere gammelt projekt i Board. |
-| Status | ⚪ |
-| Faktisk resultat | |
-| Bemærkninger | |
+| Status | 🟡 |
+| Faktisk resultat | Ikke individuelt testet i build 92247ec7. Underliggende `deleteProject` fejlede med `UNAUTHENTICATED` for TC-DEL-001. |
+| Bemærkninger | Gen-test efter IAM-rettelse og verifikation af TC-DEL-001. |
 
 ### TC-DEL-009: Netværksfejl under sletning
 | Felt | Værdi |
@@ -532,9 +532,9 @@
 | Forudsætning | Cloud Function kaldes, men netværk afbrydes. |
 | Trin | Gennemfør slet-flow under simuleret netværksfejl. |
 | Forventet resultat | UI viser fejlmeddelelse. Projekt vises stadig i listen, da sletning ikke er bekræftet færdig. |
-| Status | ⚪ |
-| Faktisk resultat | |
-| Bemærkninger | |
+| Status | 🟡 |
+| Faktisk resultat | Ikke individuelt testet i build 92247ec7. Underliggende `deleteProject` fejlede med `UNAUTHENTICATED` for TC-DEL-001. |
+| Bemærkninger | Gen-test efter IAM-rettelse og verifikation af TC-DEL-001. |
 
 ---
 
@@ -991,7 +991,7 @@
 | ID | Område | Trin | Forventet resultat | Status |
 |---|---|---|---|---|
 | REG-SL-001 | Opret liste | Søg og opret liste fra ét projekt. | Liste oprettes uden fejl. | ⚪ |
-| REG-SL-002 | Afkrydsning | Afkryds punkt; tjek item-status. | Kun checkpoint ændres; item-status følger PO-regler. | ⚪ |
+| REG-SL-002 | Afkrydsning | Afkryds punkt; tjek item-status. | Kun checkpoint ændres; item-status følger PO-regler. | 🔴 |
 | REG-SL-003 | Kommentar | Skriv og send kommentar. | Kommentar gemmes; navigation virker. | ⚪ |
 | REG-SL-004 | Highlight | Søg med specialtegn og æøå. | Highlight korrekt; layout intakt. | ⚪ |
 
@@ -1002,7 +1002,7 @@
 | REG-VC-001 | Basis oprettelse | Optag "Køb maling komma hammer gem". | Item gemmes med korrekt titel/content. | ⚪ |
 | REG-VC-002 | Foto-kommando | Sig "åbn kamera" og tag billede. | Kamera åbner; optagelse genoptages. | ⚪ |
 | REG-VC-003 | Gem-kommando | Sig "gem". | Item gemmes. | ⚪ |
-| REG-VC-004 | E1–E13 parser tests | `npx ts-node scripts/verify-voice-parser.ts` | Alle består. | ⚪ |
+| REG-VC-004 | E1–E13 parser tests | `npx ts-node scripts/verify-voice-parser.ts` | Alle består. | 🟡 |
 
 ### 9.3 Projekt og auth
 
@@ -1017,8 +1017,28 @@
 | ID | Område | Trin | Forventet resultat | Status |
 |---|---|---|---|---|
 | REG-CL-001 | Opret manuel liste | Opret liste og tilføj punkter. | Liste og punkter gemmes. | ⚪ |
-| REG-CL-002 | Opret dynamisk liste | Opret liste fra søgning. | Liste synkroniserer med source items. | ⚪ |
+| REG-CL-002 | Opret dynamisk liste | Opret liste fra søgning. | Liste synkroniserer med source items. | 🔴 |
 | REG-CL-003 | Slet punkt | Slet punkt fra dynamisk liste. | `deletedItemKeys` opdateres. | ⚪ |
+
+### 9.5 PO-test resultater fra build `92247ec7` (commit `60542c1`, 2026-08-11/12)
+
+| ID | Område | Faktisk resultat | Status |
+|---|---|---|---|
+| TC-001 | Projekt-sletning | `UNAUTHENTICATED` på `deleteProject`. | 🔴 |
+| TC-002 | Foto-upload | Bestod. | 🟢 |
+| TC-003 | Oversættelse | Bestod. | 🟢 |
+| TC-004 | Notifikation på projekt-liste | Bestod. | 🟢 |
+| TC-005 | Dynamisk liste opdaterer | 5-8 duplikater af samme sag i listen. | 🔴 |
+| TC-006 | Slet liste | `permission-denied`; debug-tekst "kunne ikke oprette liste". | 🔴 |
+| TC-007 | Flueben sync til sag | Teksten "Udført" blinker vildt; status forbliver `new`; 8 ens checkpoints oprettet. | 🔴 |
+| TC-008 | Stemmekommando uden punktum | Tekst i én linje i sagen; to linjer i listen; "Indkøb" staves "Indkoeb". | 🔴 |
+| TC-009 | Personlige lister separat fane | Fanerne vises; oprettelse påvirket af TC-006. | 🟡 |
+| TC-GEO-001 | Tilføj sted til liste | Bestod. | 🟢 |
+| TC-GEO-002 | Smarte stedforslag | Kun standardforslag (fx Silvan Hillerød). | 🔴 |
+| TC-GEO-003 | Kopier ankomst-link | Notifikationsfejl + 100+ ens notifikationer. | 🔴 |
+| TC-GEO-004 | Åbn guide | Bestod; ønske om dansk/præcis vejledning. | 🟡 |
+| TC-GEO-005 | Deeplink åbner liste | Delvis passed; hænger sammen med TC-GEO-003. | 🟡 |
+| TC-GEO-006 | Toggle sted til/fra | Bestod. | 🟢 |
 
 ---
 
@@ -1043,3 +1063,4 @@ Før PO-godkendelse og EAS build skal følgende være opfyldt:
 | Dato | Version | Ændring | Ansvarlig |
 |---|---|---|---|
 | 2026-07-15 | 1.0 | Oprettet comprehensive round testplan med 8 afsnit og regression. | Test Manager Agent |
+| 2026-08-13 | 1.1 | Indskrevet PO-testresultater fra build `92247ec7` (commit `60542c1`, 2026-08-11/12): TC-DEL-001 🔴 (`UNAUTHENTICATED`), TC-005 🔴 (duplikater), TC-006 🔴 (permission-denied), TC-007 🔴 (flueben sync), TC-008 🔴 (stemme/æøå), TC-GEO-002/003/005 🔴/🟡 (geofence). TC-002/003/004/GEO-001/004/006 🟢. | Master Agent |

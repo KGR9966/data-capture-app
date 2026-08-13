@@ -2,7 +2,7 @@
 
 **Dato:** 2026-08-13  
 **Branch:** `fix/us004-items-subcollection`  
-**Seneste commit:** `9cae5e3 docs(us004): opdater working-state med genetableringsresultater`  
+**Seneste commit:** `4eca6ab docs(us004): opdater working-state med build-ready status og prognose`  
 **Working tree:** clean  
 **Java:** Temurin 21.0.12 installeret under `C:\tools\jdk-21.0.12+8` og `C:\Program Files\Eclipse Adoptium\jdk-21.0.12.8-hotspot`
 
@@ -108,9 +108,38 @@ npm test
 - [x] Genkørt `test-search-parser.ts` ✅ all passed.
 - [x] Review/audit af 9 uncommitted ændringer gennemført; ingen yderligere blockere identificeret.
 - [x] Commit + push af rettelser — `f4b1231` + oprydning `3ef2954`.
+- [x] Genskabte PO-testresultater fra build `92247ec7` (commit `60542c1`, 2026-08-11/12) fra session transcript `3f397a1c-2ab5-43b3-befa-f2f1859978df.jsonl` — indskrevet i testplanerne.
 - [ ] PO GO til Build 1 (iOS-only preview).
 - [ ] G6 manuel E2E E1–E9.
 - [ ] G7 QA-rapport.
+
+---
+
+## Genskabte PO-testresultater fra 2026-08-11/12
+
+> Kilden er session transcript `C:\Users\kimgr\.claude\projects\C--cloud-agent\3f397a1c-2ab5-43b3-befa-f2f1859978df.jsonl` — den tabte chat før genetableringen. Resultaterne er indskrevet i `.claude/team/test/qa-testplan-us004-items-subcollection.md`, `.claude/team/test/testplan-comprehensive-round.md` og `.claude/team/test/e2e-runbook-us004-items-subcollection.md`.
+
+Build testet: `92247ec7` (commit `60542c1` — `fix(build-next): resolve TC-001/004/007/008/009 and GEO-001/002`).
+
+| TC / Geo | Resultat | Observation / fejllog |
+|---|---|---|
+| TC-001 Projekt-sletning | 🔴 | `Diagnose: sletning fejlede. Sletning fejlede (unknown): deleteProject fejlede: httpsCallable(unauthenticated): UNAUTHENTICATED; directUrl(unknown): JSON Parse error: Unexpected character:` |
+| TC-002 Foto-upload | 🟢 | Bestod. |
+| TC-003 Oversættelse til engelsk | 🟢 | Bestod. |
+| TC-004 Notifikation på projekt-liste | 🟢 | Bestod. |
+| TC-005 Dynamisk liste opdaterer | 🔴 | Opretter 5-8 stk. af samme sag i listen. |
+| TC-006 Slet liste | 🔴 | `Diagnose: kunne ikke oprette liste Fejl (firestore/permission-denied): [firestore/permission-denied] The caller does not have permission...` |
+| TC-007 Flueben sync til sag | 🔴 | "Udført" blinker vildt; sag-status forbliver `new`; 8 ens checkpoints oprettet, kun første har flueben. |
+| TC-008 Stemmekommando uden punktum | 🔴 | Tekst i én linje i sagen; to linjer i listen; "Indkøb" staves "Indkoeb". |
+| TC-009 Personlige lister separat fane | 🟡 | Faner vises; oprettelse påvirket af TC-006. |
+| TC-GEO-001 Tilføj sted | 🟢 | Bestod. |
+| TC-GEO-002 Smarte stedforslag | 🔴 | Viser kun standardforslag (fx Silvan Hillerød). |
+| TC-GEO-003 Kopier ankomst-link | 🔴 | Notifikationsfejl første gang; ved gentagelse 100+ ens notifikationer. |
+| TC-GEO-004 Åbn guide | 🟢 | Bestod; PO ønsker danskere/præcis vejledning. |
+| TC-GEO-005 Deeplink åbner liste | 🟡 | Delvis passed; hænger sammen med TC-GEO-003. |
+| TC-GEO-006 Toggle sted til/fra | 🟢 | Bestod. |
+
+**Observation om "offentlig" / projektsletning:** Der blev ikke fundet en specifik observation i transcriptet om, at en rettelse af adgang til "offentlig" har gjort det muligt at slette projekter. TC-001 fejlede pga. manglende IAM invoker på `deleteProject`. Efterfølgende blev `allUsers` + `Cloud Functions Invoker` tilføjet, hvilket er standard for Firebase callable functions; funktionen validerer stadig `context.auth` og owner/admin rolle server-side.
 
 ---
 

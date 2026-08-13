@@ -40,7 +40,7 @@
 | Dynamiske lister | ⚪ | ⚪ | TC-005.7–005.28, TC-B1.6 | `sourceItemPath`, `sourceProjectId` og checkpoint-paths opdateret. Projekt-scopede checklists ligger under `/projects/{projectId}/checklists`. |
 | Sikkerhed / negative cases | ⚪ | ⚪ | TC-SEC.1–SEC.37 | Subcollection-regler testes mod emulator og fysiske enheder. Project-scopede checklists og deres items ligger under `/projects/{projectId}/checklists`. |
 | Migration / wipe-and-recreate | ⚪ | ⚪ | TC-MIG.1–MIG.5 | Testdata wipes; genskabes og verificeres. |
-| Cloud Function / projektsletning | ⚪ | ⚪ | TC-B9.1–B9.6 | `deleteProject` callable sletter cascade server-side; response shape, runtime config og fallback verificeres. |
+| Cloud Function / projektsletning | 🟡 | 🔴 | TC-B9.1–B9.6 | `deleteProject` callable sletter cascade server-side. PO-test af TC-001 i build `92247ec7` fejlede med `UNAUTHENTICATED` pga. manglende IAM invoker. Functions unit tests bestod. Afventer gen-test efter IAM-rettelse. |
 
 ---
 
@@ -1370,12 +1370,12 @@ Bruges ved fysisk test på iPhone/iPad. Marker hver række med Status MA/PO efte
 | Regression | Nej |
 | Testtrin | 1. Kald `deleteProject` uden auth. <br> 2. Kald med ugyldigt `projectId`. <br> 3. Kald med ikke-eksisterende `projectId`. |
 | Forventet resultat | Uden auth: `unauthenticated`. Ugyldigt projectId: `invalid-argument`. Ikke-eksisterende: `not-found`. |
-| Status MA | ⚪ |
-| Begrundelse MA | Function verificerer `context.auth`, `projectId` type og dokument-exists. |
+| Status MA | 🟢 |
+| Begrundelse MA | Functions unit tests: 8/8 PASS (auth, rolle, cascade, storage cleanup). |
 | PO testet | - [ ] |
 | Status PO | ⚪ |
-| Begrundelse PO | |
-| Senest opdateret | 2026-07-15 |
+| Begrundelse PO | Ikke manuelt testet i build 92247ec7. |
+| Senest opdateret | 2026-08-13 |
 
 ### TC-B9.2: deleteProject callable — rollecheck
 | Felt | Værdi |
@@ -1385,12 +1385,12 @@ Bruges ved fysisk test på iPhone/iPad. Marker hver række med Status MA/PO efte
 | Regression | Nej |
 | Testtrin | 1. Kald som owner. <br> 2. Kald som admin. <br> 3. Kald som editor. <br> 4. Kald som viewer. <br> 5. Kald som ikke-medlem. |
 | Forventet resultat | Owner/admin: success. Editor/viewer/ikke-medlem: `permission-denied`. |
-| Status MA | ⚪ |
-| Begrundelse MA | Function tjekker `projectData.ownerId`, `projectData.roles[uid]`, og `members/{uid}` rolle. `roles` er keyed by UID, ikke email. |
+| Status MA | 🟢 |
+| Begrundelse MA | Functions unit tests: 8/8 PASS (owner, admin, editor, viewer, non-member cases). |
 | PO testet | - [ ] |
 | Status PO | ⚪ |
-| Begrundelse PO | |
-| Senest opdateret | 2026-07-15 |
+| Begrundelse PO | Ikke manuelt testet i build 92247ec7. |
+| Senest opdateret | 2026-08-13 |
 
 ### TC-B9.3: deleteProject callable — cascade sletning
 | Felt | Værdi |
@@ -1400,12 +1400,12 @@ Bruges ved fysisk test på iPhone/iPad. Marker hver række med Status MA/PO efte
 | Regression | Ja |
 | Testtrin | 1. Opret projekt med items, checkpoints, comments, members, project-scoped checklists og fotos. <br> 2. Kald `deleteProject({ projectId })` som owner. <br> 3. Verificér i Firebase Console og Storage. |
 | Forventet resultat | `recursiveDelete(projectRef)` fjerner projekt + subcollections. Projekt-scopede checklists fjernes. Storage-præfiks `projects/{projectId}/items/` fjernes. |
-| Status MA | ⚪ |
-| Begrundelse MA | `db.recursiveDelete(checklistDoc.ref)` for hvert project-scoped checklist. `db.recursiveDelete(projectRef)` for projekt. `storage.bucket().getFiles({ prefix })` + delete. |
-| PO testet | - [ ] |
-| Status PO | ⚪ |
-| Begrundelse PO | |
-| Senest opdateret | 2026-07-15 |
+| Status MA | 🟢 |
+| Begrundelse MA | Functions unit tests: cascade + storage cleanup PASS. Cloud Function `deleteProject` redeployet us-central1 v1 callable. |
+| PO testet | - [x] |
+| Status PO | 🔴 |
+| Begrundelse PO | Build 92247ec7 (commit 60542c1, 2026-08-11/12): TC-001 projektsletning fejlede med `UNAUTHENTICATED` før cascade kunde verificeres. Fejl: `deleteProject fejlede: httpsCallable(unauthenticated): UNAUTHENTICATED; directUrl(unknown): JSON Parse error: Unexpected character:` |
+| Senest opdateret | 2026-08-13 |
 
 ### TC-B9.4: deleteProject response shape og runtime config
 | Felt | Værdi |
@@ -1415,12 +1415,12 @@ Bruges ved fysisk test på iPhone/iPad. Marker hver række med Status MA/PO efte
 | Regression | Nej |
 | Testtrin | 1. Kald `deleteProject({ projectId })` som owner. <br> 2. Tjek returneret data og function-konfiguration i `firebase.json` / functions-kilde. |
 | Forventet resultat | Callable returnerer `{ success: true }`. Function kører med `memory: "512MB"` og `timeoutSeconds: 300`. |
-| Status MA | ⚪ |
-| Begrundelse MA | Design spec afsnit 6.6 og 6.7. |
+| Status MA | 🟢 |
+| Begrundelse MA | Functions unit tests PASS; runtime config verificeret i kildekode og deploy. |
 | PO testet | - [ ] |
 | Status PO | ⚪ |
-| Begrundelse PO | |
-| Senest opdateret | 2026-07-15 |
+| Begrundelse PO | Kun implicit: kald nåede aldrig funktionen pga. `UNAUTHENTICATED`. |
+| Senest opdateret | 2026-08-13 |
 
 ### TC-B9.5: deleteProject Storage cleanup failure håndtering
 | Felt | Værdi |
@@ -1430,12 +1430,12 @@ Bruges ved fysisk test på iPhone/iPad. Marker hver række med Status MA/PO efte
 | Regression | Nej |
 | Testtrin | 1. Mock eller simulér at Storage-sletning fejler (fx ugyldig bucket-konfig eller netværksfejl). <br> 2. Kald `deleteProject({ projectId })` som owner. |
 | Forventet resultat | Function returnerer stadig `{ success: true }`. Firestore-projektet og subcollections er slettet. Storage-fejl logges som warning; der er **ikke** rollback. |
-| Status MA | ⚪ |
-| Begrundelse MA | Design spec afsnit 6.5. |
+| Status MA | 🟢 |
+| Begrundelse MA | Functions unit tests: storage cleanup failure håndtering PASS. |
 | PO testet | - [ ] |
 | Status PO | ⚪ |
-| Begrundelse PO | |
-| Senest opdateret | 2026-07-15 |
+| Begrundelse PO | Ikke manuelt testet i build 92247ec7. |
+| Senest opdateret | 2026-08-13 |
 
 ### TC-B9.6: deleteProject unavailable — ingen client-side cascade fallback
 | Felt | Værdi |
@@ -1445,12 +1445,12 @@ Bruges ved fysisk test på iPhone/iPad. Marker hver række med Status MA/PO efte
 | Regression | Nej |
 | Testtrin | 1. Simulér at callable er utilgængelig (offline eller emulator ikke startet). <br> 2. Forsøg at slette projekt via appen. |
 | Forventet resultat | Appen viser fejl til brugeren. Der må **ikke** finde client-side cascade delete sted (ingen batch-sletning af items/checkpoints/comments). |
-| Status MA | ⚪ |
-| Begrundelse MA | Design spec afsnit 3.6: client-side `deleteProjectCascade` fjernes. |
-| PO testet | - [ ] |
-| Status PO | ⚪ |
-| Begrundelse PO | |
-| Senest opdateret | 2026-07-15 |
+| Status MA | 🟢 |
+| Begrundelse MA | Kode-review: client-side `deleteProjectCascade` fjernet; kun callable-kald. |
+| PO testet | - [x] |
+| Status PO | 🟢 |
+| Begrundelse PO | Build 92247ec7: Ved `UNAUTHENTICATED` fejl viste appen fejlmeddelelse og slettede ikke data client-side. Ingen cascade fandt sted. |
+| Senest opdateret | 2026-08-13 |
 
 ---
 
@@ -1514,10 +1514,10 @@ Bruges når der er lavet større ændringer. Kopier relevante `Regression: Ja`-c
 | TC-CH.9–CH.11 | Comment→note | ⚪ | | - [ ] | ⚪ | |
 | TC-I.1–I.4 | Deep links | ⚪ | | - [ ] | ⚪ | |
 | TC-J.1 | Push-token | ⚪ | | - [ ] | ⚪ | |
-| TC-005.7–005.28 | Dynamiske lister | ⚪ | `sourceProjectId`, checkpoints | - [ ] | ⚪ | |
+| TC-005.7–005.28 | Dynamiske lister | 🟡 | Rettet i genetablering; afventer gen-test | - [x] | 🔴 | TC-005 i build 92247ec7: 5-8 duplikater af samme sag i dynamisk liste |
 | TC-B1.1–B1.14 | Subcollection migration | ⚪ | Nye cases | - [ ] | ⚪ | |
 | TC-B4.1 | Reminder targetProjectId | ⚪ | Nyt felt | - [ ] | ⚪ | |
-| TC-B9.1–B9.6 | Cloud Function sletning | ⚪ | Nyt | - [ ] | ⚪ | |
+| TC-B9.1–B9.6 | Cloud Function sletning | 🟡 | Functions unit tests PASS; PO-test af TC-001 fejlede med `UNAUTHENTICATED` | - [x] | 🔴 | TC-001 i build 92247ec7: `deleteProject fejlede: httpsCallable(unauthenticated): UNAUTHENTICATED` |
 | TC-SEC.1–SEC.37 | Sikkerhed | ⚪ | Nye negative cases | - [ ] | ⚪ | |
 | TC-MIG.1–MIG.5 | Migration | ⚪ | Wipe-and-recreate | - [ ] | ⚪ | |
 
@@ -1528,6 +1528,7 @@ Bruges når der er lavet større ændringer. Kopier relevante `Regression: Ja`-c
 | Dato | Version | Hvad der er ændret | Ansvarlig |
 |---|---|---|---|
 | 2026-07-15 | 1.0 | Oprettet US-004 subcollection migration testplan med baseline-cases, nye E2E cases, negative sikkerhedstest, migration, iOS regression og build-go gates | Test Manager Agent |
+| 2026-08-13 | 1.1 | Indskrevet PO-testresultater fra build `92247ec7` (commit `60542c1`, 2026-08-11/12): TC-001 (🔴 `UNAUTHENTICATED`), TC-005 (🔴 dynamisk liste duplikerer), TC-006 (🔴 slet liste permission-denied), TC-007 (🔴 flueben sync), TC-008 (🔴 stemme uden punktum/æøå), TC-GEO-002/003/005 (🟡/🔴 geofence). Cloud Function unit tests markeret 🟢. | Master Agent |
 
 ---
 
