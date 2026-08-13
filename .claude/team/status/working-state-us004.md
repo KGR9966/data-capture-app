@@ -107,7 +107,7 @@ npm test
 - [x] Genkørt G5 Cloud Function tests ✅ all passed.
 - [x] Genkørt `test-search-parser.ts` ✅ all passed.
 - [x] Review/audit af 9 uncommitted ændringer gennemført; ingen yderligere blockere identificeret.
-- [ ] Commit + push af rettelser (afventer Master Agent/PO-go eller udføres straks).
+- [x] Commit + push af rettelser — `f4b1231` + oprydning `3ef2954`.
 - [ ] PO GO til Build 1 (iOS-only preview).
 - [ ] G6 manuel E2E E1–E9.
 - [ ] G7 QA-rapport.
