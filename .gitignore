@@ -45,3 +45,4 @@ yarn-error.*
 .firebase/
 google-services.json
 GoogleService-Info.plist
+firestore-debug.log
